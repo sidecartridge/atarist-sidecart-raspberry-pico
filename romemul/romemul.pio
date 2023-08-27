@@ -1,0 +1,175 @@
+; RP2040 PIO programs to simulate a ROM cartridge for the Atari ST
+; Author: Diego Parrilla Santamaría
+; Date: July 2023
+; Copyright: 2023 - GOODDATA LABS SL
+;
+
+;
+; Public constants
+;
+
+; !ROM4 signal
+.define public ROM4_GPIO 22
+
+; !ROM3 signal
+.define public ROM3_GPIO 26
+
+; Inverted signals!
+
+
+.define public ACTIVE 0
+.define public INACTIVE 1
+
+; Inverted READ and WRITE pair of signals
+; We must carefully control the access to the buses
+; READ is the LSB, WRITE is the MSB
+.define public READ_WRITE 0b00
+.define public NOT_READ_WRITE 0b01
+.define public READ_NOT_WRITE 0b10
+.define public NOT_READ_NOT_WRITE 0b11
+
+; Address bus and Data bus share the same pins
+; A0-A15 bits in the pins are the address. Bit A0 should be always 0
+; D0-D15 bits in the pins are the data.
+.define public BUS_PINS 16
+
+; Safe number of wait cycles before reading the address from the bus after
+; sending the READ signal to the latch
+; It seems 6 is the bare  minimum
+.define public READ_ADDRESS_SAFE_WAIT_CYCLES 3
+
+
+.program monitor_rom4
+
+; Wait for a !ROM4 GPIO pin to go high (assuming some sort of external signal to start reading)
+.wrap_target
+    wait INACTIVE gpio ROM4_GPIO
+    wait ACTIVE gpio ROM4_GPIO
+    irq set 0
+.wrap
+
+
+.program monitor_rom3
+
+; Wait for a !ROM3 GPIO pin to go high (assuming some sort of external signal to start reading)
+.wrap_target
+    wait INACTIVE gpio ROM3_GPIO
+    wait ACTIVE gpio ROM3_GPIO
+    irq set 0
+.wrap
+
+
+; ROM4 pio routines
+; Need to investigate how to handle everything in a single ROM pio routines.
+; Wait for the ROM4 to be active and read the address to obtain the data value
+; Repeatedly read one word of data from the GPIO pins and push the data to the FIFO
+;
+.program romemul_read
+    .side_set 2 opt
+
+; To build the address in the RP2040 memory where the Atari ST ROM is, we get the MS word
+; from the C code and keep it stored in the scratch registry X
+; A MESSAGE TO ME FROM THE PAST! DO NOT USE THE X SCRATCH FOR ANYTHING!!!!!!
+; We only need to do this when the state machine starts.
+    pull block
+    mov x, osr
+
+.wrap_target
+    wait 1 irq 0                   side NOT_READ_NOT_WRITE
+
+; Setup the initial gpio for input and side-set for output
+    mov osr, null                   side NOT_READ_NOT_WRITE
+    out pindirs, BUS_PINS           side NOT_READ_NOT_WRITE
+
+; Wait a safe number of cycles before reading the address in the bus
+    nop side READ_NOT_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+    nop side READ_NOT_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+
+; We need to add the Most Significant Word to the address read from the input, and we have
+; it in the scratch registry X forever.
+    mov isr, x                      side READ_NOT_WRITE  [READ_ADDRESS_SAFE_WAIT_CYCLES]
+
+; Read from the GPIO pins into the OSR (output shift register)
+; Autopush the address to the FIFO TX
+    in pins 17               side READ_NOT_WRITE
+
+; Get the value obtained from the FIFO and push it to the output pins
+; Before pushing the values to the output pins, the READ and WRITE signals must be
+; set to INACTIVE (high) to set the bus pins to high-z
+; After pushing the output values, set the WRITE to ACTIVE (low) to change only 
+; from high-z state to the data bus.
+; Then wait for the ROM4 to turn INACTIVE and then immediately turn the 
+; WRITE data bus signal to INACTIVE, ending the loop. 
+
+; Change the direction of the GPIO pins to output
+    mov osr, ~null                  side NOT_READ_NOT_WRITE
+    out pindirs, BUS_PINS           side NOT_READ_NOT_WRITE
+
+; Write from the ISR (input shift register) to the GPIO pins 16 bits
+; Autopull enabled. Pull 16 bits from FIFO RX and put it in the bus
+    out pins BUS_PINS               side NOT_READ_WRITE
+
+; Wait a safe number of cycles before releasing the bus
+    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+;    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+;    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+;    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+
+; If some of the pins are not properly connected and are floating, disable these two
+; lines below to help detect the floating pin in the read bus lines.
+;    mov osr, null           side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+;    out pins, 17            side NOT_READ_NOT_WRITE
+
+.wrap
+
+
+% c-sdk {
+
+static inline void romemul_read_program_init(PIO pio, uint sm, uint offset, uint addr_pin_base, uint addr_pin_count, uint rw_pin_base, float div) {
+
+    pio_sm_config c = romemul_read_program_get_default_config(offset);
+
+    // Configure pins to read the address in the bus
+    sm_config_set_in_pins(&c, addr_pin_base);
+    sm_config_set_in_shift(&c, false, true, addr_pin_count + 1);   // Autopush after 17 bits read
+    sm_config_set_out_shift(&c, false, true, addr_pin_count);   // Autopull after 16 bits write
+    sm_config_set_out_pins(&c, addr_pin_base, addr_pin_count);
+
+    // Configue output pins for READ and WRITE signals
+    sm_config_set_sideset_pins(&c, rw_pin_base);
+
+    // Configure the initial set INACTIVE pin of READ and WRITE signals
+    pio_sm_set_consecutive_pindirs(pio, sm, rw_pin_base, 2, true);
+    
+    // Set the clock divider
+    sm_config_set_clkdiv(&c, div);
+
+    // Init state machine
+    pio_sm_init(pio, sm, offset, &c);
+
+}
+
+static inline void monitor_rom4_program_init(PIO pio, uint sm, uint offset, float div) {
+
+    pio_sm_config c = monitor_rom4_program_get_default_config(offset);
+
+    // Set the clock divider
+    sm_config_set_clkdiv(&c, div);
+
+    // Init state machine
+    pio_sm_init(pio, sm, offset, &c);
+}
+
+static inline void monitor_rom3_program_init(PIO pio, uint sm, uint offset, float div) {
+
+    pio_sm_config c = monitor_rom3_program_get_default_config(offset);
+
+    // Set the clock divider
+    sm_config_set_clkdiv(&c, div);
+
+    // Init state machine
+    pio_sm_init(pio, sm, offset, &c);
+}
+
+%}
