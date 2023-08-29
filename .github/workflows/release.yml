@@ -25,8 +25,10 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install the Pico Toolchain
-      run:  apt update && sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential libstdc++-arm-none-eabi-newlib
-  
+      run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt update
+          sudo DEBIAN_FRONTEND=noninteractive apt install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential libstdc++-arm-none-eabi-newlib
+    
     - name: Install AtariST Toolkit Docker image
       run: curl -sL https://github.com/diegoparrilla/atarist-toolkit-docker/releases/download/latest/linux.sh | bash
 
