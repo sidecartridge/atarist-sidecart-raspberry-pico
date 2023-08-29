@@ -403,8 +403,10 @@ int init_firmware()
     while (rom_selected < 0)
     {
         tight_loop_contents();
+        sleep_ms(1000);
     }
 
+    printf("ROM selected: %d\n", rom_selected);
     int res = load(filtered_list[rom_selected - 1], FLASH_ROM_LOAD_OFFSET);
 
     if (res != FR_OK)

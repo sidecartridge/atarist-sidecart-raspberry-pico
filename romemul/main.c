@@ -126,8 +126,11 @@ int main()
         blink_morse('L');
 
         init_firmware();
+
         // Now the user needs to reset or poweroff the board to load the ROMs
         printf("Rebooting the board.\n");
+        sleep_ms(1000); // Give me a break... to display the message
+
         watchdog_enable(1, 1);
         while (1)
             ;
