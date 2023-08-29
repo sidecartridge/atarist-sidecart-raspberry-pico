@@ -54,3 +54,4 @@ dkms.conf
 .history/
 roms/
 build/
+dist/

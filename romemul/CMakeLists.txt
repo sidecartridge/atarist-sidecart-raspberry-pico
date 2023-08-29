@@ -7,7 +7,13 @@ include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
 # Set name of project (as PROJECT_NAME) and C/C   standards
 project(romemul C CXX ASM)
 set(CMAKE_C_STANDARD 11)
-set(PICO_BOARD pico_w)
+
+# If not specified, use pico_w as default board type
+set(BOARD_TYPE $ENV{BOARD_TYPE})
+if(NOT BOARD_TYPE)
+    set(BOARD_TYPE "pico_w")
+endif()
+set(PICO_BOARD ${BOARD_TYPE})
 
 # Creates a pico-sdk subdirectory in our project for the libraries
 pico_sdk_init()
@@ -16,7 +22,6 @@ pico_sdk_init()
 add_executable(${PROJECT_NAME} 
         main.c
         hw_config.c
-        constants.c
         )
 
 # Create map/bin/hex/uf2 files
@@ -25,6 +30,8 @@ pico_add_extra_outputs(${PROJECT_NAME})
 # by default the header is generated into the build dir
 pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/romemul.pio)
 
+target_sources(${PROJECT_NAME} PRIVATE constants.c)
+target_sources(${PROJECT_NAME} PRIVATE firmware.c)
 target_sources(${PROJECT_NAME} PRIVATE romemul.c)
 target_sources(${PROJECT_NAME} PRIVATE romloader.c)
 target_sources(${PROJECT_NAME} PRIVATE tprotocol.c)
