@@ -109,6 +109,12 @@ int main()
     {
         printf("SELECT button pressed. Launch configurator.\n");
 
+        // Delete FLASH ROMs
+        delete_FLASH();
+
+        // Copy the firmware to RAM
+        copy_firmware_to_RAM();
+
         // Hybrid way to initialize the ROM emulator:
         // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
         // and start the state machine

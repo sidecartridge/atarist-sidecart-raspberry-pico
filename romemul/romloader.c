@@ -8,18 +8,15 @@
 
 #include "include/romloader.h"
 
-int num_files = 0;
-char **file_list = NULL;
-static uint16_t command_word = 0;
 static int rom_selected = -1;
 
-static void release_memory_files()
+static void release_memory_files(char **files, int num_files)
 {
     for (int i = 0; i < num_files; i++)
     {
-        free(file_list[i]); // Free each string
+        free(files[i]); // Free each string
     }
-    free(file_list); // Free the list itself
+    free(files); // Free the list itself
 }
 
 static char **
@@ -58,7 +55,7 @@ ls(const char *dir, int *num_files)
         return NULL;
     }
 
-    while (fr == FR_OK && fno.fname[0])
+    while (fr == FR_OK && fno.fname[0] && fno.fname[0])
     {
         // Allocate space for a new pointer in the filenames array
         filenames = realloc(filenames, sizeof(char *) * (*num_files + 1));
@@ -163,6 +160,50 @@ static int load(char *filename, uint32_t rom_load_offset)
     printf("File loaded at offset 0x%x\n", rom_load_offset);
     printf("Dest ROM address end is 0x%x\n", dest_address - 1);
     return (int)fr;
+}
+
+static char **filter(char **file_list, int file_count, int *num_files)
+{
+    int validCount = 0;
+
+    // Count valid filenames
+    for (int i = 0; i < file_count; i++)
+    {
+        if (file_list[i][0] != '.')
+        {
+            validCount++;
+        }
+    }
+
+    // Allocate memory for the new array
+    char **filtered_list = (char **)malloc(validCount * sizeof(char *));
+    if (filtered_list == NULL)
+    {
+        perror("Failed to allocate memory");
+        exit(1);
+    }
+
+    int index = 0;
+    for (int i = 0; i < file_count; i++)
+    {
+        if (file_list[i][0] != '.')
+        {
+            filtered_list[index++] = strdup(file_list[i]);
+            if (filtered_list[index - 1] == NULL)
+            {
+                perror("Failed to duplicate string");
+                exit(1);
+            }
+        }
+    }
+    *num_files = validCount;
+    return filtered_list;
+}
+
+// Comparison function for qsort.
+static int compare_strings(const void *a, const void *b)
+{
+    return strcmp(*(const char **)a, *(const char **)b);
 }
 
 static int get_number_within_range(int num_files)
@@ -278,29 +319,38 @@ void __not_in_flash_func(dma_irq_handler_lookup_callback)(void)
     }
 }
 
-// static int copy_FLASH_to_RAM()
-// {
-//     // Need to initialize the ROM4 section with the data from FLASH
-//     extern uint16_t __rom_in_ram_start__;
-//     extern uint16_t __rom_in_ram_source__;
-//     uint16_t *rom4_dest = &__rom_in_ram_start__;
-//     uint16_t *rom4_src = (uint16_t *)rawROM;
-//     for (int i = 0; i < 32768; i++)
-//     {
-//         uint16_t value = *rom4_src++;
-//         *rom4_dest++ = value;
-//     }
-//     printf("FLASH copied to RAM.\n");
-//     return 0;
-// }
+int copy_firmware_to_RAM()
+{
+    // Need to initialize the ROM4 section with the firmware data
+    extern uint16_t __rom_in_ram_start__;
+    uint16_t *rom4_dest = &__rom_in_ram_start__;
+    uint16_t *rom4_src = (uint16_t *)firmwareROM;
+    for (int i = 0; i < firmwareROM_length; i++)
+    {
+        uint16_t value = *rom4_src++;
+        *rom4_dest++ = value;
+    }
+    printf("Firmware copied to RAM.\n");
+    return 0;
+}
+
+int delete_FLASH(void)
+{
+    // Erase the content before loading the new file. It seems that
+    // overwriting it's not enough
+    flash_range_erase(FLASH_ROM_LOAD_OFFSET, ROM_SIZE_BYTES * 2); // Two banks of 64K
+    printf("FLASH erased.\n");
+    return 0;
+}
 
 int init_firmware()
 {
 
-    // copy_FLASH_to_RAM();
-
     FRESULT fr;
     FATFS fs;
+    int num_files = 0;
+    char **file_list = NULL;
+    char **filtered_list = NULL;
 
     printf("\033[2J\033[H"); // Clear Screen
     printf("\n> ");
@@ -323,14 +373,12 @@ int init_firmware()
 
     // Show the root directory content (ls command)
     file_list = ls("", &num_files);
-    // if (file_list)
-    // {
-    //     printf("Found %d files:\n", num_files);
-    //     for (int i = 0; i < num_files; i++)
-    //     {
-    //         printf("%i - %s\n", i + 1, file_list[i]);
-    //     }
-    // }
+
+    // Remove hidden files from the list
+    int filtered_num_files = 0;
+    filtered_list = filter(file_list, num_files, &filtered_num_files);
+    // Sort remaining valid filenames lexicographically
+    qsort(filtered_list, filtered_num_files, sizeof(char *), compare_strings);
 
     // Copy the content of the file list to the end of the ROM4 memory minus 4Kbytes
     // Translated to pure ROM4 address of the ST: 0xFB0000 - 0x1000 = 0xFAF000
@@ -345,7 +393,7 @@ int init_firmware()
     // x=PEEK(&HFB0001) 'Payload (two bytes per word)
 
     uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - 4096); // 4Kbytes = 4096 bytes
-    store_file_list(file_list, num_files, memory_area);
+    store_file_list(filtered_list, filtered_num_files, memory_area);
 
     // Here comes the tricky part. We have to put in the higher section of the ROM4 memory the content
     // of the file list available in the SD card.
@@ -357,10 +405,11 @@ int init_firmware()
         tight_loop_contents();
     }
 
-    int res = load(file_list[rom_selected - 1], FLASH_ROM_LOAD_OFFSET);
+    int res = load(filtered_list[rom_selected - 1], FLASH_ROM_LOAD_OFFSET);
 
     if (res != FR_OK)
         printf("f_open error: %s (%d)\n", FRESULT_str(res), res);
 
-    release_memory_files();
+    release_memory_files(file_list, num_files);
+    release_memory_files(filtered_list, filtered_num_files);
 }
