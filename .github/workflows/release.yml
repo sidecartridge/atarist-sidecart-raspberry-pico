@@ -36,15 +36,18 @@ jobs:
     - name: Run - Build PICO_W version
       run: ./build.sh 
 
-    - name: Upload the PICO_W binary to release
+    - name: Get version from version.txt
+      id: get_version
+      run: echo "RELEASE_VERSION=$(cat version.txt)" >> $GITHUB_ENV
+
+    - name: Upload the binaries to release
       uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
         file: dist/*
         tag: ${{ github.ref }}
-        release_name: ${{ github.ref }}
+        release_name: v${{ env.RELEASE_VERSION }}
         file_glob: true
         overwrite: true
         make_latest: true
-
   
