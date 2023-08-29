@@ -13,8 +13,6 @@ jobs:
         python-version: [ "3.10" ]
         include:
           - os: ubuntu-latest
-            pico_w: romemul-pico_w.uf2
-            pico: romemul-pico.uf2
     steps:  
     - name: Checkout the code
       uses: actions/checkout@v3
@@ -42,17 +40,11 @@ jobs:
       uses: svenstaro/upload-release-action@v2
       with:
         repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: dist/${{ matrix.pico_w }}
-        asset_name: ${{ matrix.pico_w }}
+        file: dist/*
         tag: ${{ github.ref }}
+        release_name: ${{ github.ref }}
+        file_glob: true
         overwrite: true
-    - name: Upload the PICO_W binary to latest
-      uses: svenstaro/upload-release-action@v2
-      with:
-        repo_token: ${{ secrets.GITHUB_TOKEN }}
-        file: dist/${{ matrix.pico_w }}
-        asset_name: ${{ matrix.pico_w }}
-        tag: latest
-        overwrite: true
+        make_latest: true
 
   
