@@ -1,0 +1,6 @@
+[submodule "pico-sdk"]
+	path = pico-sdk
+	url = https://github.com/raspberrypi/pico-sdk.git
+[submodule "fatfs-sdk"]
+	path = fatfs-sdk
+	url = https://github.com/carlk3/no-OS-FatFS-SD-SPI-RPi-Pico.git
