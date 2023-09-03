@@ -9,6 +9,11 @@
 #include "include/romloader.h"
 
 static int rom_selected = -1;
+int filtered_num_files = 0;
+char **filtered_list = NULL;
+
+static bool persist_config = false;
+static bool reset_default = false;
 
 static void release_memory_files(char **files, int num_files)
 {
@@ -281,20 +286,76 @@ static void store_file_list(char **file_list, int num_files, uint8_t *memory_loc
 
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
 {
+    ConfigEntry *entry = NULL;
+    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - 4096); // 4Kbytes = 4096 bytes
     // Handle the protocol
     switch (protocol->command_id)
     {
-    case 1:
+    case LOAD_ROM:
         // Load ROM passed as argument in the payload
-        printf("Command LOAD_ROM (1) received: %d\n", protocol->payload_size);
+        printf("Command LOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         uint16_t value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
         printf("Value: %d\n", value_payload);
-        //        int res = load(file_list[value_payload - 1], FLASH_ROM_LOAD_OFFSET);
         rom_selected = value_payload;
         break;
-    case 2:
+    case LIST_ROMS:
         // Get the list of roms in the SD card
-        printf("Command LIST_ROMS (2) received: %d\n", protocol->payload_size);
+        printf("Command LIST_ROMS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        store_file_list(filtered_list, filtered_num_files, memory_area);
+        break;
+    case GET_CONFIG:
+        // Get the list of parameters in the device
+        printf("Command GET_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        memcpy(memory_area, &configData, sizeof(configData));
+
+        // Swap the keys and values section bytes in the words
+        // The endians conversions should be done always in the rp2040 side to relief
+        // the ST side from this task
+        uint16_t *dest_ptr = (uint16_t *)(memory_area + 4); // Bypass magic number
+        for (int i = 0; i < configData.count; i++)
+        {
+            swap_data(dest_ptr);
+            dest_ptr += sizeof(ConfigEntry) / 2;
+        }
+        break;
+    case PUT_CONFIG_STRING:
+        // Put a configuration string parameter in the device
+        printf("Command PUT_CONFIG_STRING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        entry = malloc(sizeof(ConfigEntry));
+        memcpy(entry, protocol->payload, sizeof(ConfigEntry));
+        swap_data((__uint16_t *)entry);
+        printf("Key:%s - Value: %s\n", entry->key, entry->value);
+        put_string(entry->key, entry->value);
+        break;
+    case PUT_CONFIG_INTEGER:
+        // Put a configuration integer parameter in the device
+        printf("Command PUT_CONFIG_INTEGER (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        entry = malloc(sizeof(ConfigEntry));
+        memcpy(entry, protocol->payload, sizeof(ConfigEntry));
+        swap_data((__uint16_t *)entry);
+        printf("Key:%s - Value: %s\n", entry->key, entry->value);
+        put_integer(entry->key, atoi(entry->value));
+        break;
+    case PUT_CONFIG_BOOL:
+        // Put a configuration boolean parameter in the device
+        printf("Command PUT_CONFIG_BOOL (6) received: %d\n", protocol->payload_size);
+        entry = malloc(sizeof(ConfigEntry));
+        memcpy(entry, protocol->payload, sizeof(ConfigEntry));
+        swap_data((__uint16_t *)entry);
+        printf("Key:%s - Value: %s\n", entry->key, entry->value);
+        put_bool(entry->key, (strcmp(entry->value, "true") == 0) ? true : false);
+        break;
+    case SAVE_CONFIG:
+        // Save the current configuration in the FLASH of the device
+        printf("Command SAVE_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        printf("Protocol payload: %s\n", &protocol->payload);
+        persist_config = true; // now the active loop should stop and save the config
+        break;
+    case RESET_DEVICE:
+        // Reset the device
+        printf("Command RESET_DEVICE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        reset_config_default();
+        reset_default = true; // now the active loop should stop and reset the config
         break;
     // ... handle other commands
     default:
@@ -338,7 +399,7 @@ int delete_FLASH(void)
 {
     // Erase the content before loading the new file. It seems that
     // overwriting it's not enough
-    flash_range_erase(FLASH_ROM_LOAD_OFFSET, ROM_SIZE_BYTES * 2); // Two banks of 64K
+    flash_range_erase(FLASH_ROM_LOAD_OFFSET, (ROM_SIZE_BYTES * 2) - 1); // Two banks of 64K
     printf("FLASH erased.\n");
     return 0;
 }
@@ -350,7 +411,6 @@ int init_firmware()
     FATFS fs;
     int num_files = 0;
     char **file_list = NULL;
-    char **filtered_list = NULL;
 
     printf("\033[2J\033[H"); // Clear Screen
     printf("\n> ");
@@ -375,7 +435,6 @@ int init_firmware()
     file_list = ls("", &num_files);
 
     // Remove hidden files from the list
-    int filtered_num_files = 0;
     filtered_list = filter(file_list, num_files, &filtered_num_files);
     // Sort remaining valid filenames lexicographically
     qsort(filtered_list, filtered_num_files, sizeof(char *), compare_strings);
@@ -400,18 +459,34 @@ int init_firmware()
     // The structure is a list of chars separated with a 0x00 byte. The end of the list is marked with
     // two 0x00 bytes.
 
-    while (rom_selected < 0)
+    while ((rom_selected < 0) && (persist_config == false) && (reset_default == false))
     {
         tight_loop_contents();
         sleep_ms(1000);
     }
 
-    printf("ROM selected: %d\n", rom_selected);
-    int res = load(filtered_list[rom_selected - 1], FLASH_ROM_LOAD_OFFSET);
+    if (rom_selected > 0)
+    {
+        printf("ROM selected: %d\n", rom_selected);
+        int res = load(filtered_list[rom_selected - 1], FLASH_ROM_LOAD_OFFSET);
 
-    if (res != FR_OK)
-        printf("f_open error: %s (%d)\n", FRESULT_str(res), res);
+        if (res != FR_OK)
+            printf("f_open error: %s (%d)\n", FRESULT_str(res), res);
 
-    release_memory_files(file_list, num_files);
-    release_memory_files(filtered_list, filtered_num_files);
+        release_memory_files(file_list, num_files);
+        release_memory_files(filtered_list, filtered_num_files);
+
+        put_string("BOOT_FEATURE", "ROM_EMULATOR");
+        write_all_entries();
+    }
+    if (persist_config)
+    {
+        printf("Saving configuration to FLASH\n");
+        write_all_entries();
+    }
+    if (reset_default)
+    {
+        printf("Resetting configuration to default\n");
+        reset_config_default();
+    }
 }

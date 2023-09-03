@@ -41,6 +41,10 @@ extern const uint32_t ROM3_START_ADDRESS;
 extern const uint32_t ROM_SIZE_BYTES;
 extern const uint32_t ROM_SIZE_WORDS;
 extern const uint32_t ROM_SIZE_LONGWORDS;
+extern const uint32_t CONFIG_FLASH_OFFSET;
+extern const uint32_t CONFIG_FLASH_SIZE;
+extern const uint32_t CONFIG_VERSION;
+extern const uint32_t CONFIG_MAGIC;
 
 // Morse code
 #define DOT_DURATION_MS 250
