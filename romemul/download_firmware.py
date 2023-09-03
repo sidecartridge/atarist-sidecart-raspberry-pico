@@ -1,13 +1,28 @@
 import urllib.request
+import os
+import argparse
 
 MAX_WORDS_PER_LINE = 16  # This results in 32 bytes per line
 
 
-def binary_to_c_array(input_url, output_file, array_name, endian_format="little"):
+def download_binary(url):
+    with urllib.request.urlopen(url) as response:
+        return response.read()
+
+
+def read_binary_from_file(file_path):
+    with open(file_path, "rb") as file:
+        return file.read()
+
+
+def binary_to_c_array(input_source, output_file, array_name, endian_format="little"):
     offset = 0
-    # Download binary file from URL
-    with urllib.request.urlopen(input_url) as response:
-        data = response.read()
+
+    # Check if input is a URL or file path
+    if input_source.startswith(("http://", "https://")):
+        data = download_binary(input_source)
+    else:
+        data = read_binary_from_file(input_source)
 
     # Ensure that the binary data has an even length (since we're handling words)
     if len(data) % 2 != 0:
@@ -44,8 +59,18 @@ def binary_to_c_array(input_url, output_file, array_name, endian_format="little"
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Generate C Array from binary file or URL"
+    )
+    parser.add_argument(
+        "--input",
+        default="https://github.com/diegoparrilla/atarist-sidecart-firmware/releases/download/latest/BOOT.BIN",
+        help="Input URL or file path",
+    )
+    args = parser.parse_args()
+
     array_name = "firmwareROM"
     output_file = "firmware.c"
-    input_url = "https://github.com/diegoparrilla/atarist-sidecart-firmware/releases/download/latest/BOOT.BIN"
+    input_source = args.input
 
-    binary_to_c_array(input_url, output_file, array_name)
+    binary_to_c_array(input_source, output_file, array_name)

@@ -85,21 +85,58 @@ int main()
     // Initialize chosen serial port
     stdio_init_all();
 
-    if (gpio_get(5) == 0)
+    // Load the config from FLASH
+    load_all_entries();
+
+    ConfigEntry *default_config_entry = find_entry("BOOT_FEATURE");
+    printf("BOOT_FEATURE: %s\n", default_config_entry->value);
+
+    if ((gpio_get(5) == 0) && (strcmp(default_config_entry->value, "CONFIGURATOR") != 0))
     {
         printf("No SELECT button pressed. Continue loading ROM Emulator.\n");
 
-        // Canonical way to initialize the ROM emulator:
-        // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
-        init_romemul(NULL, NULL, true);
+        if (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0)
+        {
+            printf("ROM_EMULATOR entry found in config. Launching.\n");
 
-        // The "E" character stands for "Emulator"
-        blink_morse('E');
+            // Canonical way to initialize the ROM emulator:
+            // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
+            init_romemul(NULL, NULL, true);
+
+            // The "E" character stands for "Emulator"
+            blink_morse('E');
+        }
+        else
+        {
+            printf("ROM_EMULATOR entry not found in config. Launching firmware.\n");
+
+            // Copy the firmware to RAM
+            copy_firmware_to_RAM();
+
+            // Hybrid way to initialize the ROM emulator:
+            // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+            // and start the state machine
+            init_romemul(NULL, dma_irq_handler_lookup_callback, false);
+
+            // The "F" character stands for "Firmware"
+            blink_morse('F');
+
+            init_firmware();
+        }
 
         // Loop forever and block until the state machine put data into the FIFO
         while (true)
         {
             tight_loop_contents();
+            sleep_ms(1000); // Give me a break... to display the message
+            if (gpio_get(5) != 0)
+            {
+                printf("SELECT button pressed. Launch configurator.\n");
+                watchdog_enable(1, 1);
+                while (1)
+                    ;
+                return 0;
+            }
         }
 
         printf("You should never see this line...\n");
@@ -108,6 +145,9 @@ int main()
     else
     {
         printf("SELECT button pressed. Launch configurator.\n");
+
+        // Print the config
+        print_config_table();
 
         // Delete FLASH ROMs
         delete_FLASH();

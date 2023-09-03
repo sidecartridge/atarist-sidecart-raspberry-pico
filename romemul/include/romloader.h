@@ -28,7 +28,9 @@
 #include "sd_card.h"
 #include "f_util.h"
 
+#include "config.h"
 #include "tprotocol.h"
+#include "commands.h"
 #include "romemul.h"
 
 // Delete flash

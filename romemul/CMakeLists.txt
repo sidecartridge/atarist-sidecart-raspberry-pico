@@ -35,6 +35,7 @@ target_sources(${PROJECT_NAME} PRIVATE firmware.c)
 target_sources(${PROJECT_NAME} PRIVATE romemul.c)
 target_sources(${PROJECT_NAME} PRIVATE romloader.c)
 target_sources(${PROJECT_NAME} PRIVATE tprotocol.c)
+target_sources(${PROJECT_NAME} PRIVATE config.c)
 
 # Tell CMake where to find other source code
 add_subdirectory($ENV{FATFS_SDK_PATH}/FatFs_SPI build)
