@@ -52,6 +52,14 @@ Mkfile.old
 dkms.conf
 
 .history/
-roms/
+roms/*.img
+roms/*.bin
+roms/*.stc
+roms/*.rom
+roms/*.IMG
+roms/*.BIN
+roms/*.STC
+roms/*.ROM
 build/
 dist/
+secrets.sh
