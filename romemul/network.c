@@ -36,7 +36,7 @@ ConnectionStatus get_previous_connection_status()
     return previous_connection_status;
 }
 
-static void null_words(uint16_t *dest_ptr_word, uint16_t total_words)
+void null_words(uint16_t *dest_ptr_word, uint16_t total_words)
 {
     for (int j = 0; j < total_words; j += 2)
     {
