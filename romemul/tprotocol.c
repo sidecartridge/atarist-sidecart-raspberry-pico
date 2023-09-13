@@ -44,8 +44,8 @@ static void __not_in_flash_func(read_payload_size)(uint16_t data)
 {
     if (data > 0)
     {
-        transmission.payload_size = data;                                                                  // Store incoming data as payload size
-        transmission.payload = (unsigned char *)malloc(transmission.payload_size * sizeof(unsigned char)); // Allocate memory for the payload
+        transmission.payload_size = data;                                                 // Store incoming data as payload size
+        transmission.payload = malloc(transmission.payload_size * sizeof(unsigned char)); // Allocate memory for the payload
 
         if (!transmission.payload)
         { // Ensure memory was allocated successfully
@@ -98,6 +98,9 @@ void __not_in_flash_func(process_command)(ProtocolCallback callback)
     }
 
     free_payload_memory();
+    transmission.command_id = 0;
+    transmission.payload_size = 0;
+    transmission.bytes_read = 0;
     // Handle the end of the payload reading. Maybe reset state or take some action based on received data.
     nextTPstep = HEADER_DETECTION; // Resetting to start for the next message.
 }

@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+
+import os
+import json
+import argparse
+import boto3
+from urllib.parse import quote
+
+# Ensure the following environment variables are set:
+# AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN (if you're using temporary credentials)
+
+# Don't forget to install boto3
+# pip install boto3
+
+# Initialize the S3 client
+s3 = boto3.client("s3")
+
+
+def upload_to_s3(directory: str, bucket_name: str):
+    """Uploads all files from directory to the specified S3 bucket."""
+    for file_name in os.listdir(directory):
+        if not file_name.startswith(".") and file_name != "update_json":
+            file_path = os.path.join(directory, file_name)
+            with open(file_path, "rb") as file_data:
+                s3.upload_fileobj(file_data, bucket_name, file_name)
+            print(f"Uploaded {file_name} to S3 bucket {bucket_name}")
+
+
+def update_roms(directory: str, base_url: str):
+    # Allowed file extensions
+    allowed_extensions = [".img", ".bin", ".stc", ".rom"]
+
+    # If roms.json exists, load it. Otherwise, create an empty list.
+    roms_data = []
+    json_path = os.path.join(directory, "roms.json")
+
+    if "roms.json" in os.listdir(directory):
+        with open(json_path, "r", encoding="utf-8") as f:
+            roms_data = json.load(f)
+
+    current_files = [rom["name"] for rom in roms_data]
+
+    # Loop through each file in the directory, excluding roms.json
+    for file_name in os.listdir(directory):
+        file_base_name, file_ext = os.path.splitext(file_name)
+
+        if (
+            file_name != "roms.json"
+            and file_base_name not in current_files
+            and file_ext.lower() in allowed_extensions
+        ):
+            file_size_kb = int(
+                os.path.getsize(os.path.join(directory, file_name)) / 1024
+            )
+            # Construct the URL
+            url = os.path.join(base_url, quote(file_name))
+            roms_data.append(
+                {
+                    "url": url,
+                    "name": file_base_name,  # Use the base name (without the extension) for the name field
+                    "description": "",
+                    "tags": [],
+                    "size_kb": file_size_kb,
+                }
+            )
+
+    # Save the updated data back to roms.json
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(roms_data, f, indent=4)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Update roms.json with new files and their URLs."
+    )
+    parser.add_argument(
+        "--path",
+        type=str,
+        default=os.getcwd(),
+        help="Path to the directory you want to process.",
+    )
+    parser.add_argument(
+        "--url",
+        type=str,
+        default="",
+        help="Base URL to use for constructing file URLs.",
+    )
+    parser.add_argument(
+        "--s3-upload",
+        action="store_true",
+        help="Set this flag if you want to upload to the S3 bucket.",
+    )
+
+    args = parser.parse_args()
+    update_roms(args.path, args.url)
+
+    # If the --s3-upload flag is set, upload the files to S3.
+    if args.s3_upload:
+        upload_to_s3(args.path, "roms.sidecart.xyz")

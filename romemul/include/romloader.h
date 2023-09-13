@@ -32,6 +32,7 @@
 #include "tprotocol.h"
 #include "commands.h"
 #include "romemul.h"
+#include "network.h"
 
 // Delete flash
 int delete_FLASH(void);

@@ -1,0 +1,354 @@
+[
+    {
+        "url": "http://roms.sidecart.xyz/Missile%20Command.STC",
+        "name": "Missile Command",
+        "description": "A classic arcade game where players defend cities from incoming missiles.",
+        "tags": [
+            "arcade",
+            "action"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Buggy%20Boy.img",
+        "name": "Buggy Boy",
+        "description": "An off-road racing game where players drive a buggy and avoid obstacles.",
+        "tags": [
+            "racing",
+            "arcade"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Joust%20and%20Moon%20Patrol.STC",
+        "name": "Joust and Moon Patrol",
+        "description": "A combo of two arcade classics - Joust, a competitive bird-riding game, and Moon Patrol, a lunar vehicle shooter.",
+        "tags": [
+            "arcade",
+            "action",
+            "shooter"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Wizball.STC",
+        "name": "Wizball",
+        "description": "Guide Wizball, a bouncing sphere, through various levels and collect droplets.",
+        "tags": [
+            "arcade",
+            "adventure"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Falcon%20Test%20v1.27b.img",
+        "name": "Falcon Test v1.27b",
+        "description": "A diagnostic tool for Atari Falcon computers.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Star%20Wars.STC",
+        "name": "Star Wars",
+        "description": "A space simulation game based on the Star Wars movies.",
+        "tags": [
+            "arcade",
+            "space",
+            "simulation"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/STE%20Test%20v1.9.img",
+        "name": "STE Test v1.9",
+        "description": "A diagnostic tool for Atari STE computers.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Manix.STC",
+        "name": "Manix",
+        "description": "An action-packed platformer game with a wide range of enemies.",
+        "tags": [
+            "arcade",
+            "platformer"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Rick%20Dangerous.STC",
+        "name": "Rick Dangerous",
+        "description": "Join Rick Dangerous in his quest through various terrains filled with traps and enemies.",
+        "tags": [
+            "arcade",
+            "adventure"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/CA3F_1W.BIN",
+        "name": "CA3F_1W",
+        "description": "Several PPera tools as an example of custom built cartridge.",
+        "tags": [
+            "coding",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Xenon.STC",
+        "name": "Xenon",
+        "description": "A vertical scrolling shooter game where players control a transforming vehicle.",
+        "tags": [
+            "arcade",
+            "shooter",
+            "action"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/TT%20Test%20v1.4.img",
+        "name": "TT Test v1.4",
+        "description": "A diagnostic tool designed for the Atari TT computer series.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/TT%20Test%20v1.5.img",
+        "name": "TT Test v1.5",
+        "description": "Another version of the diagnostic tool for the Atari TT computer series.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Falcon%20Test%20v1.25.img",
+        "name": "Falcon Test v1.25",
+        "description": "A diagnostic tool specifically designed for the Atari Falcon computer series.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Ultimate%20Ripper%20v1.2.img",
+        "name": "Ultimate Ripper v1.2",
+        "description": "A tool for extracting or 'ripping' data from games or applications on Atari.",
+        "tags": [
+            "tool",
+            "ripper"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/TESTROM.BIN",
+        "name": "TESTROM",
+        "description": "A generic test ROM for Atari hardware, used to verify functionality.",
+        "tags": [
+            "test",
+            "binary"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/TT%20Test%20v1.6.img",
+        "name": "TT Test v1.6",
+        "description": "Yet another version of the diagnostic tool for the Atari TT computer series.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%203.61.img",
+        "name": "ST Diagnostic 3.61",
+        "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 32
+    },
+    {
+        "url": "http://roms.sidecart.xyz/XENCRT2.img",
+        "name": "XENCRT2",
+        "description": "A ROM image, possibly related to a game or an application for Atari computers.",
+        "tags": [
+            "rom",
+            "binary"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Start%20Raiders.STC",
+        "name": "Start Raiders",
+        "description": "A space adventure game where players embark on a journey through the stars.",
+        "tags": [
+            "adventure",
+            "space",
+            "arcade"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/ST%20Test%20v4.4.img",
+        "name": "ST Test v4.4",
+        "description": "A diagnostic tool for the Atari ST computer series, ensuring its smooth functioning.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/MegaSTE%20Test%20v1.5.img",
+        "name": "MegaSTE Test v1.5",
+        "description": "A diagnostic tool tailored for the Atari MegaSTE computer series.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/cumana%20OS-9.stc",
+        "name": "Cumana OS-9",
+        "description": "A popular operating system.",
+        "tags": [
+            "os"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Multiface%20ST%202.0.stc",
+        "name": "Multiface ST 2.0",
+        "description": "Utility software allowing multiple software interfaces.",
+        "tags": [
+            "utility"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Subhumans%20LLS.stc",
+        "name": "Subhumans LLS",
+        "description": "Adventure game featuring the Subhumans.",
+        "tags": [
+            "game",
+            "adventure"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/FastBASIC%201.05b.stc",
+        "name": "FastBASIC 1.05b",
+        "description": "A version of the BASIC programming language.",
+        "tags": [
+            "programming",
+            "basic"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/backpack.stc",
+        "name": "Backpack",
+        "description": "Utility software for file management.",
+        "tags": [
+            "utility",
+            "management"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/DeskCart.stc",
+        "name": "DeskCart",
+        "description": "Desktop cart utility.",
+        "tags": [
+            "utility",
+            "desktop"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Magic%20SAC.stc",
+        "name": "Magic SAC",
+        "description": "Software that allows running Macintosh software.",
+        "tags": [
+            "emulator",
+            "macintosh"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/VT100.stc",
+        "name": "VT100",
+        "description": "Terminal emulation software.",
+        "tags": [
+            "emulator",
+            "terminal"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Supermon%201b3.stc",
+        "name": "Supermon 1b3",
+        "description": "A monitor and debugging tool.",
+        "tags": [
+            "utility",
+            "debugging"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Spectre%20GCR.stc",
+        "name": "Spectre GCR",
+        "description": "An emulator for running Macintosh software.",
+        "tags": [
+            "emulator",
+            "macintosh"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/SMS2.stc",
+        "name": "SMS2",
+        "description": "System management software.",
+        "tags": [
+            "system",
+            "management"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/explorer%200.28.stc",
+        "name": "Explorer 0.28",
+        "description": "A file explorer utility.",
+        "tags": [
+            "utility",
+            "explorer"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Mystery1.stc",
+        "name": "Mystery1",
+        "description": "A mysterious game. Can you solve the puzzle?",
+        "tags": [
+            "game",
+            "puzzle"
+        ],
+        "size_kb": 128
+    }
+]

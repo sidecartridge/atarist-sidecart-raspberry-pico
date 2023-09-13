@@ -1,14 +1,15 @@
 #include "include/config.h"
 
 // We should define ALWAYS the default entries with valid values.
+// DONT FORGET TO CHANGE MAX_ENTRIES if the number of value changes!
 static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"BOOT_FEATURE", TYPE_STRING, "CONFIGURATOR"},
+    {"HOSTNAME", TYPE_STRING, "sidecart"},
     {"ROMS_FOLDER", TYPE_STRING, "/roms"},
-    {"FLOPPY_IMAGES_FOLDER", TYPE_STRING, "/floppies"},
-    // {"MAX_CONNECTIONS", TYPE_INT, "100"},
+    {"ROMS_YAML_URL", TYPE_STRING, "http://roms.sidecart.xyz/roms.json"},
     {"WIFI_PASSWORD", TYPE_STRING, ""},
     {"WIFI_SSID", TYPE_STRING, ""},
-};
+    {"WIFI_AUTH", TYPE_INT, ""}};
 
 ConfigData configData;
 

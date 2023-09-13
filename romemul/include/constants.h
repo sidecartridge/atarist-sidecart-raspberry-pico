@@ -45,6 +45,7 @@ extern const uint32_t CONFIG_FLASH_OFFSET;
 extern const uint32_t CONFIG_FLASH_SIZE;
 extern const uint32_t CONFIG_VERSION;
 extern const uint32_t CONFIG_MAGIC;
+extern const uint32_t NETWORK_MAGIC;
 
 // Morse code
 #define DOT_DURATION_MS 250

@@ -8,12 +8,20 @@
 
 #include "include/romloader.h"
 
-static int rom_selected = -1;
-int filtered_num_files = 0;
-char **filtered_list = NULL;
+static int rom_file_selected = -1;
+static int rom_network_selected = -1;
+int filtered_num_local_files = 0;
+char **filtered_local_list = NULL;
 
+RomInfo *network_files;
+int filtered_num_network_files = 0;
+
+WifiNetworkAuthInfo *wifi_auth = NULL; // IF NULL, do not connect to any network
 static bool persist_config = false;
 static bool reset_default = false;
+static bool scan_network = false;
+static bool disconnect_network = false;
+static bool get_json_file = false;
 
 static void release_memory_files(char **files, int num_files)
 {
@@ -24,8 +32,7 @@ static void release_memory_files(char **files, int num_files)
     free(files); // Free the list itself
 }
 
-static char **
-ls(const char *dir, int *num_files)
+static char **show_dir_files(const char *dir, int *num_files)
 {
     char cwdbuf[FF_LFN_BUF] = {0};
     FRESULT fr;
@@ -80,7 +87,7 @@ ls(const char *dir, int *num_files)
     return filenames;
 }
 
-static int load(char *filename, uint32_t rom_load_offset)
+static int load(char *path, char *filename, uint32_t rom_load_offset)
 {
     FIL fsrc;                                /* File objects */
     BYTE buffer[4096];                       /* File copy buffer */
@@ -89,10 +96,13 @@ static int load(char *filename, uint32_t rom_load_offset)
     unsigned int size = 0;                   // File size
     uint32_t dest_address = rom_load_offset; // Initialize pointer to the ROM address
 
-    printf("Loading file '%s'  ", filename);
+    char fullpath[512]; // Assuming 512 bytes as the max path+filename length. Adjust if necessary.
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
+
+    printf("Loading file '%s'  ", fullpath);
 
     /* Open source file on the drive 0 */
-    fr = f_open(&fsrc, filename, FA_READ);
+    fr = f_open(&fsrc, fullpath, FA_READ);
     if (fr)
         return (int)fr;
 
@@ -287,21 +297,29 @@ static void store_file_list(char **file_list, int num_files, uint8_t *memory_loc
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
 {
     ConfigEntry *entry = NULL;
+    uint16_t value_payload = 0;
     uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - 4096); // 4Kbytes = 4096 bytes
     // Handle the protocol
     switch (protocol->command_id)
     {
+    case DOWNLOAD_ROM:
+        // Download the ROM index passed as argument in the payload
+        printf("Command DOWNLOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
+        printf("Value: %d\n", value_payload);
+        rom_network_selected = value_payload;
+        break;
     case LOAD_ROM:
         // Load ROM passed as argument in the payload
         printf("Command LOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        uint16_t value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
+        value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
         printf("Value: %d\n", value_payload);
-        rom_selected = value_payload;
+        rom_file_selected = value_payload;
         break;
     case LIST_ROMS:
         // Get the list of roms in the SD card
         printf("Command LIST_ROMS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        store_file_list(filtered_list, filtered_num_files, memory_area);
+        store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
         break;
     case GET_CONFIG:
         // Get the list of parameters in the device
@@ -357,6 +375,44 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         reset_config_default();
         reset_default = true; // now the active loop should stop and reset the config
         break;
+    case LAUNCH_SCAN_NETWORKS:
+        // Scan the networks and return the results
+        printf("Command LAUNCH_SCAN_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        scan_network = true; // now the active loop should stop and scan the networks
+        break;
+    case GET_SCANNED_NETWORKS:
+        // Get the results of the scanned networks
+        printf("Command GET_SCANNED_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        memcpy(memory_area, &wifiScanData, sizeof(wifiScanData));
+        network_swap_data((__uint16_t *)memory_area, wifiScanData.count);
+        break;
+    case CONNECT_NETWORK:
+        // Put a configuration string parameter in the device
+        printf("Command CONNECT_NETWORK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        wifi_auth = malloc(sizeof(WifiNetworkAuthInfo));
+        memcpy(wifi_auth, protocol->payload, sizeof(WifiNetworkAuthInfo));
+        network_swap_auth_data((__uint16_t *)wifi_auth);
+        printf("SSID:%s - Pass: %s - Auth: %d\n", wifi_auth->ssid, wifi_auth->password, wifi_auth->auth_mode);
+        break;
+    case GET_IP_DATA:
+        // Get IPv4 and IPv6 and SSID info
+        printf("Command GET_IP_DATA (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        ConnectionData *connection_data = malloc(sizeof(ConnectionData));
+        get_connection_data(connection_data);
+        memcpy(memory_area, connection_data, sizeof(ConnectionData));
+        network_swap_connection_data((__uint16_t *)memory_area);
+        free(connection_data);
+        break;
+    case DISCONNECT_NETWORK:
+        // Disconnect from the network
+        printf("Command DISCONNECT_NETWORK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        disconnect_network = true; // now in the active loop should stop and disconnect from the network
+        break;
+    case GET_ROMS_JSON_FILE:
+        // Download the JSON file of the ROMs from the URL
+        printf("Command GET_ROMS_JSON_FILE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        get_json_file = true; // now in the active loop should stop and download the JSON file
+        break;
     // ... handle other commands
     default:
         printf("Unknown command: %d\n", protocol->command_id);
@@ -399,6 +455,7 @@ int delete_FLASH(void)
 {
     // Erase the content before loading the new file. It seems that
     // overwriting it's not enough
+    printf("Erasing FLASH...\n");
     flash_range_erase(FLASH_ROM_LOAD_OFFSET, (ROM_SIZE_BYTES * 2) - 1); // Two banks of 64K
     printf("FLASH erased.\n");
     return 0;
@@ -432,12 +489,21 @@ int init_firmware()
     }
 
     // Show the root directory content (ls command)
-    file_list = ls("", &num_files);
+    char *dir = find_entry("ROMS_FOLDER")->value;
+    if (strlen(dir) == 0)
+    {
+        dir = "";
+    }
+    printf("ROMs folder: %s\n", dir);
+    file_list = show_dir_files(dir, &num_files);
 
     // Remove hidden files from the list
-    filtered_list = filter(file_list, num_files, &filtered_num_files);
+    filtered_local_list = filter(file_list, num_files, &filtered_num_local_files);
     // Sort remaining valid filenames lexicographically
-    qsort(filtered_list, filtered_num_files, sizeof(char *), compare_strings);
+    qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
+
+    // Start the network.
+    network_connect(false, NETWORK_CONNECTION_ASYNC);
 
     // Copy the content of the file list to the end of the ROM4 memory minus 4Kbytes
     // Translated to pure ROM4 address of the ST: 0xFB0000 - 0x1000 = 0xFAF000
@@ -452,33 +518,142 @@ int init_firmware()
     // x=PEEK(&HFB0001) 'Payload (two bytes per word)
 
     uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - 4096); // 4Kbytes = 4096 bytes
-    store_file_list(filtered_list, filtered_num_files, memory_area);
+    store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
 
     // Here comes the tricky part. We have to put in the higher section of the ROM4 memory the content
     // of the file list available in the SD card.
     // The structure is a list of chars separated with a 0x00 byte. The end of the list is marked with
     // two 0x00 bytes.
 
-    while ((rom_selected < 0) && (persist_config == false) && (reset_default == false))
+    u_int16_t network_poll_counter = 0;
+    while ((rom_file_selected < 0) && (rom_network_selected < 0) && (persist_config == false) && (reset_default == false))
     {
         tight_loop_contents();
+
+#if PICO_CYW43_ARCH_POLL
+        cyw43_arch_lwip_begin();
+        network_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1000));
+        cyw43_arch_lwip_end();
+#else
         sleep_ms(1000);
+#endif
+        if (scan_network)
+        {
+            scan_network = false;
+            network_scan();
+        }
+        if (wifi_auth != NULL)
+        {
+            printf("Connecting to network...\n");
+            put_string("WIFI_SSID", wifi_auth->ssid);
+            put_string("WIFI_PASSWORD", wifi_auth->password);
+            put_integer("WIFI_AUTH", wifi_auth->auth_mode);
+            write_all_entries();
+            network_disconnect();
+            network_connect(true, NETWORK_CONNECTION_ASYNC);
+            free(wifi_auth);
+            wifi_auth = NULL;
+        }
+        if (disconnect_network)
+        {
+            disconnect_network = false;
+            // Force  network disconnection
+            network_disconnect();
+        }
+        if (network_poll_counter == 0)
+        {
+            if (strlen(find_entry("WIFI_SSID")->value) > 0)
+            {
+                // Only display when changes status to avoid flooding the console
+                ConnectionStatus previous_status = get_previous_connection_status();
+                ConnectionStatus current_status = get_network_connection_status();
+                if (current_status != previous_status)
+                {
+                    printf("Network status: %d\n", current_status);
+                    printf("Network previous status: %d\n", previous_status);
+                    ConnectionData *connection_data = malloc(sizeof(ConnectionData));
+                    get_connection_data(connection_data);
+                    printf("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s\n", connection_data->ssid, connection_data->status, connection_data->ipv4_address, connection_data->ipv6_address, print_ipv4(get_gateway()), print_ipv4(get_netmask()));
+
+                    free(connection_data);
+                }
+            }
+        }
+
+        // Download the json file
+        if (get_json_file)
+        {
+            get_json_file = false;
+
+            // Clean memory space
+            memset(memory_area, 0, 4096);
+
+            // Get the URL from the configuration
+            char *url = find_entry("ROMS_YAML_URL")->value;
+
+            // The the JSON file info
+            get_json_files(&network_files, &filtered_num_network_files, url);
+
+            // Iterate over the RomInfo items and populate the names array
+            char *dest_ptr = (char *)(memory_area);
+            for (int i = 0; i < filtered_num_network_files; i++)
+            {
+                // Copy the string from network_files[i].name to dest_ptr with strcpy
+                // strcpy(dest_ptr, network_files[i].name + "(" + network_files[i].size_kb + " Kb)" + '\0');
+                // dest_ptr += strlen(network_files[i].name) + 1;
+                sprintf(dest_ptr, "%s\t(%d Kb)", network_files[i].name, network_files[i].size_kb);
+                dest_ptr += strlen(dest_ptr) + 1;
+            }
+            // If dest_ptr is odd, add a 0x00 byte to align the next string
+            if ((uintptr_t)dest_ptr & 1)
+            {
+                *dest_ptr++ = 0x00;
+            } // Add an additional 0x00 word to mark the end of the list
+            *dest_ptr++ = 0x00;
+            *dest_ptr++ = 0x00;
+
+            // Swap the words to motorola endian format: BIG ENDIAN
+            network_swap_json_data((__uint16_t *)memory_area);
+        }
+
+        // Increase the counter and reset it if it reaches the limit
+        network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
     }
 
-    if (rom_selected > 0)
+    if (rom_file_selected > 0)
     {
-        printf("ROM selected: %d\n", rom_selected);
-        int res = load(filtered_list[rom_selected - 1], FLASH_ROM_LOAD_OFFSET);
+        printf("ROM file selected: %d\n", rom_file_selected);
+        int res = load(find_entry("ROMS_FOLDER")->value, filtered_local_list[rom_file_selected - 1], FLASH_ROM_LOAD_OFFSET);
 
         if (res != FR_OK)
             printf("f_open error: %s (%d)\n", FRESULT_str(res), res);
 
         release_memory_files(file_list, num_files);
-        release_memory_files(filtered_list, filtered_num_files);
+        release_memory_files(filtered_local_list, filtered_num_local_files);
 
         put_string("BOOT_FEATURE", "ROM_EMULATOR");
         write_all_entries();
     }
+
+    if (rom_network_selected > 0)
+    {
+        // download_http("roms.sidecart.xyz");
+
+        printf("ROM network selected: %d\n", rom_network_selected);
+        int res = download(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
+
+        // Free dynamically allocated memory
+        for (int i = 0; i < filtered_num_network_files; i++)
+        {
+            freeRomItem(&network_files[i]);
+        }
+        free(network_files);
+
+        put_string("BOOT_FEATURE", "ROM_EMULATOR");
+        write_all_entries();
+    }
+
     if (persist_config)
     {
         printf("Saving configuration to FLASH\n");
