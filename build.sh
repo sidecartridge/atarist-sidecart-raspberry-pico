@@ -7,6 +7,7 @@ git submodule update --init --recursive
 # Set the environment variables of the SDKs
 export FATFS_SDK_PATH=$PWD/fatfs-sdk
 export PICO_SDK_PATH=$PWD/pico-sdk
+export PICO_EXTRAS_PATH=$PWD/pico-extras
 
 # Read the release version from the version.txt file
 export RELEASE_VERSION=$(cat version.txt | tr -d '\r\n ')
