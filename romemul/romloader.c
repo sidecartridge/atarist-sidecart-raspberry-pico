@@ -8,6 +8,8 @@
 
 #include "include/romloader.h"
 
+bool microsd_initialized = false;
+bool microsd_mounted = false;
 static int rom_file_selected = -1;
 static int rom_network_selected = -1;
 int filtered_num_local_files = 0;
@@ -314,12 +316,28 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         printf("Command LOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
         printf("Value: %d\n", value_payload);
-        rom_file_selected = value_payload;
+        if (microsd_mounted)
+        {
+            rom_file_selected = value_payload;
+        }
+        else
+        {
+            printf("SD card not mounted. Cannot load ROM.\n");
+            null_words((uint16_t *)memory_area, 4096 / 2);
+        }
         break;
     case LIST_ROMS:
         // Get the list of roms in the SD card
         printf("Command LIST_ROMS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
+        if (microsd_mounted)
+        {
+            store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
+        }
+        else
+        {
+            printf("SD card not mounted. Cannot list ROMs.\n");
+            null_words((uint16_t *)memory_area, 4096 / 2);
+        }
         break;
     case GET_CONFIG:
         // Get the list of parameters in the device
@@ -474,36 +492,39 @@ int init_firmware()
     stdio_flush();
 
     // Initialize SD card
-    if (!sd_init_driver())
+    microsd_initialized = sd_init_driver();
+    if (!microsd_initialized)
     {
         printf("ERROR: Could not initialize SD card\r\n");
-        return -1;
     }
 
-    // Mount drive
-    fr = f_mount(&fs, "0:", 1);
-    if (fr != FR_OK)
+    if (microsd_initialized)
     {
-        printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
-        return -1;
+        // Mount drive
+        fr = f_mount(&fs, "0:", 1);
+        microsd_mounted = (fr == FR_OK);
+        if (!microsd_mounted)
+        {
+            printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
+        }
+        else
+        {
+            // Show the root directory content (ls command)
+            char *dir = find_entry("ROMS_FOLDER")->value;
+            if (strlen(dir) == 0)
+            {
+                dir = "";
+            }
+            printf("ROMs folder: %s\n", dir);
+            file_list = show_dir_files(dir, &num_files);
+
+            // Remove hidden files from the list
+            filtered_local_list = filter(file_list, num_files, &filtered_num_local_files);
+            // Sort remaining valid filenames lexicographically
+            qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
+        }
     }
-
-    // Show the root directory content (ls command)
-    char *dir = find_entry("ROMS_FOLDER")->value;
-    if (strlen(dir) == 0)
-    {
-        dir = "";
-    }
-    printf("ROMs folder: %s\n", dir);
-    file_list = show_dir_files(dir, &num_files);
-
-    // Remove hidden files from the list
-    filtered_local_list = filter(file_list, num_files, &filtered_num_local_files);
-    // Sort remaining valid filenames lexicographically
-    qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
-
-    // Start the network.
-    network_connect(false, NETWORK_CONNECTION_ASYNC);
+    microsd_mounted = microsd_mounted & microsd_initialized;
 
     // Copy the content of the file list to the end of the ROM4 memory minus 4Kbytes
     // Translated to pure ROM4 address of the ST: 0xFB0000 - 0x1000 = 0xFAF000
@@ -518,7 +539,9 @@ int init_firmware()
     // x=PEEK(&HFB0001) 'Payload (two bytes per word)
 
     uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - 4096); // 4Kbytes = 4096 bytes
-    store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
+
+    // Start the network.
+    network_connect(false, NETWORK_CONNECTION_ASYNC);
 
     // Here comes the tricky part. We have to put in the higher section of the ROM4 memory the content
     // of the file list available in the SD card.
