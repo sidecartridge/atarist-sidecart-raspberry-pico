@@ -36,6 +36,9 @@ const uint32_t CONFIG_FLASH_OFFSET = FLASH_ROM_LOAD_OFFSET - CONFIG_FLASH_SIZE; 
 const uint32_t CONFIG_VERSION = 0x00000001;                                     // Version of the config. Used to check if the config is compatible with the current code.
 const uint32_t CONFIG_MAGIC = 0x12340000;                                       // Magic number to check if the config exists in FLASH.
 
+// Network constants.
+const uint32_t NETWORK_MAGIC = 0x12340001; // Magic number to check if the network scan data exists in FLASH.
+
 MorseCode morseAlphabet[] = {
     {'A', ".-"}, {'B', "-..."}, {'C', "-.-."}, {'D', "-.."}, {'E', "."}, {'F', "..-."}, {'G', "--."}, {'H', "...."}, {'I', ".."}, {'J', ".---"}, {'K', "-.-"}, {'L', ".-.."}, {'M', "--"}, {'N', "-."}, {'O', "---"}, {'P', ".--."}, {'Q', "--.-"}, {'R', ".-."}, {'S', "..."}, {'T', "-"}, {'U', "..-"}, {'V', "...-"}, {'W', ".--"}, {'X', "-..-"}, {'Y', "-.--"}, {'Z', "--.."}, {'0', "-----"}, {'1', ".----"}, {'2', "..---"}, {'3', "...--"}, {'4', "....-"}, {'5', "....."}, {'6', "-...."}, {'7', "--..."}, {'8', "---.."}, {'9', "----."}, {'\0', NULL} // Sentinel value to mark end of array
 };
