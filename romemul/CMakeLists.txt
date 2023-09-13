@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.12)
 
 # Include build functions from Pico SDK
 include($ENV{PICO_SDK_PATH}/external/pico_sdk_import.cmake)
+include($ENV{PICO_EXTRAS_PATH}/external/pico_extras_import.cmake)
 
 # Set name of project (as PROJECT_NAME) and C/C   standards
 project(romemul C CXX ASM)
@@ -21,21 +22,29 @@ pico_sdk_init()
 # Tell CMake where to find the executable source file
 add_executable(${PROJECT_NAME} 
         main.c
-        hw_config.c
-        )
+)
 
+# Needed to include lwipopts.h properly
+target_include_directories(romemul PRIVATE
+        ${CMAKE_CURRENT_LIST_DIR}/
+)
+        
 # Create map/bin/hex/uf2 files
 pico_add_extra_outputs(${PROJECT_NAME})
 
 # by default the header is generated into the build dir
 pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/romemul.pio)
 
+target_sources(${PROJECT_NAME} PRIVATE lwipopts.h)
+target_sources(${PROJECT_NAME} PRIVATE hw_config.c)
 target_sources(${PROJECT_NAME} PRIVATE constants.c)
 target_sources(${PROJECT_NAME} PRIVATE firmware.c)
 target_sources(${PROJECT_NAME} PRIVATE romemul.c)
 target_sources(${PROJECT_NAME} PRIVATE romloader.c)
 target_sources(${PROJECT_NAME} PRIVATE tprotocol.c)
 target_sources(${PROJECT_NAME} PRIVATE config.c)
+target_sources(${PROJECT_NAME} PRIVATE network.c)
+target_sources(${PROJECT_NAME} PRIVATE cJSON/cJSON.c)
 
 # Tell CMake where to find other source code
 add_subdirectory($ENV{FATFS_SDK_PATH}/FatFs_SPI build)
@@ -46,7 +55,11 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         pico_stdlib              # for core functionality
         hardware_pio             # for GPIO
         hardware_dma             # for DMA
-        pico_cyw43_arch_none     # we need Wifi to access the GPIO, but we don't need anything else
+#        pico_cyw43_arch_none     # we need Wifi to access the GPIO, but we don't need anything else
+#        pico_cyw43_arch_lwip_threadsafe_background # for lwip
+        pico_cyw43_arch_lwip_poll
+#        pico_multicore                # for multicore functionality
+        pico_lwip_http
         )
 
 # Debug outputs
