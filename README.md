@@ -79,10 +79,6 @@ Also a good tutorial about setting up a debugging environment with the picoprobe
 
 Trying to develop software for this microcontroller without the right environment is frustrating and a waste of time. So please, take your time to setup the development environment properly. It will save you a lot of time in the future.
 
-#### Install OpenOCD
-
-#### Install GDB
-
 #### Configure environment variables
 
 The following environment variables are required to be set:
@@ -147,11 +143,11 @@ The `release.yml` will create a release in Github with the firmware binary file.
 
 ### From Visual Studio Code
 
-It's also possible to build the firmware from Visual Studio Code, but probably it's a better idea to build it in Debug mode and launch it from Visual Studio Code. Please read the next section about setting up the debugging environment above.
+It's also possible to build the firmware from Visual Studio Code, but probably it's a better idea to build it in Debug mode and launch it from Visual Studio Code. Please read the section about setting up the debugging environment above.
 
 ## Development
 
-The development on the RP2040 of the Raspberry Pi Pico is straightforward if you have setup the environment previously. The RP2040 is a Cortex-M0+ microcontroller and the development is done in C/C++. The RP2040 is a very powerful microcontroller and it's possible to develop very complex applications for it. Apart from the C code have also to use the PIO (Programmable IO) to develop the I/O section with the Atari ST cartridge. The PIO is a very powerful peripheral that allows you to develop very complex applications in a very easy way.
+The development on the RP2040 of the Raspberry Pi Pico is straightforward if you have setup the environment previously. The RP2040 is a Cortex-M0+ microcontroller and the development is done in C. The RP2040 is a very powerful microcontroller and it's possible to develop very complex applications for it. Apart from the C code have also to use the PIO (Programmable IO) to develop the I/O section with the Atari ST cartridge. The PIO is a very powerful peripheral that allows you to develop very complex applications in a very easy way.
 
 Here goes a list of things to take into account when developing:
 
