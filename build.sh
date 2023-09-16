@@ -37,4 +37,4 @@ make -j4
 # Copy the built firmware to the /dist folder
 cd ..
 mkdir -p dist
-cp build/romemul.uf2 dist/romemul-$BOARD_TYPE.uf2
+cp build/romemul.uf2 dist/sidecart-$BOARD_TYPE.uf2
