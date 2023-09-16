@@ -3,11 +3,12 @@
     "configurations": [
         {
             "name": "Pico Debug",
-            "cwd": "${workspaceRoot}",
+            "cwd": "${workspaceFolder}",
             "executable": "${command:cmake.launchTargetPath}",
             "request": "launch",
             "type": "cortex-debug",
             "servertype": "openocd",
+            // MDOFIFY THIS PATH TO MATCH YOUR SYSTEM
             // This may need to be arm-none-eabi-gdb depending on your system
             "gdbPath": "/usr/local/bin/arm-none-eabi-gdb",
             "device": "RP2040",
@@ -16,14 +17,15 @@
                 "target/rp2040.cfg"
             ],
             "svdFile": "${env:PICO_SDK_PATH}/src/rp2040/hardware_regs/rp2040.svd",
-            "runToMain": false,
+            "runToEntryPoint": false,
             // Work around for stopping at main on restart
             "postRestartCommands": [
                 "break main",
                 "continue"
             ],
             "searchDir": [
-                "/Users/diego/mister_wkspc/pico/openocd/tcl"
+                // MDOFIFY THIS PATH TO MATCH YOUR SYSTEM
+                "${workspaceFolder}/../pico/openocd/tcl"
             ],
             "showDevDebugOutput": "raw"
         }

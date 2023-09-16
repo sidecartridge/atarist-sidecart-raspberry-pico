@@ -1,7 +1,4 @@
 {
-    "cmake.environment": {
-        "PICO_SDK_PATH": "/Users/diego/mister_wkspc/pico/pico-sdk"
-    },
     "cmake.statusbar.advanced": {
         "debug": {
             "visibility": "hidden"
@@ -18,7 +15,8 @@
     },
     "cmake.buildBeforeRun": true,
     "C_Cpp.default.configurationProvider": "ms-vscode.cmake-tools",
+    // MDOFIFY THIS PATH TO MATCH YOUR SYSTEM
     "cortex-debug.gdbPath": "/usr/local/bin/arm-none-eabi-gdb",
-    "cmake.sourceDirectory": "/Users/diego/mister_wkspc/atarist-sidecart-raspberry-pico/romemul",
+    "cmake.sourceDirectory": "${workspaceFolder}/romemul",
     "C_Cpp.errorSquiggles": "disabled",
 }
