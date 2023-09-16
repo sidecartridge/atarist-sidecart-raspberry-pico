@@ -235,19 +235,20 @@
     {
         "url": "http://roms.sidecart.xyz/Multiface%20ST%202.0.stc",
         "name": "Multiface ST 2.0",
-        "description": "Utility software allowing multiple software interfaces.",
+        "description": "A tool for extracting or 'ripping' data from games or applications on Atari.",
         "tags": [
-            "utility"
+            "tool",
+            "ripper"
         ],
         "size_kb": 128
     },
     {
         "url": "http://roms.sidecart.xyz/Subhumans%20LLS.stc",
         "name": "Subhumans LLS",
-        "description": "Adventure game featuring the Subhumans.",
+        "description": "A tool for extracting or 'ripping' data from games or applications on Atari.",
         "tags": [
-            "game",
-            "adventure"
+            "tool",
+            "ripper"
         ],
         "size_kb": 128
     },
@@ -284,7 +285,7 @@
     {
         "url": "http://roms.sidecart.xyz/Magic%20SAC.stc",
         "name": "Magic SAC",
-        "description": "Software that allows running Macintosh software.",
+        "description": "Apple MAC Roms for the Macintosh emulator.",
         "tags": [
             "emulator",
             "macintosh"
@@ -314,7 +315,7 @@
     {
         "url": "http://roms.sidecart.xyz/Spectre%20GCR.stc",
         "name": "Spectre GCR",
-        "description": "An emulator for running Macintosh software.",
+        "description": "Apple MAC Roms for the Macintosh emulator.",
         "tags": [
             "emulator",
             "macintosh"
@@ -323,21 +324,20 @@
     },
     {
         "url": "http://roms.sidecart.xyz/SMS2.stc",
-        "name": "SMS2",
-        "description": "System management software.",
+        "name": "Small Multitasking System 2",
+        "description": "Small Multitasking System 2, an alternative OS",
         "tags": [
-            "system",
-            "management"
+            "os"
         ],
         "size_kb": 128
     },
     {
         "url": "http://roms.sidecart.xyz/explorer%200.28.stc",
-        "name": "Explorer 0.28",
-        "description": "A file explorer utility.",
+        "name": "Explorer",
+        "description": "A tool for extracting or 'ripping' data from games or applications on Atari.",
         "tags": [
-            "utility",
-            "explorer"
+            "tool",
+            "ripper"
         ],
         "size_kb": 128
     },
