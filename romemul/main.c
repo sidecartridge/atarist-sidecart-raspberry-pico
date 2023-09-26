@@ -95,6 +95,24 @@ int main()
     {
         printf("No SELECT button pressed. ROM_EMULATOR entry found in config. Launching.\n");
 
+        // Check if Delay ROM emulation (ripper style boot) is true
+        ConfigEntry *rom_delay_config_entry = find_entry("DELAY_ROM_EMULATION");
+        printf("DELAY_ROM_EMULATION: %s\n", rom_delay_config_entry->value);
+        if ((strcmp(rom_delay_config_entry->value, "true") == 0) || (strcmp(rom_delay_config_entry->value, "TRUE") == 0) || (strcmp(rom_delay_config_entry->value, "T") == 0))
+        {
+            printf("Delaying ROM emulation.\n");
+            // The "D" character stands for "D"
+            blink_morse('D');
+
+            // While until the user presses the SELECT button again to launch the ROM emulator
+            while (gpio_get(5) == 0)
+            {
+                tight_loop_contents();
+                sleep_ms(1000); // Give me a break... to display the message
+            }
+            printf("SELECT button pressed. Launching ROM emulator.\n");
+        }
+
         // Canonical way to initialize the ROM emulator:
         // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
         init_romemul(NULL, NULL, true);
