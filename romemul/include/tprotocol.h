@@ -17,6 +17,7 @@
 
 #define PROTOCOL_HEADER 0xABCD
 #define PROTOCOL_READ_RESTART_MICROSECONDS 10000
+#define MAX_PROTOCOL_PAYLOAD_SIZE 1024
 
 typedef enum
 {
@@ -40,5 +41,7 @@ typedef void (*ProtocolCallback)(const TransmissionProtocol *);
 
 // Function to parse the protocol
 void parse_protocol(uint16_t data, ProtocolCallback callback);
+void init_protocol_parser();
+void terminate_protocol_parser();
 
 #endif // TPROTOCOL_H
