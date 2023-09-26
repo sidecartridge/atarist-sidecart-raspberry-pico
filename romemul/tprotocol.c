@@ -25,15 +25,6 @@ static void __not_in_flash_func(detect_header)(uint16_t data)
     }
 }
 
-static void __not_in_flash_func(free_payload_memory)()
-{
-    if (transmission.payload)
-    {
-        free(transmission.payload);
-        transmission.payload = NULL; // Set the pointer to NULL after freeing to avoid potential double freeing and other issues
-    }
-}
-
 static void __not_in_flash_func(read_command)(uint16_t data)
 {
     transmission.command_id = data;
@@ -44,14 +35,14 @@ static void __not_in_flash_func(read_payload_size)(uint16_t data)
 {
     if (data > 0)
     {
-        transmission.payload_size = data;                                                 // Store incoming data as payload size
-        transmission.payload = malloc(transmission.payload_size * sizeof(unsigned char)); // Allocate memory for the payload
-
-        if (!transmission.payload)
-        { // Ensure memory was allocated successfully
-            printf("Error: Could not allocate memory for payload!\n");
-            exit(1); // Exit or handle the error appropriately
-        }
+        transmission.payload_size = data; // Store incoming data as payload size
+        // transmission.payload = malloc(transmission.payload_size * sizeof(unsigned char)); // Allocate memory for the payload
+        // if (!transmission.payload)
+        // { // Ensure memory was allocated successfully
+        //     printf("Error: Could not allocate memory for payload!\n");
+        //     exit(1); // Exit or handle the error appropriately
+        // }
+        //
         transmission.bytes_read = 0;
         nextTPstep = PAYLOAD_READ_START;
     }
@@ -77,6 +68,23 @@ static void __not_in_flash_func(read_payload)(uint16_t data)
     }
 }
 
+void init_protocol_parser()
+{
+    transmission.command_id = 0;
+    transmission.payload_size = 0;
+    transmission.payload = malloc(MAX_PROTOCOL_PAYLOAD_SIZE);
+    transmission.bytes_read = 0;
+}
+
+void terminate_protocol_parser()
+{
+    if (transmission.payload)
+    {
+        free(transmission.payload);
+        transmission.payload = NULL; // Set the pointer to NULL after freeing to avoid potential double freeing and other issues
+    }
+}
+
 void __not_in_flash_func(process_command)(ProtocolCallback callback)
 {
     printf("COMMAND: %d / ", transmission.command_id);
@@ -97,7 +105,6 @@ void __not_in_flash_func(process_command)(ProtocolCallback callback)
         callback(&transmission);
     }
 
-    free_payload_memory();
     transmission.command_id = 0;
     transmission.payload_size = 0;
     transmission.bytes_read = 0;
@@ -111,7 +118,7 @@ void __not_in_flash_func(parse_protocol)(uint16_t data, ProtocolCallback callbac
     if (new_header_found - last_header_found > PROTOCOL_READ_RESTART_MICROSECONDS)
     {
         nextTPstep = HEADER_DETECTION;
-        // printf("Restarting protocol read. Lapse. %i\n", new_header_found - last_header_found);
+        //        printf("Restarting protocol read. Lapse. %i\n", new_header_found - last_header_found);
     }
     switch (nextTPstep)
     {
