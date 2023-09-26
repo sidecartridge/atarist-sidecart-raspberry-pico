@@ -431,6 +431,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         printf("Command GET_ROMS_JSON_FILE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         get_json_file = true; // now in the active loop should stop and download the JSON file
         break;
+
     // ... handle other commands
     default:
         printf("Unknown command: %d\n", protocol->command_id);
@@ -687,4 +688,6 @@ int init_firmware()
         printf("Resetting configuration to default\n");
         reset_config_default();
     }
+    // Release memory from the protocol
+    terminate_protocol_parser();
 }
