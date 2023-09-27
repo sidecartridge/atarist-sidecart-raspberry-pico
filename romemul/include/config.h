@@ -19,7 +19,7 @@
 #include <hardware/flash.h>
 #include <hardware/sync.h>
 
-#define MAX_ENTRIES 10
+#define MAX_ENTRIES 11
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 

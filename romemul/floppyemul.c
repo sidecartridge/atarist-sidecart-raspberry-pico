@@ -23,7 +23,8 @@
 #define SEC_TRACK 12
 #define DISK_NUMBER 16
 
-uint16_t BpbData[] = {
+#define FF_USE_FASTSEEK 1
+static uint16_t BpbData[] = {
     512,  /*         0: recsize: Sector size in bytes                */
     2,    /*         1: clsiz:   Cluster size in sectors             */
     1024, /*         2: clsizb:  Cluster size in bytes               */
@@ -48,14 +49,18 @@ static bool ping_received = false;
 static bool file_ready_a = false;
 static bool sector_read = false;
 static bool set_bpb = false;
+static bool save_vectors = false;
 static uint16_t logical_sector = 0;
 static uint16_t sector_size = 512;
+static uint32_t hdv_bpb_payload = 0;
+static uint32_t hdv_rw_payload = 0;
+static uint32_t hdv_mediach_payload = 0;
+static uint32_t XBIOS_trap_payload = 0;
 
 static int create_BPB(FRESULT *fr, FIL *fsrc)
 {
-    BYTE buffer[512];      /* File copy buffer */
-    unsigned int br = 0;   /* File read/write count */
-    unsigned int size = 0; // File size
+    BYTE buffer[512];    /* File copy buffer */
+    unsigned int br = 0; /* File read/write count */
 
     printf("Creating BPB from first sector of floppy image\n");
 
@@ -75,13 +80,6 @@ static int create_BPB(FRESULT *fr, FIL *fsrc)
         f_close(fsrc);
         return (int)*fr; // Check for error in reading
     }
-    // Transform buffer's words from little endian to big endian inline
-    // for (int i = 0; i < br; i += 2)
-    // {
-    //     uint16_t value = *(uint16_t *)(buffer + i);
-    //     value = (value << 8) | (value >> 8);
-    //     *(uint16_t *)(buffer + i) = value;
-    // }
     BpbData[BPB_RECSIZE] = ((uint16_t)buffer[11]) | ((uint16_t)buffer[12] << 8);                                            // Sector size in bytes
     BpbData[BPB_CLSIZ] = (uint16_t)buffer[13];                                                                              // Cluster size
     BpbData[BPB_CLSIZB] = BpbData[BPB_CLSIZ] * BpbData[BPB_RECSIZE];                                                        // Cluster size in bytes
@@ -92,25 +90,25 @@ static int create_BPB(FRESULT *fr, FIL *fsrc)
     BpbData[BPB_NUMCL] = ((((uint16_t)buffer[20] << 8) | (uint16_t)buffer[19]) - BpbData[BPB_DATREC]) / BpbData[BPB_CLSIZ]; // Number of data clusters on the disk
     // Leave space for sector to cluster rounding
     BpbData[SIDE_COUNT] = (uint16_t)buffer[26]; // Side count
-    BpbData[SEC_CYL] = ((uint16_t)buffer[24] << 8) * BpbData[SIDE_COUNT];
+    BpbData[SEC_CYL] = (uint16_t)(buffer[24] * BpbData[SIDE_COUNT]);
     BpbData[SEC_TRACK] = (uint16_t)buffer[24];
     BpbData[SEC_TRACK + 1] = 0;
     BpbData[SEC_TRACK + 2] = 0;
     BpbData[SEC_TRACK + 3] = 0;
     BpbData[DISK_NUMBER] = 0;
 
-    printf("BpbData[BPB_RECSIZE] = %u\n", BpbData[BPB_RECSIZE]);
-    printf("BpbData[BPB_CLSIZ] = %u\n", BpbData[BPB_CLSIZ]);
-    printf("BpbData[BPB_CLSIZB] = %u\n", BpbData[BPB_CLSIZB]);
-    printf("BpbData[BPB_RDLEN] = %u\n", BpbData[BPB_RDLEN]);
-    printf("BpbData[BPB_FSIZ] = %u\n", BpbData[BPB_FSIZ]);
-    printf("BpbData[BPB_FATREC] = %u\n", BpbData[BPB_FATREC]);
-    printf("BpbData[BPB_DATREC] = %u\n", BpbData[BPB_DATREC]);
-    printf("BpbData[BPB_NUMCL] = %u\n", BpbData[BPB_NUMCL]);
-    printf("BpbData[SIDE_COUNT] = %u\n", BpbData[SIDE_COUNT]);
-    printf("BpbData[SEC_CYL] = %u\n", BpbData[SEC_CYL]);
-    printf("BpbData[SEC_TRACK] = %u\n", BpbData[SEC_TRACK]);
-    printf("BpbData[DISK_NUMBER] = %u\n", BpbData[DISK_NUMBER]);
+    // printf("BpbData[BPB_RECSIZE] = %u\n", BpbData[BPB_RECSIZE]);
+    // printf("BpbData[BPB_CLSIZ] = %u\n", BpbData[BPB_CLSIZ]);
+    // printf("BpbData[BPB_CLSIZB] = %u\n", BpbData[BPB_CLSIZB]);
+    // printf("BpbData[BPB_RDLEN] = %u\n", BpbData[BPB_RDLEN]);
+    // printf("BpbData[BPB_FSIZ] = %u\n", BpbData[BPB_FSIZ]);
+    // printf("BpbData[BPB_FATREC] = %u\n", BpbData[BPB_FATREC]);
+    // printf("BpbData[BPB_DATREC] = %u\n", BpbData[BPB_DATREC]);
+    // printf("BpbData[BPB_NUMCL] = %u\n", BpbData[BPB_NUMCL]);
+    // printf("BpbData[SIDE_COUNT] = %u\n", BpbData[SIDE_COUNT]);
+    // printf("BpbData[SEC_CYL] = %u\n", BpbData[SEC_CYL]);
+    // printf("BpbData[SEC_TRACK] = %u\n", BpbData[SEC_TRACK]);
+    // printf("BpbData[DISK_NUMBER] = %u\n", BpbData[DISK_NUMBER]);
     return 0;
 }
 
@@ -126,55 +124,26 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         // Save the vectors needed for the floppy emulation
         printf("Command SAVE_VECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         payloadPtr = (uint16_t *)protocol->payload + 2;
-
-        uint32_t hdv_bpb_payload =
-            ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
+        hdv_bpb_payload = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
         payloadPtr += 2;
-
-        uint32_t hdv_rw_payload =
-            ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
+        hdv_rw_payload = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
         payloadPtr += 2;
-
-        uint32_t hdv_mediach_payload =
-            ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
+        hdv_mediach_payload = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
         payloadPtr += 2;
-
-        uint32_t XBIOS_trap_payload =
-            ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
-
-        printf("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
-        *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
-        *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
-
-        printf("hdv_bpb_payload: %x\n", hdv_bpb_payload);
-        *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
-        *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
-
-        printf("hdv_rw_payload: %x\n", hdv_rw_payload);
-        *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
-        *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
-
-        printf("hdv_mediach_payload: %x\n", hdv_mediach_payload);
-        *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
-        *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
-
+        XBIOS_trap_payload = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        printf("random token: %x\n", random_token);
-        *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+        save_vectors = true;
 
         break;
     case FLOPPYEMUL_READ_SECTORS:
         // Read sectors from the floppy emulator
         printf("Command READ_SECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        sector_read = true;
         payloadPtr = (uint16_t *)protocol->payload + 2;
-
         sector_size = *(uint16_t *)payloadPtr++;
         logical_sector = *(uint16_t *)payloadPtr;
-
-        printf("Logical sector: %i\n", logical_sector);
-        printf("Sector size: %i\n", sector_size);
+        printf("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
+        sector_read = true;
 
         break;
     case FLOPPYEMUL_WRITE_SECTORS:
@@ -192,7 +161,6 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         if (file_ready_a)
         {
             random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
         ping_received = file_ready_a;
         break; // ... handle other commands
@@ -268,6 +236,7 @@ int init_floppyemul()
     {
         char *dir = find_entry("FLOPPIES_FOLDER")->value;
         char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
+        // filename_a = "XENON2_3.st" + 0;
         char *fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
         strcpy(fullpath_a, dir);
         strcat(fullpath_a, "/");
@@ -289,10 +258,23 @@ int init_floppyemul()
         // Get file size
         size_a = f_size(&fsrc_a);
         printf("File size of %s: %i bytes\n", fullpath_a, size_a);
+
+        // Create BPB
+        int bpb_found = create_BPB(&fr, &fsrc_a);
+        if (bpb_found)
+        {
+            printf("ERROR: Could not create BPB for image file  %s (%d)\r\n", fullpath_a, fr);
+            return (int)fr;
+        }
+
         file_ready_a = true;
+
+        printf("Waiting for commands...\n");
+        srand(time(0));
 
         while (true)
         {
+            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
             tight_loop_contents();
 
             if (file_ready_a && ping_received)
@@ -300,14 +282,11 @@ int init_floppyemul()
                 ping_received = false;
                 *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
             }
-            else
-            {
-                random_token = 0;
-            }
 
-            if (sector_read)
+            if (file_ready_a && sector_read)
             {
                 sector_read = false;
+
                 /* Set read/write pointer to logical sector position */
                 fr = f_lseek(&fsrc_a, logical_sector * sector_size);
                 if (fr)
@@ -324,31 +303,49 @@ int init_floppyemul()
                     f_close(&fsrc_a);
                     return (int)fr; // Check for error in reading
                 }
+
                 // Transform buffer's words from little endian to big endian inline
-                // for (int i = 0; i < br_a; i += 2)
-                // {
-                //     uint16_t value = *(uint16_t *)(buffer_a + i);
-                //     value = (value << 8) | (value >> 8);
-                //     *(uint16_t *)(buffer_a + i) = value;
-                // }
+                volatile uint16_t *target = (volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_IMAGE);
+                for (int i = 0; i < br_a; i += 2)
+                {
+                    uint16_t value = *(uint16_t *)(buffer_a + i);
+                    value = (value << 8) | (value >> 8);
+                    *(target++) = value;
+                }
                 *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
             }
-            if (set_bpb)
+            if (file_ready_a && set_bpb)
             {
                 set_bpb = false;
-                printf("Setting BPB\n");
-                // Create BPB
-                int bpb_found = create_BPB(&fr, &fsrc_a);
-                if (bpb_found)
-                {
-                    printf("ERROR: Could not create BPB for image file  %s (%d)\r\n", fullpath_a, fr);
-                    return (int)fr;
-                }
-
                 for (int i = 0; i < sizeof(BpbData) / sizeof(uint16_t); i++)
                 {
                     *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_BPB_DATA + i * 2)) = BpbData[i];
                 }
+                *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+            }
+
+            if (file_ready_a && save_vectors)
+            {
+                save_vectors = false;
+                // Save the vectors needed for the floppy emulation
+                printf("Saving vectors\n");
+                // printf("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
+                // printf("hdv_bpb_payload: %x\n", hdv_bpb_payload);
+                // printf("hdv_rw_payload: %x\n", hdv_rw_payload);
+                // printf("hdv_mediach_payload: %x\n", hdv_mediach_payload);
+                // printf("random token: %x\n", random_token);
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
+
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
+
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
+
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
+
                 *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
             }
         }

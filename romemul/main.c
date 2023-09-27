@@ -135,9 +135,6 @@ int main()
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
             printf("Ready to accept commands.\n");
 
-            // The "D" character stands for "Disk"
-            blink_morse('D');
-
             init_floppyemul();
 
             // Loop forever and block until the state machine put data into the FIFO
