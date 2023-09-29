@@ -22,6 +22,8 @@ int maxelem = 0;
 int read_addr_rom_dma_channel = -1;
 int lookup_data_rom_dma_channel = -1;
 
+PIO default_pio = pio0;
+
 // Interrupt handler for DMA completion
 void __not_in_flash_func(dma_irq_handler_lookup)(void)
 {
@@ -98,6 +100,7 @@ static int init_rom_emulator(PIO pio, IRQInterceptionCallback requestCallback, I
     {
         // Handle the error, perhaps by halting the program or logging an error message
         printf("Failed to claim a DMA channel for read_addr_rom_dma_channel.\n");
+        dma_channel_unclaim(read_addr_rom_dma_channel);
         return -1;
     }
 
@@ -109,7 +112,7 @@ static int init_rom_emulator(PIO pio, IRQInterceptionCallback requestCallback, I
         // Handle the error
         printf("Failed to claim a DMA channel for lookup_data_rom_dma_channel.\n");
         // Optionally release the previously claimed channel if you want to clean up
-        dma_channel_unclaim(read_addr_rom_dma_channel);
+        dma_channel_unclaim(lookup_data_rom_dma_channel);
         return -1;
     }
 
@@ -210,31 +213,6 @@ static int copy_FLASH_to_RAM()
         rom_in_ram_dest += sizeof(uint16_t); // Increment by 2 bytes for a word
     }
 
-    // Claim the first available DMA channel for the copy
-    // int copy_flash_dma_channel = dma_claim_unused_channel(true);
-    // printf("DMA channel for copy_flash_dma_channel: %d\n", copy_flash_dma_channel);
-    // if (copy_flash_dma_channel == -1)
-    // {
-    //     // Handle the error, perhaps by halting the program or logging an error message
-    //     printf("Failed to claim a DMA channel for copy_flash_dma_channel.\n");
-    //     return -1;
-    // }
-
-    // dma_channel_config copy_dma = dma_channel_get_default_config(copy_flash_dma_channel);
-    // channel_config_set_transfer_data_size(&copy_dma, DMA_SIZE_8);
-    // channel_config_set_read_increment(&copy_dma, true);
-    // channel_config_set_write_increment(&copy_dma, true);
-    // dma_channel_configure(
-    //     copy_flash_dma_channel,
-    //     &copy_dma,
-    //     (volatile void *)ROM_IN_RAM_ADDRESS,
-    //     (const volatile void *)(XIP_BASE + FLASH_ROM_LOAD_OFFSET),
-    //     ROM_SIZE_BYTES * ROM_BANKS,
-    //     true);
-    // while (!dma_channel_is_busy(copy_flash_dma_channel))
-    // { /* wait */
-    // }
-    // dma_channel_cleanup(copy_flash_dma_channel);
     printf("FLASH copied to RAM.\n");
     return 0;
 }
@@ -251,21 +229,21 @@ int init_romemul(IRQInterceptionCallback requestCallback, IRQInterceptionCallbac
     if (copyFlashToRAM)
         copy_FLASH_to_RAM();
 
-    int smMonitorROM4 = init_monitor_rom4(pio0);
+    int smMonitorROM4 = init_monitor_rom4(default_pio);
     if (smMonitorROM4 < 0)
     {
         printf("Error initializing ROM4 monitor. Error code: %d\n", smMonitorROM4);
         return -1;
     }
 
-    int smMonitorROM3 = init_monitor_rom3(pio0);
+    int smMonitorROM3 = init_monitor_rom3(default_pio);
     if (smMonitorROM3 < 0)
     {
         printf("Error initializing ROM3 monitor. Error code: %d\n", smMonitorROM3);
         return -1;
     }
 
-    int smReadROM = init_rom_emulator(pio0, requestCallback, responseCallback);
+    int smReadROM = init_rom_emulator(default_pio, requestCallback, responseCallback);
     if (smReadROM < 0)
     {
         printf("Error initializing ROM emulator. Error code: %d\n", smReadROM);
@@ -285,29 +263,29 @@ int init_romemul(IRQInterceptionCallback requestCallback, IRQInterceptionCallbac
     // memmap_romemul.ld
     // Please do not modify these values, because they are carefully selected to avoid conflicts
     // and be performant.
-    pio_sm_put_blocking(pio0, smReadROM, (unsigned long int)ROMS_START_ADDRESS >> 17);
+    pio_sm_put_blocking(default_pio, smReadROM, (unsigned long int)ROMS_START_ADDRESS >> 17);
 
     // Setting the signals after configuring the PIO makes the ROM emulator to not put
     // inconsistent data in the address or data bus at any time, avoiding glitches.
 
     // Configure the output pins for the READ and WRITE signals.
-    pio_gpio_init(pio0, READ_SIGNAL_GPIO_BASE);
+    pio_gpio_init(default_pio, READ_SIGNAL_GPIO_BASE);
     gpio_set_dir(READ_SIGNAL_GPIO_BASE, GPIO_OUT);
     gpio_set_pulls(READ_SIGNAL_GPIO_BASE, true, false); // Pull up (true, false)
     gpio_put(READ_SIGNAL_GPIO_BASE, 1);
 
-    pio_gpio_init(pio0, WRITE_SIGNAL_GPIO_BASE);
+    pio_gpio_init(default_pio, WRITE_SIGNAL_GPIO_BASE);
     gpio_set_dir(WRITE_SIGNAL_GPIO_BASE, GPIO_OUT);
     gpio_set_pulls(WRITE_SIGNAL_GPIO_BASE, true, false); // Pull up (true, false)
     gpio_put(WRITE_SIGNAL_GPIO_BASE, 1);
 
     // Configure the input pins for ROM4 and ROM3
-    pio_gpio_init(pio0, ROM4_GPIO);
+    pio_gpio_init(default_pio, ROM4_GPIO);
     gpio_set_dir(ROM4_GPIO, GPIO_IN);
     gpio_set_pulls(ROM4_GPIO, true, false); // Pull up (true, false)
     gpio_pull_up(ROM4_GPIO);
 
-    pio_gpio_init(pio0, ROM3_GPIO);
+    pio_gpio_init(default_pio, ROM3_GPIO);
     gpio_set_dir(ROM3_GPIO, GPIO_IN);
     gpio_set_pulls(ROM3_GPIO, true, false); // Pull up (true, false)
     gpio_pull_up(ROM3_GPIO);
@@ -315,7 +293,7 @@ int init_romemul(IRQInterceptionCallback requestCallback, IRQInterceptionCallbac
     // Configure the output pins for the output data bus
     for (int i = 0; i < WRITE_DATA_PIN_COUNT; i++)
     {
-        pio_gpio_init(pio0, WRITE_DATA_GPIO_BASE + i);
+        pio_gpio_init(default_pio, WRITE_DATA_GPIO_BASE + i);
         gpio_set_dir(WRITE_DATA_GPIO_BASE + i, GPIO_OUT);
         gpio_set_pulls(WRITE_DATA_GPIO_BASE + i, false, true); // Pull down (false, true)
         gpio_put(WRITE_DATA_GPIO_BASE + i, 0);
