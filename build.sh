@@ -53,5 +53,5 @@ mkdir -p dist
 if [ "$BUILD_TYPE" = "release" ]; then
     cp build/romemul.uf2 dist/sidecart-$BOARD_TYPE.uf2
 else
-    cp build/romemul.elf dist/sidecart-$BOARD_TYPE-$BUILD_TYPE.uf2
+    cp build/romemul.uf2 dist/sidecart-$BOARD_TYPE-$BUILD_TYPE.uf2
 fi
