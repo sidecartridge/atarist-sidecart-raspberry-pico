@@ -22,6 +22,19 @@ echo "Release date: $RELEASE_DATE"
 export BOARD_TYPE=${1:-pico_w}
 echo "Board type: $BOARD_TYPE"
 
+# Set the release or debug build type
+# If nothing passed as second argument, use release
+export BUILD_TYPE=${2:-release}
+echo "Build type: $BUILD_TYPE"
+
+# If the build type is release, set DEBUG_MODE environment variable to 0
+# Otherwise set it to 1
+if [ "$BUILD_TYPE" = "release" ]; then
+    export DEBUG_MODE=0
+else
+    export DEBUG_MODE=1
+fi
+
 # Set the build directory. Delete previous contents if any
 rm -rf build
 mkdir build
@@ -37,4 +50,8 @@ make -j4
 # Copy the built firmware to the /dist folder
 cd ..
 mkdir -p dist
-cp build/romemul.uf2 dist/sidecart-$BOARD_TYPE.uf2
+if [ "$BUILD_TYPE" = "release" ]; then
+    cp build/romemul.uf2 dist/sidecart-$BOARD_TYPE.uf2
+else
+    cp build/romemul.elf dist/sidecart-$BOARD_TYPE-$BUILD_TYPE.elf
+fi
