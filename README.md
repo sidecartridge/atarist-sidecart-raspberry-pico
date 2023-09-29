@@ -163,6 +163,10 @@ For releases, head over to the [Releases page](https://github.com/diegoparrilla/
 
 For a quick tutorial about how to flash the firmware in the Raspberry Pi Pico, please read the [Quickstart](https://sidecart.xyz/quickstart).
 
+## Changelog
+
+The full changelog is available in the [CHANGELOG.md](CHANGELOG.md) file. 
+
 ## Resources 
 
 - [Sidecart ROM Emulator website](https://sidecart.xyz)

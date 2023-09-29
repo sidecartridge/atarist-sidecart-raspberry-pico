@@ -38,7 +38,7 @@ def update_roms(directory: str, base_url: str):
         with open(json_path, "r", encoding="utf-8") as f:
             roms_data = json.load(f)
 
-    current_files = [rom["name"] for rom in roms_data]
+    current_files = [rom["name"].lower() for rom in roms_data]
 
     # Loop through each file in the directory, excluding roms.json
     for file_name in os.listdir(directory):
@@ -46,7 +46,7 @@ def update_roms(directory: str, base_url: str):
 
         if (
             file_name != "roms.json"
-            and file_base_name not in current_files
+            and file_base_name.lower() not in current_files
             and file_ext.lower() in allowed_extensions
         ):
             file_size_kb = int(

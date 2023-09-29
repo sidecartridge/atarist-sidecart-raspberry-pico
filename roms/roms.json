@@ -350,5 +350,14 @@
             "puzzle"
         ],
         "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/etoscart.img",
+        "name": "EmuTOS 1.2.1",
+        "description": "EmuTOS is a TOS compatible operating system for Atari ST series computers, and more. It is made from Digital Research's GPLed original sources and is a free and open source alternative to Atari proprietary ROMs.",
+        "tags": [
+            "os"
+        ],
+        "size_kb": 128
     }
 ]

@@ -45,7 +45,7 @@
 .wrap_target
     wait INACTIVE gpio ROM4_GPIO
     wait ACTIVE gpio ROM4_GPIO
-    irq set 0
+    irq set 2
 .wrap
 
 
@@ -55,7 +55,7 @@
 .wrap_target
     wait INACTIVE gpio ROM3_GPIO
     wait ACTIVE gpio ROM3_GPIO
-    irq set 0
+    irq set 2
 .wrap
 
 
@@ -75,7 +75,7 @@
     mov x, osr
 
 .wrap_target
-    wait 1 irq 0                   side NOT_READ_NOT_WRITE
+    wait 1 irq 2                   side NOT_READ_NOT_WRITE
 
 ; Setup the initial gpio for input and side-set for output
     mov osr, null                   side NOT_READ_NOT_WRITE
@@ -113,8 +113,7 @@
     nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
     nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
 ;    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
-;    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
-;    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+
 
 ; If some of the pins are not properly connected and are floating, disable these two
 ; lines below to help detect the floating pin in the read bus lines.

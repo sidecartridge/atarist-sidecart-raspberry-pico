@@ -126,13 +126,16 @@ void network_scan()
             // Check if BSSID already exists
             if (!bssid_exists(&network))
             {
-                wifiScanData.networks[wifiScanData.count] = network;
-                wifiScanData.count++;
+                if (strlen(network.ssid) > 0)
+                {
+                    wifiScanData.networks[wifiScanData.count] = network;
+                    wifiScanData.count++;
+                    printf("Found network %s\n", network.ssid);
+                }
             }
         }
         return 0;
     }
-
     if (!cyw43_wifi_scan_active(&cyw43_state))
     {
         printf("Scanning networks...\n");

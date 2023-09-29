@@ -8,6 +8,7 @@
 
 #include "include/romloader.h"
 #include "include/romemul.h"
+#include "include/floppyemul.h"
 
 // List of roms to include in the program
 // Keep in mind that actually they don't load in RAM, but in FLASH
@@ -67,6 +68,7 @@ void blink_morse(char ch)
 
 int main()
 {
+    // Set the clock frequency. 20% overclocking
     set_sys_clock_khz(RP2040_CLOCK_FREQ_KHZ, true);
 
     // Configure the input pins for ROM4 and ROM3
@@ -75,6 +77,10 @@ int main()
     gpio_set_pulls(SELECT_GPIO, false, true); // Pull down (false, true)
     gpio_pull_down(SELECT_GPIO);
 
+    // Initialize chosen serial port
+    stdio_init_all();
+    setvbuf(stdout, NULL, _IONBF, 1); // specify that the stream should be unbuffered
+
     // Init the CYW43 WiFi module
     if (cyw43_arch_init())
     {
@@ -82,56 +88,69 @@ int main()
         return -1;
     }
 
-    // Initialize chosen serial port
-    stdio_init_all();
-
     // Load the config from FLASH
     load_all_entries();
 
     ConfigEntry *default_config_entry = find_entry("BOOT_FEATURE");
     printf("BOOT_FEATURE: %s\n", default_config_entry->value);
 
-    if ((gpio_get(5) == 0) && (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0))
+    if ((gpio_get(5) == 0) && (strcmp(default_config_entry->value, "CONFIGURATOR") != 0))
     {
-        printf("No SELECT button pressed. ROM_EMULATOR entry found in config. Launching.\n");
-
-        // Check if Delay ROM emulation (ripper style boot) is true
-        ConfigEntry *rom_delay_config_entry = find_entry("DELAY_ROM_EMULATION");
-        printf("DELAY_ROM_EMULATION: %s\n", rom_delay_config_entry->value);
-        if ((strcmp(rom_delay_config_entry->value, "true") == 0) || (strcmp(rom_delay_config_entry->value, "TRUE") == 0) || (strcmp(rom_delay_config_entry->value, "T") == 0))
+        printf("No SELECT button pressed. ");
+        if (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0)
         {
-            printf("Delaying ROM emulation.\n");
-            // The "D" character stands for "D"
-            blink_morse('D');
+            printf("ROM_EMULATOR entry found in config. Launching.\n");
+            // Canonical way to initialize the ROM emulator:
+            // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
+            init_romemul(NULL, NULL, true);
 
-            // While until the user presses the SELECT button again to launch the ROM emulator
-            while (gpio_get(5) == 0)
+            // The "E" character stands for "Emulator"
+            blink_morse('E');
+
+            // Loop forever and block until the state machine put data into the FIFO
+            while (true)
             {
                 tight_loop_contents();
                 sleep_ms(1000); // Give me a break... to display the message
+                if (gpio_get(5) != 0)
+                {
+                    printf("SELECT button pressed. Launch configurator.\n");
+                    watchdog_reboot(0, SRAM_END, 10);
+                    while (1)
+                        ;
+                    return 0;
+                }
             }
-            printf("SELECT button pressed. Launching ROM emulator.\n");
         }
-
-        // Canonical way to initialize the ROM emulator:
-        // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
-        init_romemul(NULL, NULL, true);
-
-        // The "E" character stands for "Emulator"
-        blink_morse('E');
-
-        // Loop forever and block until the state machine put data into the FIFO
-        while (true)
+        if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
         {
-            tight_loop_contents();
-            sleep_ms(1000); // Give me a break... to display the message
-            if (gpio_get(5) != 0)
+            printf("FLOPPY_EMULATOR entry found in config. Launching.\n");
+
+            // Copy the ST floppy firmware emulator to RAM
+            copy_floppy_firmware_to_RAM();
+
+            // Reserve memory for the protocol parser
+            init_protocol_parser();
+            // Hybrid way to initialize the ROM emulator:
+            // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+            // and start the state machine
+            init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
+            printf("Ready to accept commands.\n");
+
+            init_floppyemul();
+
+            // Loop forever and block until the state machine put data into the FIFO
+            while (true)
             {
-                printf("SELECT button pressed. Launch configurator.\n");
-                watchdog_enable(1, 1);
-                while (1)
-                    ;
-                return 0;
+                tight_loop_contents();
+                if (gpio_get(5) != 0)
+                {
+                    printf("SELECT button pressed. Launch configurator.\n");
+                    watchdog_reboot(0, SRAM_END, 10);
+                    while (1)
+                        ;
+                    return 0;
+                }
             }
         }
 
@@ -150,7 +169,6 @@ int main()
         }
 
         network_init();
-        network_scan();
 
         // Print the config
         print_config_table();
@@ -161,6 +179,9 @@ int main()
 
         // Copy the firmware to RAM
         copy_firmware_to_RAM();
+
+        // Reserve memory for the protocol parser
+        init_protocol_parser();
 
         // Hybrid way to initialize the ROM emulator:
         // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
@@ -178,7 +199,7 @@ int main()
         printf("Rebooting the board.\n");
         sleep_ms(1000); // Give me a break... to display the message
 
-        watchdog_enable(1, 1);
+        watchdog_reboot(0, SRAM_END, 10);
         while (1)
             ;
         return 0;
