@@ -9,6 +9,7 @@
 #ifndef FLOPPYEMUL_H
 #define FLOPPYEMUL_H
 
+#include "debug.h"
 #include "constants.h"
 #include "firmware_floppyemul.h"
 

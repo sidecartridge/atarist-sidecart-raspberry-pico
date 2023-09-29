@@ -27,12 +27,12 @@ PIO default_pio = pio0;
 // Interrupt handler for DMA completion
 void __not_in_flash_func(dma_irq_handler_lookup)(void)
 {
-    // printf("DMA IRQ\n");
+    // DPRINTF("DMA IRQ\n");
     // Clear the interrupt request for the channel
     dma_hw->ints1 = 1u << 2;
     uint32_t addr = (uint32_t)dma_hw->ch[2].al3_read_addr_trig;
     uint16_t value = *((uint16_t *)addr);
-    printf("DMA LOOKUP: $%x, VALUE: $%x\n", addr, value);
+    DPRINTF("DMA LOOKUP: $%x, VALUE: $%x\n", addr, value);
 
     // Restart the DMA
     //    dma_channel_start(2);
@@ -40,12 +40,12 @@ void __not_in_flash_func(dma_irq_handler_lookup)(void)
 
 void __not_in_flash_func(dma_irq_handler_address)(void)
 {
-    // printf("DMA IRQ\n");
+    // DPRINTF("DMA IRQ\n");
     // Clear the interrupt request for the channel
     dma_hw->ints0 = 1u << 1;
     // uint32_t addr = (uint32_t)dma_hw->ch[2].al3_read_addr_trig;
     // uint16_t value = *((uint16_t *)addr);
-    // printf("DMA ADDR: $%x, VALUE: $%x\n", addr, value);
+    // DPRINTF("DMA ADDR: $%x, VALUE: $%x\n", addr, value);
 
     // Restart the DMA
     //    dma_channel_start(1);
@@ -66,7 +66,7 @@ static int init_monitor_rom4(PIO pio)
     // Enable the state machine
     pio_sm_set_enabled(pio, smMonitorROM4, true);
 
-    printf("ROM4 signal monitor initialized.\n");
+    DPRINTF("ROM4 signal monitor initialized.\n");
     return smMonitorROM4;
 }
 
@@ -86,7 +86,7 @@ static int init_monitor_rom3(PIO pio)
     // Enable the state machine
     pio_sm_set_enabled(pio, smMonitorROM3, true);
 
-    printf("ROM3 signal monitor initialized.\n");
+    DPRINTF("ROM3 signal monitor initialized.\n");
     return smMonitorROM3;
 }
 
@@ -95,22 +95,22 @@ static int init_rom_emulator(PIO pio, IRQInterceptionCallback requestCallback, I
     // Configure DMAs
     // Claim the first available DMA channel for read_addr_rom_dma_channel
     read_addr_rom_dma_channel = dma_claim_unused_channel(true);
-    printf("DMA channel for read_addr_rom_dma_channel: %d\n", read_addr_rom_dma_channel);
+    DPRINTF("DMA channel for read_addr_rom_dma_channel: %d\n", read_addr_rom_dma_channel);
     if (read_addr_rom_dma_channel == -1)
     {
         // Handle the error, perhaps by halting the program or logging an error message
-        printf("Failed to claim a DMA channel for read_addr_rom_dma_channel.\n");
+        DPRINTF("Failed to claim a DMA channel for read_addr_rom_dma_channel.\n");
         dma_channel_unclaim(read_addr_rom_dma_channel);
         return -1;
     }
 
     // Claim another available DMA channel for lookup_data_rom_dma_channel
     lookup_data_rom_dma_channel = dma_claim_unused_channel(true);
-    printf("DMA channel for lookup_data_rom_dma_channel: %d\n", lookup_data_rom_dma_channel);
+    DPRINTF("DMA channel for lookup_data_rom_dma_channel: %d\n", lookup_data_rom_dma_channel);
     if (lookup_data_rom_dma_channel == -1)
     {
         // Handle the error
-        printf("Failed to claim a DMA channel for lookup_data_rom_dma_channel.\n");
+        DPRINTF("Failed to claim a DMA channel for lookup_data_rom_dma_channel.\n");
         // Optionally release the previously claimed channel if you want to clean up
         dma_channel_unclaim(lookup_data_rom_dma_channel);
         return -1;
@@ -174,7 +174,7 @@ static int init_rom_emulator(PIO pio, IRQInterceptionCallback requestCallback, I
     // Use the DMA_IRQ_1 for the read_addr_rom_dma_channel
     if (requestCallback != NULL)
     {
-        printf("Enabling DMA IRQ for read_addr_rom_dma_channel.\n");
+        DPRINTF("Enabling DMA IRQ for read_addr_rom_dma_channel.\n");
         dma_channel_set_irq1_enabled(read_addr_rom_dma_channel, true);
         irq_set_exclusive_handler(DMA_IRQ_1, requestCallback);
         irq_set_enabled(DMA_IRQ_1, true);
@@ -184,13 +184,13 @@ static int init_rom_emulator(PIO pio, IRQInterceptionCallback requestCallback, I
     // Use the DMA_IRQ_1 for the lookup_data_rom_dma_channel
     if (responseCallback != NULL)
     {
-        printf("Enabling DMA IRQ for lookup_data_rom_dma_channel.\n");
+        DPRINTF("Enabling DMA IRQ for lookup_data_rom_dma_channel.\n");
         dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
         irq_set_exclusive_handler(DMA_IRQ_1, responseCallback);
         irq_set_enabled(DMA_IRQ_1, true);
     }
 
-    printf("ROM emulator initialized.\n");
+    DPRINTF("ROM emulator initialized.\n");
     return smReadROM;
 }
 
@@ -213,7 +213,7 @@ static int copy_FLASH_to_RAM()
         rom_in_ram_dest += sizeof(uint16_t); // Increment by 2 bytes for a word
     }
 
-    printf("FLASH copied to RAM.\n");
+    DPRINTF("FLASH copied to RAM.\n");
     return 0;
 }
 
@@ -232,21 +232,21 @@ int init_romemul(IRQInterceptionCallback requestCallback, IRQInterceptionCallbac
     int smMonitorROM4 = init_monitor_rom4(default_pio);
     if (smMonitorROM4 < 0)
     {
-        printf("Error initializing ROM4 monitor. Error code: %d\n", smMonitorROM4);
+        DPRINTF("Error initializing ROM4 monitor. Error code: %d\n", smMonitorROM4);
         return -1;
     }
 
     int smMonitorROM3 = init_monitor_rom3(default_pio);
     if (smMonitorROM3 < 0)
     {
-        printf("Error initializing ROM3 monitor. Error code: %d\n", smMonitorROM3);
+        DPRINTF("Error initializing ROM3 monitor. Error code: %d\n", smMonitorROM3);
         return -1;
     }
 
     int smReadROM = init_rom_emulator(default_pio, requestCallback, responseCallback);
     if (smReadROM < 0)
     {
-        printf("Error initializing ROM emulator. Error code: %d\n", smReadROM);
+        DPRINTF("Error initializing ROM emulator. Error code: %d\n", smReadROM);
         return -1;
     }
 

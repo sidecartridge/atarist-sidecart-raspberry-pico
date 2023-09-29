@@ -9,6 +9,7 @@
 #ifndef TPROTOCOL_H
 #define TPROTOCOL_H
 
+#include "debug.h"
 #include "constants.h"
 
 #include <stdio.h>

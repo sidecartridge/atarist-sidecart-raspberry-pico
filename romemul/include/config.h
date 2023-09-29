@@ -9,6 +9,7 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include "debug.h"
 #include "constants.h"
 
 #include <stdio.h>

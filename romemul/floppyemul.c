@@ -62,13 +62,13 @@ static int create_BPB(FRESULT *fr, FIL *fsrc)
     BYTE buffer[512];    /* File copy buffer */
     unsigned int br = 0; /* File read/write count */
 
-    printf("Creating BPB from first sector of floppy image\n");
+    DPRINTF("Creating BPB from first sector of floppy image\n");
 
     /* Set read/write pointer to logical sector position */
     *fr = f_lseek(fsrc, 0);
     if (*fr)
     {
-        printf("ERROR: Could not seek to the start of the first sector to create BPB\n");
+        DPRINTF("ERROR: Could not seek to the start of the first sector to create BPB\n");
         f_close(fsrc);
         return (int)*fr; // Check for error in reading
     }
@@ -76,7 +76,7 @@ static int create_BPB(FRESULT *fr, FIL *fsrc)
     *fr = f_read(fsrc, buffer, sizeof buffer, &br); /* Read a chunk of data from the source file */
     if (*fr)
     {
-        printf("ERROR: Could not read the first boot sector to create the BPBP\n");
+        DPRINTF("ERROR: Could not read the first boot sector to create the BPBP\n");
         f_close(fsrc);
         return (int)*fr; // Check for error in reading
     }
@@ -97,18 +97,18 @@ static int create_BPB(FRESULT *fr, FIL *fsrc)
     BpbData[SEC_TRACK + 3] = 0;
     BpbData[DISK_NUMBER] = 0;
 
-    // printf("BpbData[BPB_RECSIZE] = %u\n", BpbData[BPB_RECSIZE]);
-    // printf("BpbData[BPB_CLSIZ] = %u\n", BpbData[BPB_CLSIZ]);
-    // printf("BpbData[BPB_CLSIZB] = %u\n", BpbData[BPB_CLSIZB]);
-    // printf("BpbData[BPB_RDLEN] = %u\n", BpbData[BPB_RDLEN]);
-    // printf("BpbData[BPB_FSIZ] = %u\n", BpbData[BPB_FSIZ]);
-    // printf("BpbData[BPB_FATREC] = %u\n", BpbData[BPB_FATREC]);
-    // printf("BpbData[BPB_DATREC] = %u\n", BpbData[BPB_DATREC]);
-    // printf("BpbData[BPB_NUMCL] = %u\n", BpbData[BPB_NUMCL]);
-    // printf("BpbData[SIDE_COUNT] = %u\n", BpbData[SIDE_COUNT]);
-    // printf("BpbData[SEC_CYL] = %u\n", BpbData[SEC_CYL]);
-    // printf("BpbData[SEC_TRACK] = %u\n", BpbData[SEC_TRACK]);
-    // printf("BpbData[DISK_NUMBER] = %u\n", BpbData[DISK_NUMBER]);
+    // DPRINTF("BpbData[BPB_RECSIZE] = %u\n", BpbData[BPB_RECSIZE]);
+    // DPRINTF("BpbData[BPB_CLSIZ] = %u\n", BpbData[BPB_CLSIZ]);
+    // DPRINTF("BpbData[BPB_CLSIZB] = %u\n", BpbData[BPB_CLSIZB]);
+    // DPRINTF("BpbData[BPB_RDLEN] = %u\n", BpbData[BPB_RDLEN]);
+    // DPRINTF("BpbData[BPB_FSIZ] = %u\n", BpbData[BPB_FSIZ]);
+    // DPRINTF("BpbData[BPB_FATREC] = %u\n", BpbData[BPB_FATREC]);
+    // DPRINTF("BpbData[BPB_DATREC] = %u\n", BpbData[BPB_DATREC]);
+    // DPRINTF("BpbData[BPB_NUMCL] = %u\n", BpbData[BPB_NUMCL]);
+    // DPRINTF("BpbData[SIDE_COUNT] = %u\n", BpbData[SIDE_COUNT]);
+    // DPRINTF("BpbData[SEC_CYL] = %u\n", BpbData[SEC_CYL]);
+    // DPRINTF("BpbData[SEC_TRACK] = %u\n", BpbData[SEC_TRACK]);
+    // DPRINTF("BpbData[DISK_NUMBER] = %u\n", BpbData[DISK_NUMBER]);
     return 0;
 }
 
@@ -122,7 +122,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     {
     case FLOPPYEMUL_SAVE_VECTORS:
         // Save the vectors needed for the floppy emulation
-        printf("Command SAVE_VECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command SAVE_VECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         payloadPtr = (uint16_t *)protocol->payload + 2;
         hdv_bpb_payload = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
         payloadPtr += 2;
@@ -137,7 +137,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         break;
     case FLOPPYEMUL_READ_SECTORS:
         // Read sectors from the floppy emulator
-        printf("Command READ_SECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command READ_SECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         payloadPtr = (uint16_t *)protocol->payload + 2;
         sector_size = *(uint16_t *)payloadPtr++;
@@ -146,16 +146,16 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         break;
     case FLOPPYEMUL_WRITE_SECTORS:
         // Write sectors to the floppy emulator
-        printf("Command WRITE_SECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command WRITE_SECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         break;
     case FLOPPYEMUL_SET_BPB:
         // Set the BPB of the floppy
-        printf("Command SET_BPB (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command SET_BPB (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         set_bpb = true;
         break;
     case FLOPPYEMUL_PING:
-        printf("Command PING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command PING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         if (file_ready_a)
         {
             random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
@@ -163,7 +163,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         ping_received = file_ready_a;
         break; // ... handle other commands
     default:
-        printf("Unknown command: %d\n", protocol->command_id);
+        DPRINTF("Unknown command: %d\n", protocol->command_id);
     }
 }
 
@@ -177,7 +177,7 @@ void __not_in_flash_func(floppyemul_dma_irq_handler_lookup_callback)(void)
     uint32_t addr = (uint32_t)dma_hw->ch[lookup_data_rom_dma_channel].al3_read_addr_trig;
 
     // Avoid priting anything inside an IRQ handled function
-    // printf("DMA LOOKUP: $%x\n", addr);
+    // DPRINTF("DMA LOOKUP: $%x\n", addr);
     if (addr >= ROM3_START_ADDRESS)
     {
         parse_protocol((uint16_t)(addr & 0xFFFF), handle_protocol_command);
@@ -195,7 +195,7 @@ int copy_floppy_firmware_to_RAM()
         uint16_t value = *rom4_src++;
         *rom4_dest++ = value;
     }
-    printf("Floppy emulation firmware copied to RAM.\n");
+    DPRINTF("Floppy emulation firmware copied to RAM.\n");
     return 0;
 }
 
@@ -207,12 +207,12 @@ int init_floppyemul()
     bool microsd_mounted = false;
 
     srand(time(0));
-    printf("Initializing floppy emulation...\n");
+    DPRINTF("Initializing floppy emulation...\n");
 
     // Initialize SD card
     if (!sd_init_driver())
     {
-        printf("ERROR: Could not initialize SD card\r\n");
+        DPRINTF("ERROR: Could not initialize SD card\r\n");
         return -1;
     }
     // Mount drive
@@ -220,7 +220,7 @@ int init_floppyemul()
     microsd_mounted = (fr == FR_OK);
     if (!microsd_mounted)
     {
-        printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
+        DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
         return -1;
     }
     char *dir = find_entry("FLOPPIES_FOLDER")->value;
@@ -229,7 +229,7 @@ int init_floppyemul()
     strcpy(fullpath_a, dir);
     strcat(fullpath_a, "/");
     strcat(fullpath_a, filename_a);
-    printf("Emulating floppy image in drive A: %s\n", fullpath_a);
+    DPRINTF("Emulating floppy image in drive A: %s\n", fullpath_a);
 
     FIL fsrc_a;              /* File objects */
     BYTE buffer_a[512];      /* File copy buffer */
@@ -240,16 +240,16 @@ int init_floppyemul()
     fr = f_open(&fsrc_a, fullpath_a, FA_READ);
     if (fr)
     {
-        printf("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
+        DPRINTF("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
         return -1;
     }
     // Get file size
     size_a = f_size(&fsrc_a);
-    printf("File size of %s: %i bytes\n", fullpath_a, size_a);
+    DPRINTF("File size of %s: %i bytes\n", fullpath_a, size_a);
 
     file_ready_a = true;
 
-    printf("Waiting for commands...\n");
+    DPRINTF("Waiting for commands...\n");
 
     while (true)
     {
@@ -268,7 +268,7 @@ int init_floppyemul()
             int bpb_found = create_BPB(&fr, &fsrc_a);
             if (bpb_found)
             {
-                printf("ERROR: Could not create BPB for image file  %s (%d)\r\n", fullpath_a, fr);
+                DPRINTF("ERROR: Could not create BPB for image file  %s (%d)\r\n", fullpath_a, fr);
                 return -1;
             }
             for (int i = 0; i < sizeof(BpbData) / sizeof(uint16_t); i++)
@@ -282,12 +282,12 @@ int init_floppyemul()
         {
             save_vectors = false;
             // Save the vectors needed for the floppy emulation
-            printf("Saving vectors\n");
-            // printf("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
-            // printf("hdv_bpb_payload: %x\n", hdv_bpb_payload);
-            // printf("hdv_rw_payload: %x\n", hdv_rw_payload);
-            // printf("hdv_mediach_payload: %x\n", hdv_mediach_payload);
-            // printf("random token: %x\n", random_token);
+            DPRINTF("Saving vectors\n");
+            // DPRINTF("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
+            // DPRINTF("hdv_bpb_payload: %x\n", hdv_bpb_payload);
+            // DPRINTF("hdv_rw_payload: %x\n", hdv_rw_payload);
+            // DPRINTF("hdv_mediach_payload: %x\n", hdv_mediach_payload);
+            // DPRINTF("random token: %x\n", random_token);
             *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
             *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
 
@@ -307,19 +307,19 @@ int init_floppyemul()
         {
             sector_read = false;
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
-            printf("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
+            DPRINTF("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
             /* Set read/write pointer to logical sector position */
             fr = f_lseek(&fsrc_a, logical_sector * sector_size);
             if (fr)
             {
-                printf("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                DPRINTF("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
                 f_close(&fsrc_a);
                 //                                return (int)fr; // Check for error in reading
             }
             fr = f_read(&fsrc_a, buffer_a, sizeof buffer_a, &br_a); /* Read a chunk of data from the source file */
             if (fr)
             {
-                printf("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                DPRINTF("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
                 f_close(&fsrc_a);
                 //                                return (int)fr; // Check for error in reading
             }
@@ -338,7 +338,7 @@ int init_floppyemul()
         // If SELECT button is pressed, launch the configurator
         if (gpio_get(5) != 0)
         {
-            printf("SELECT button pressed. Launch configurator.\n");
+            DPRINTF("SELECT button pressed. Launch configurator.\n");
             watchdog_reboot(0, SRAM_END, 10);
             while (1)
                 ;

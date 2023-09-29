@@ -9,6 +9,7 @@
 #ifndef ROMLOADER_H
 #define ROMLOADER_H
 
+#include "debug.h"
 #include "constants.h"
 #include "firmware.h"
 

@@ -57,7 +57,7 @@ void load_all_entries()
     if (magic != (CONFIG_MAGIC | CONFIG_VERSION))
     {
         // No config found in FLASH. Use default values
-        printf("No config found in FLASH. Using default values.\n");
+        DPRINTF("No config found in FLASH. Using default values.\n");
         return;
     }
 
@@ -249,9 +249,9 @@ size_t get_config_size()
 
 void print_config_table()
 {
-    printf("+--------------------------------+--------------------------------+----------+\n");
-    printf("|              Key               |             Value              |   Type   |\n");
-    printf("+--------------------------------+--------------------------------+----------+\n");
+    DPRINTF("+--------------------------------+--------------------------------+----------+\n");
+    DPRINTF("|              Key               |             Value              |   Type   |\n");
+    DPRINTF("+--------------------------------+--------------------------------+----------+\n");
 
     for (size_t i = 0; i < configData.count; i++)
     {
@@ -286,10 +286,10 @@ void print_config_table()
             break;
         }
 
-        printf("| %-30s | %-30s | %-8s |\n", configData.entries[i].key, valueStr, typeStr);
+        DPRINTF("| %-30s | %-30s | %-8s |\n", configData.entries[i].key, valueStr, typeStr);
     }
 
-    printf("+--------------------------------+--------------------------------+----------+\n");
+    DPRINTF("+--------------------------------+--------------------------------+----------+\n");
 }
 
 void swap_data(uint16_t *dest_ptr_word)

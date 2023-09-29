@@ -84,7 +84,7 @@ int main()
     // Init the CYW43 WiFi module
     if (cyw43_arch_init())
     {
-        printf("Wi-Fi init failed\n");
+        DPRINTF("Wi-Fi init failed\n");
         return -1;
     }
 
@@ -92,14 +92,14 @@ int main()
     load_all_entries();
 
     ConfigEntry *default_config_entry = find_entry("BOOT_FEATURE");
-    printf("BOOT_FEATURE: %s\n", default_config_entry->value);
+    DPRINTF("BOOT_FEATURE: %s\n", default_config_entry->value);
 
     if ((gpio_get(5) == 0) && (strcmp(default_config_entry->value, "CONFIGURATOR") != 0))
     {
-        printf("No SELECT button pressed. ");
+        DPRINTF("No SELECT button pressed. ");
         if (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0)
         {
-            printf("ROM_EMULATOR entry found in config. Launching.\n");
+            DPRINTF("ROM_EMULATOR entry found in config. Launching.\n");
             // Canonical way to initialize the ROM emulator:
             // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
             init_romemul(NULL, NULL, true);
@@ -114,7 +114,7 @@ int main()
                 sleep_ms(1000); // Give me a break... to display the message
                 if (gpio_get(5) != 0)
                 {
-                    printf("SELECT button pressed. Launch configurator.\n");
+                    DPRINTF("SELECT button pressed. Launch configurator.\n");
                     watchdog_reboot(0, SRAM_END, 10);
                     while (1)
                         ;
@@ -124,7 +124,7 @@ int main()
         }
         if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
         {
-            printf("FLOPPY_EMULATOR entry found in config. Launching.\n");
+            DPRINTF("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
             // Copy the ST floppy firmware emulator to RAM
             copy_floppy_firmware_to_RAM();
@@ -135,7 +135,7 @@ int main()
             // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
             // and start the state machine
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
-            printf("Ready to accept commands.\n");
+            DPRINTF("Ready to accept commands.\n");
 
             init_floppyemul();
 
@@ -145,7 +145,7 @@ int main()
                 tight_loop_contents();
                 if (gpio_get(5) != 0)
                 {
-                    printf("SELECT button pressed. Launch configurator.\n");
+                    DPRINTF("SELECT button pressed. Launch configurator.\n");
                     watchdog_reboot(0, SRAM_END, 10);
                     while (1)
                         ;
@@ -154,12 +154,12 @@ int main()
             }
         }
 
-        printf("You should never see this line...\n");
+        DPRINTF("You should never see this line...\n");
         return 0;
     }
     else
     {
-        printf("SELECT button pressed. Launch configurator.\n");
+        DPRINTF("SELECT button pressed. Launch configurator.\n");
 
         // Keep in development mode
         if (strcmp(default_config_entry->value, "CONFIGURATOR") != 0)
@@ -188,7 +188,7 @@ int main()
         // and start the state machine
         init_romemul(NULL, dma_irq_handler_lookup_callback, false);
 
-        printf("Ready to accept commands.\n");
+        DPRINTF("Ready to accept commands.\n");
 
         // The "F" character stands for "Firmware"
         blink_morse('F');
@@ -196,7 +196,7 @@ int main()
         init_firmware();
 
         // Now the user needs to reset or poweroff the board to load the ROMs
-        printf("Rebooting the board.\n");
+        DPRINTF("Rebooting the board.\n");
         sleep_ms(1000); // Give me a break... to display the message
 
         watchdog_reboot(0, SRAM_END, 10);

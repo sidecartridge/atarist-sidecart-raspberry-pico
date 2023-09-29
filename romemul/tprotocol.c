@@ -39,7 +39,7 @@ static void __not_in_flash_func(read_payload_size)(uint16_t data)
         // transmission.payload = malloc(transmission.payload_size * sizeof(unsigned char)); // Allocate memory for the payload
         // if (!transmission.payload)
         // { // Ensure memory was allocated successfully
-        //     printf("Error: Could not allocate memory for payload!\n");
+        //     DPRINTF("Error: Could not allocate memory for payload!\n");
         //     exit(1); // Exit or handle the error appropriately
         // }
         //
@@ -87,15 +87,13 @@ void terminate_protocol_parser()
 
 void __not_in_flash_func(process_command)(ProtocolCallback callback)
 {
-    printf("COMMAND: %d / ", transmission.command_id);
-    printf("PAYLOAD SIZE: %d / ", transmission.payload_size);
-    printf("PAYLOAD: ");
+    DPRINTF("COMMAND: %d / PAYLOAD SIZE: %d / PAYLOAD: ", transmission.command_id, transmission.payload_size);
     for (int i = 0; i < transmission.payload_size; i += 2)
     {
         uint16_t value = *((uint16_t *)(&transmission.payload[i]));
-        printf("0x%04X ", value);
+        DPRINTFRAW("0x%04X ", value);
     }
-    printf("\n");
+    DPRINTFRAW("\n");
 
     // Here should pass the transmission message to a function that will handle the different commands
     // I think a good aproach would be to have a callback to custom functions that will handle the different commands
@@ -118,7 +116,7 @@ void __not_in_flash_func(parse_protocol)(uint16_t data, ProtocolCallback callbac
     if (new_header_found - last_header_found > PROTOCOL_READ_RESTART_MICROSECONDS)
     {
         nextTPstep = HEADER_DETECTION;
-        //        printf("Restarting protocol read. Lapse. %i\n", new_header_found - last_header_found);
+        //        DPRINTF("Restarting protocol read. Lapse. %i\n", new_header_found - last_header_found);
     }
     switch (nextTPstep)
     {
