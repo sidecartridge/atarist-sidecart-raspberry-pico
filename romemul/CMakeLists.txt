@@ -49,7 +49,7 @@ target_sources(${PROJECT_NAME} PRIVATE network.c)
 target_sources(${PROJECT_NAME} PRIVATE cJSON/cJSON.c)
 
 # Tell CMake where to find other source code
-add_subdirectory($ENV{FATFS_SDK_PATH}/FatFs_SPI build)
+add_subdirectory($ENV{FATFS_SDK_PATH}/src build)
 
 # Link to pico_stdlib (gpio, time, etc. functions)
 target_link_libraries(${PROJECT_NAME} PRIVATE
