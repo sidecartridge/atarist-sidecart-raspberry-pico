@@ -11,6 +11,7 @@
 - Release two versions of the firmware app, one with debug traces and other without.
 
 ### Feature aditions
+- issue #6: 'Ultimate-Ripper' behaviour implement. New DELAY_ROM_EMULATION flag.
 - issue #7: Read-only floppy drive emulation of .ST files is now supported as a PREVIEW feature to get feedback from the community. I have found some glitches and sometimes it fails. Please report any issues you find.
 
 ## 0.0.8 (2023-09-15) - Feature release
