@@ -6,11 +6,12 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"BOOT_FEATURE", TYPE_STRING, "CONFIGURATOR"},
     {"DELAY_ROM_EMULATION", TYPE_BOOL, "false"},
     {"FLOPPIES_FOLDER", TYPE_STRING, "/floppies"},
-    {"FLOPPY_IMAGE_A", TYPE_STRING, "gfa.st"},
+    {"FLOPPY_IMAGE_A", TYPE_STRING, ""},
     {"FLOPPY_IMAGE_B", TYPE_STRING, ""},
     {"HOSTNAME", TYPE_STRING, "sidecart"},
     {"ROMS_FOLDER", TYPE_STRING, "/roms"},
     {"ROMS_YAML_URL", TYPE_STRING, "http://roms.sidecart.xyz/roms.json"},
+    {"WIFI_SCAN_SECONDS", TYPE_INT, "15"},
     {"WIFI_PASSWORD", TYPE_STRING, ""},
     {"WIFI_SSID", TYPE_STRING, ""},
     {"WIFI_AUTH", TYPE_INT, ""}};
