@@ -142,9 +142,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         payloadPtr = (uint16_t *)protocol->payload + 2;
         sector_size = *(uint16_t *)payloadPtr++;
         logical_sector = *(uint16_t *)payloadPtr;
-        printf("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
         sector_read = true;
-
         break;
     case FLOPPYEMUL_WRITE_SECTORS:
         // Write sectors to the floppy emulator
@@ -204,150 +202,147 @@ int copy_floppy_firmware_to_RAM()
 int init_floppyemul()
 {
 
-    printf("\033[2J\033[H"); // Clear Screen
-    printf("\n> ");
-    stdio_flush();
-
     FRESULT fr; /* FatFs function common result code */
     FATFS fs;
     bool microsd_mounted = false;
-    bool microsd_initialized;
+
+    srand(time(0));
+    printf("Initializing floppy emulation...\n");
 
     // Initialize SD card
-    microsd_initialized = sd_init_driver();
-    if (!microsd_initialized)
+    if (!sd_init_driver())
     {
         printf("ERROR: Could not initialize SD card\r\n");
+        return -1;
     }
-
-    if (microsd_initialized)
+    // Mount drive
+    fr = f_mount(&fs, "0:", 1);
+    microsd_mounted = (fr == FR_OK);
+    if (!microsd_mounted)
     {
-        // Mount drive
-        fr = f_mount(&fs, "0:", 1);
-        microsd_mounted = (fr == FR_OK);
-        if (!microsd_mounted)
-        {
-            printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
-        }
+        printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
+        return -1;
     }
-    microsd_mounted = microsd_mounted & microsd_initialized;
+    char *dir = find_entry("FLOPPIES_FOLDER")->value;
+    char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
+    char *fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
+    strcpy(fullpath_a, dir);
+    strcat(fullpath_a, "/");
+    strcat(fullpath_a, filename_a);
+    printf("Emulating floppy image in drive A: %s\n", fullpath_a);
 
-    if (microsd_mounted)
+    FIL fsrc_a;              /* File objects */
+    BYTE buffer_a[512];      /* File copy buffer */
+    unsigned int br_a = 0;   /* File read/write count */
+    unsigned int size_a = 0; // File size
+
+    /* Open source file on the drive 0 */
+    fr = f_open(&fsrc_a, fullpath_a, FA_READ);
+    if (fr)
     {
-        char *dir = find_entry("FLOPPIES_FOLDER")->value;
-        char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
-        // filename_a = "XENON2_3.st" + 0;
-        char *fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
-        strcpy(fullpath_a, dir);
-        strcat(fullpath_a, "/");
-        strcat(fullpath_a, filename_a);
-        printf("Emulating floppy image in drive A: %s\n", fullpath_a);
+        printf("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
+        return -1;
+    }
+    // Get file size
+    size_a = f_size(&fsrc_a);
+    printf("File size of %s: %i bytes\n", fullpath_a, size_a);
 
-        FIL fsrc_a;              /* File objects */
-        BYTE buffer_a[512];      /* File copy buffer */
-        unsigned int br_a = 0;   /* File read/write count */
-        unsigned int size_a = 0; // File size
+    file_ready_a = true;
 
-        /* Open source file on the drive 0 */
-        fr = f_open(&fsrc_a, fullpath_a, FA_READ);
-        if (fr)
+    printf("Waiting for commands...\n");
+
+    while (true)
+    {
+        *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
+        tight_loop_contents();
+
+        if (file_ready_a && ping_received)
         {
-            printf("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
-            return (int)fr;
+            ping_received = false;
+            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
-        // Get file size
-        size_a = f_size(&fsrc_a);
-        printf("File size of %s: %i bytes\n", fullpath_a, size_a);
-
-        // Create BPB
-        int bpb_found = create_BPB(&fr, &fsrc_a);
-        if (bpb_found)
+        if (file_ready_a && set_bpb)
         {
-            printf("ERROR: Could not create BPB for image file  %s (%d)\r\n", fullpath_a, fr);
-            return (int)fr;
+            set_bpb = false;
+            // Create BPB
+            int bpb_found = create_BPB(&fr, &fsrc_a);
+            if (bpb_found)
+            {
+                printf("ERROR: Could not create BPB for image file  %s (%d)\r\n", fullpath_a, fr);
+                return -1;
+            }
+            for (int i = 0; i < sizeof(BpbData) / sizeof(uint16_t); i++)
+            {
+                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_BPB_DATA + i * 2)) = BpbData[i];
+            }
+            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
 
-        file_ready_a = true;
-
-        printf("Waiting for commands...\n");
-        srand(time(0));
-
-        while (true)
+        if (file_ready_a && save_vectors)
         {
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
-            tight_loop_contents();
+            save_vectors = false;
+            // Save the vectors needed for the floppy emulation
+            printf("Saving vectors\n");
+            // printf("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
+            // printf("hdv_bpb_payload: %x\n", hdv_bpb_payload);
+            // printf("hdv_rw_payload: %x\n", hdv_rw_payload);
+            // printf("hdv_mediach_payload: %x\n", hdv_mediach_payload);
+            // printf("random token: %x\n", random_token);
+            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
+            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
 
-            if (file_ready_a && ping_received)
+            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
+            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
+
+            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
+            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
+
+            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
+            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
+
+            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+        }
+
+        if (file_ready_a && sector_read)
+        {
+            sector_read = false;
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+            printf("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
+            /* Set read/write pointer to logical sector position */
+            fr = f_lseek(&fsrc_a, logical_sector * sector_size);
+            if (fr)
             {
-                ping_received = false;
-                *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+                printf("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                f_close(&fsrc_a);
+                //                                return (int)fr; // Check for error in reading
             }
-
-            if (file_ready_a && sector_read)
+            fr = f_read(&fsrc_a, buffer_a, sizeof buffer_a, &br_a); /* Read a chunk of data from the source file */
+            if (fr)
             {
-                sector_read = false;
-
-                /* Set read/write pointer to logical sector position */
-                fr = f_lseek(&fsrc_a, logical_sector * sector_size);
-                if (fr)
-                {
-                    printf("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
-                    f_close(&fsrc_a);
-                    return (int)fr; // Check for error in reading
-                }
-
-                fr = f_read(&fsrc_a, buffer_a, sizeof buffer_a, &br_a); /* Read a chunk of data from the source file */
-                if (fr)
-                {
-                    printf("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
-                    f_close(&fsrc_a);
-                    return (int)fr; // Check for error in reading
-                }
-
-                // Transform buffer's words from little endian to big endian inline
-                volatile uint16_t *target = (volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_IMAGE);
-                for (int i = 0; i < br_a; i += 2)
-                {
-                    uint16_t value = *(uint16_t *)(buffer_a + i);
-                    value = (value << 8) | (value >> 8);
-                    *(target++) = value;
-                }
-                *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+                printf("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                f_close(&fsrc_a);
+                //                                return (int)fr; // Check for error in reading
             }
-            if (file_ready_a && set_bpb)
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+            // Transform buffer's words from little endian to big endian inline
+            volatile uint16_t *target = (volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_IMAGE);
+            for (int i = 0; i < br_a; i += 2)
             {
-                set_bpb = false;
-                for (int i = 0; i < sizeof(BpbData) / sizeof(uint16_t); i++)
-                {
-                    *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_BPB_DATA + i * 2)) = BpbData[i];
-                }
-                *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+                uint16_t value = *(uint16_t *)(buffer_a + i);
+                value = (value << 8) | (value >> 8);
+                *(target++) = value;
             }
+            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+        }
 
-            if (file_ready_a && save_vectors)
-            {
-                save_vectors = false;
-                // Save the vectors needed for the floppy emulation
-                printf("Saving vectors\n");
-                // printf("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
-                // printf("hdv_bpb_payload: %x\n", hdv_bpb_payload);
-                // printf("hdv_rw_payload: %x\n", hdv_rw_payload);
-                // printf("hdv_mediach_payload: %x\n", hdv_mediach_payload);
-                // printf("random token: %x\n", random_token);
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
-
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
-
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
-
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
-
-                *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
-            }
+        // If SELECT button is pressed, launch the configurator
+        if (gpio_get(5) != 0)
+        {
+            printf("SELECT button pressed. Launch configurator.\n");
+            watchdog_reboot(0, SRAM_END, 10);
+            while (1)
+                ;
+            return 0;
         }
     }
 }

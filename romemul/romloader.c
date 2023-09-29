@@ -8,13 +8,22 @@
 
 #include "include/romloader.h"
 
+// Microsd variables
 bool microsd_initialized = false;
 bool microsd_mounted = false;
-static int rom_file_selected = -1;
-static int rom_network_selected = -1;
+// Filtered files list variables
 int filtered_num_local_files = 0;
 char **filtered_local_list = NULL;
 
+// ROMs in sd card variables
+static int list_roms = false;
+static int rom_file_selected = -1;
+
+// Floppy images in sd card variables
+static bool list_floppies = false;
+static int floppy_file_selected = -1;
+
+// Network variables
 RomInfo *network_files;
 int filtered_num_network_files = 0;
 
@@ -24,6 +33,9 @@ static bool reset_default = false;
 static bool scan_network = false;
 static bool disconnect_network = false;
 static bool get_json_file = false;
+
+// ROMs in network variables
+static int rom_network_selected = -1;
 
 static void release_memory_files(char **files, int num_files)
 {
@@ -112,10 +124,6 @@ static int load(char *path, char *filename, uint32_t rom_load_offset)
     size = f_size(&fsrc);
     printf("File size: %i bytes\n", size);
 
-    // Erase the content before loading the new file. It seems that
-    // overwriting it's not enough
-    flash_range_erase(dest_address, ROM_SIZE_BYTES * 2); // Two banks of 64K
-
     // If the size of the image is not 65536 or 131072 bytes, check if the file
     // is 4 bytes larger and the first 4 bytes are 0x0000. If so, skip them
     if ((size == ROM_SIZE_BYTES + 4) || (size == ROM_SIZE_BYTES * 2 + 4))
@@ -162,7 +170,9 @@ static int load(char *path, char *filename, uint32_t rom_load_offset)
 
         // Transfer buffer to FLASH
         // WARNING! TRANSFER THE INFORMATION IN THE BUFFER AS LITTLE ENDIAN!!!!
+        uint32_t ints = save_and_disable_interrupts();
         flash_range_program(dest_address, buffer, br);
+        restore_interrupts(ints);
 
         dest_address += br; // Increment the pointer to the ROM address
         size += br;
@@ -329,14 +339,14 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     case LIST_ROMS:
         // Get the list of roms in the SD card
         printf("Command LIST_ROMS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        if (microsd_mounted)
-        {
-            store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
-        }
-        else
+        if (!microsd_mounted)
         {
             printf("SD card not mounted. Cannot list ROMs.\n");
             null_words((uint16_t *)memory_area, 4096 / 2);
+        }
+        else
+        {
+            list_roms = true; // now the active loop should stop and list the ROMs
         }
         break;
     case GET_CONFIG:
@@ -431,6 +441,34 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         printf("Command GET_ROMS_JSON_FILE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         get_json_file = true; // now in the active loop should stop and download the JSON file
         break;
+    case LOAD_FLOPPY:
+        // Load the floppy image passed as argument in the payload
+        printf("Command LOAD_FLOPPY (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
+        printf("Value: %d\n", value_payload);
+        if (microsd_mounted)
+        {
+            floppy_file_selected = value_payload;
+        }
+        else
+        {
+            printf("SD card not mounted. Cannot load ROM.\n");
+            null_words((uint16_t *)memory_area, 4096 / 2);
+        }
+        break;
+    case LIST_FLOPPIES:
+        // Get the list of floppy images in the SD card
+        printf("Command LIST_FLOPPIES (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        if (!microsd_mounted)
+        {
+            printf("SD card not mounted. Cannot list Floppies.\n");
+            null_words((uint16_t *)memory_area, 4096 / 2);
+        }
+        else
+        {
+            list_floppies = true; // now the active loop should stop and list the floppy images
+        }
+        break;
 
     // ... handle other commands
     default:
@@ -508,22 +546,6 @@ int init_firmware()
         {
             printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
         }
-        else
-        {
-            // Show the root directory content (ls command)
-            char *dir = find_entry("ROMS_FOLDER")->value;
-            if (strlen(dir) == 0)
-            {
-                dir = "";
-            }
-            printf("ROMs folder: %s\n", dir);
-            file_list = show_dir_files(dir, &num_files);
-
-            // Remove hidden files from the list
-            filtered_local_list = filter(file_list, num_files, &filtered_num_local_files);
-            // Sort remaining valid filenames lexicographically
-            qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
-        }
     }
     microsd_mounted = microsd_mounted & microsd_initialized;
 
@@ -549,8 +571,20 @@ int init_firmware()
     // The structure is a list of chars separated with a 0x00 byte. The end of the list is marked with
     // two 0x00 bytes.
 
+    u_int16_t wifi_scan_poll_counter = 0;
+    u_int64_t wifi_scal_poll_counter_mcs = 0; // Force the first scan to be done in the loop
+    ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
+    if (default_config_entry != NULL)
+    {
+        wifi_scan_poll_counter = atoi(default_config_entry->value);
+    }
+    else
+    {
+        printf("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
+    }
+
     u_int16_t network_poll_counter = 0;
-    while ((rom_file_selected < 0) && (rom_network_selected < 0) && (persist_config == false) && (reset_default == false))
+    while ((rom_file_selected < 0) && (rom_network_selected < 0) && (floppy_file_selected < 0) && (persist_config == false) && (reset_default == false))
     {
         tight_loop_contents();
 
@@ -562,10 +596,19 @@ int init_firmware()
 #else
         sleep_ms(1000);
 #endif
-        if (scan_network)
+        if ((time_us_64() - wifi_scal_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
         {
-            scan_network = false;
-            network_scan();
+            ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
+            if (default_config_entry != NULL)
+            {
+                network_scan();
+                wifi_scan_poll_counter = atoi(default_config_entry->value);
+                wifi_scal_poll_counter_mcs = time_us_64();
+            }
+            else
+            {
+                printf("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
+            }
         }
         if (wifi_auth != NULL)
         {
@@ -641,6 +684,49 @@ int init_firmware()
             network_swap_json_data((__uint16_t *)memory_area);
         }
 
+        // List the ROM images in the SD card
+        if (list_roms)
+        {
+            list_roms = false;
+            // Show the root directory content (ls command)
+            char *dir = find_entry("ROMS_FOLDER")->value;
+            if (strlen(dir) == 0)
+            {
+                dir = "";
+            }
+            printf("ROM images folder: %s\n", dir);
+            file_list = show_dir_files(dir, &num_files);
+
+            // Remove hidden files from the list
+            filtered_local_list = filter(file_list, num_files, &filtered_num_local_files);
+            // Sort remaining valid filenames lexicographically
+            qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
+            // Store the list in the ROM memory space
+            store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
+        }
+
+        // List the floppy images in the SD card
+        if (list_floppies)
+        {
+            list_floppies = false;
+            // Show the root directory content (ls command)
+            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+            if (strlen(dir) == 0)
+            {
+                dir = "";
+            }
+            printf("Floppy images folder: %s\n", dir);
+            // Get the list of floppy image files in the directory
+            file_list = show_dir_files(dir, &num_files);
+
+            // Remove hidden files from the list
+            filtered_local_list = filter(file_list, num_files, &filtered_num_local_files);
+            // Sort remaining valid filenames lexicographically
+            qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
+            // Store the list in the ROM memory space
+            store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
+        }
+
         // Increase the counter and reset it if it reaches the limit
         network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
     }
@@ -648,6 +734,12 @@ int init_firmware()
     if (rom_file_selected > 0)
     {
         printf("ROM file selected: %d\n", rom_file_selected);
+
+        // Erase the content before loading the new file. It seems that
+        // overwriting it's not enough
+        uint32_t ints = save_and_disable_interrupts();
+        flash_range_erase(FLASH_ROM_LOAD_OFFSET, ROM_SIZE_BYTES * 2); // Two banks of 64K
+        restore_interrupts(ints);
         int res = load(find_entry("ROMS_FOLDER")->value, filtered_local_list[rom_file_selected - 1], FLASH_ROM_LOAD_OFFSET);
 
         if (res != FR_OK)
@@ -662,8 +754,6 @@ int init_firmware()
 
     if (rom_network_selected > 0)
     {
-        // download_http("roms.sidecart.xyz");
-
         printf("ROM network selected: %d\n", rom_network_selected);
         int res = download(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
 
@@ -676,6 +766,21 @@ int init_firmware()
 
         put_string("BOOT_FEATURE", "ROM_EMULATOR");
         write_all_entries();
+    }
+
+    if (floppy_file_selected > 0)
+    {
+        printf("Floppy file selected: %d\n", floppy_file_selected);
+
+        char *new_floppy = filtered_local_list[floppy_file_selected - 1];
+        printf("Load file: %s\n", new_floppy);
+
+        put_string("FLOPPY_IMAGE_A", new_floppy);
+        put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
+        write_all_entries();
+
+        release_memory_files(file_list, num_files);
+        release_memory_files(filtered_local_list, filtered_num_local_files);
     }
 
     if (persist_config)
