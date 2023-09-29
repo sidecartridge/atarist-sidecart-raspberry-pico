@@ -79,6 +79,7 @@ pico_set_binary_type(${PROJECT_NAME} romemul)
 # Fetch the values from the environment variables
 set(RELEASE_VERSION $ENV{RELEASE_VERSION})
 set(RELEASE_DATE $ENV{RELEASE_DATE})
+set(_DEBUG $ENV{DEBUG_MODE})
 
 # If the environment variables are not set, use default values
 if(NOT RELEASE_VERSION)
@@ -89,10 +90,16 @@ if(NOT RELEASE_DATE)
         string(TIMESTAMP CURRENT_DATE_TIME "%Y-%m-%d %H:%M:%S")
         set(RELEASE_DATE ${CURRENT_DATE_TIME})
 endif()
+if (NOT _DEBUG)
+        set(_DEBUG 0)
+endif()
 
 # Pass these values to the C compiler
 add_definitions(-DRELEASE_VERSION="${RELEASE_VERSION}")
 add_definitions(-DRELEASE_DATE="${RELEASE_DATE}")
+
+# Pass the _DEBUG flag to the C compiler
+add_definitions(-D_DEBUG=${_DEBUG})
 
 # Optimization Flags
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os")
