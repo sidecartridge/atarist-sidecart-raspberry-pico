@@ -68,6 +68,7 @@ void blink_morse(char ch)
 
 int main()
 {
+    // Set the clock frequency. 20% overclocking
     set_sys_clock_khz(RP2040_CLOCK_FREQ_KHZ, true);
 
     // Configure the input pins for ROM4 and ROM3
@@ -76,15 +77,16 @@ int main()
     gpio_set_pulls(SELECT_GPIO, false, true); // Pull down (false, true)
     gpio_pull_down(SELECT_GPIO);
 
+    // Initialize chosen serial port
+    stdio_init_all();
+    setvbuf(stdout, NULL, _IONBF, 1); // specify that the stream should be unbuffered
+
     // Init the CYW43 WiFi module
     if (cyw43_arch_init())
     {
         printf("Wi-Fi init failed\n");
         return -1;
     }
-
-    // Initialize chosen serial port
-    stdio_init_all();
 
     // Load the config from FLASH
     load_all_entries();
@@ -113,7 +115,7 @@ int main()
                 if (gpio_get(5) != 0)
                 {
                     printf("SELECT button pressed. Launch configurator.\n");
-                    watchdog_enable(1, 1);
+                    watchdog_reboot(0, SRAM_END, 10);
                     while (1)
                         ;
                     return 0;
@@ -144,7 +146,7 @@ int main()
                 if (gpio_get(5) != 0)
                 {
                     printf("SELECT button pressed. Launch configurator.\n");
-                    watchdog_enable(1, 1);
+                    watchdog_reboot(0, SRAM_END, 10);
                     while (1)
                         ;
                     return 0;
@@ -167,7 +169,6 @@ int main()
         }
 
         network_init();
-        network_scan();
 
         // Print the config
         print_config_table();
@@ -198,7 +199,7 @@ int main()
         printf("Rebooting the board.\n");
         sleep_ms(1000); // Give me a break... to display the message
 
-        watchdog_enable(1, 1);
+        watchdog_reboot(0, SRAM_END, 10);
         while (1)
             ;
         return 0;
