@@ -7,7 +7,7 @@
  * @param fmt The format string for the debug message, similar to printf.
  * @param ... Variadic arguments corresponding to the format specifiers in the fmt parameter.
  */
-#ifdef _DEBUG
+#if defined(_DEBUG) && (_DEBUG != 0)
 #define DPRINTF(fmt, ...)                                                                  \
     do                                                                                     \
     {                                                                                      \
@@ -23,6 +23,7 @@
 
 #else
 #define DPRINTF(fmt, ...)
+#define DPRINTFRAW(fmt, ...)
 #endif
 
 #endif // DEBUG_H

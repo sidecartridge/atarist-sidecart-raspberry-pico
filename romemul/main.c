@@ -81,6 +81,9 @@ int main()
     stdio_init_all();
     setvbuf(stdout, NULL, _IONBF, 1); // specify that the stream should be unbuffered
 
+    // Only startup information to display
+    printf("Sidecart ROM emulator. %s (%s). %s mode.\n\n", RELEASE_VERSION, RELEASE_DATE, _DEBUG ? "DEBUG" : "RELEASE");
+
     // Init the CYW43 WiFi module
     if (cyw43_arch_init())
     {

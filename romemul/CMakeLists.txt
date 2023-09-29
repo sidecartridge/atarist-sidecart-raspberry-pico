@@ -83,19 +83,29 @@ set(_DEBUG $ENV{DEBUG_MODE})
 
 # If the environment variables are not set, use default values
 if(NOT RELEASE_VERSION)
-    set(RELEASE_VERSION "v0.0.1dev")
+    # Read content of version.txt
+    file(READ "${CMAKE_SOURCE_DIR}/../version.txt" RELEASE_VERSION)
+    
+    # Remove newline character if present
+    string(STRIP "${RELEASE_VERSION}" RELEASE_VERSION)
+
+    # In case version.txt is empty or does not exist, use a default version
+    if("${RELEASE_VERSION}" STREQUAL "")
+        set(RELEASE_VERSION "v0.0.1dev")
+    endif()
 endif()
 
 if(NOT RELEASE_DATE)
         string(TIMESTAMP CURRENT_DATE_TIME "%Y-%m-%d %H:%M:%S")
         set(RELEASE_DATE ${CURRENT_DATE_TIME})
 endif()
+
 if (NOT _DEBUG)
         set(_DEBUG 0)
 endif()
 
 # Pass these values to the C compiler
-add_definitions(-DRELEASE_VERSION="${RELEASE_VERSION}")
+add_definitions(-DRELEASE_VERSION="v${RELEASE_VERSION}")
 add_definitions(-DRELEASE_DATE="${RELEASE_DATE}")
 
 # Pass the _DEBUG flag to the C compiler
