@@ -63,7 +63,7 @@ static char **show_dir_files(const char *dir, int *num_files)
         fr = f_getcwd(cwdbuf, sizeof cwdbuf);
         if (FR_OK != fr)
         {
-            printf("f_getcwd error: %s (%d)\n", FRESULT_str(fr), fr);
+            DPRINTF("f_getcwd error: %s (%d)\n", FRESULT_str(fr), fr);
             return NULL;
         }
         p_dir = cwdbuf;
@@ -77,7 +77,7 @@ static char **show_dir_files(const char *dir, int *num_files)
     fr = f_findfirst(&dj, &fno, p_dir, "*");
     if (FR_OK != fr)
     {
-        printf("f_findfirst error: %s (%d)\n", FRESULT_str(fr), fr);
+        DPRINTF("f_findfirst error: %s (%d)\n", FRESULT_str(fr), fr);
         return NULL;
     }
 
@@ -87,7 +87,7 @@ static char **show_dir_files(const char *dir, int *num_files)
         filenames = realloc(filenames, sizeof(char *) * (*num_files + 1));
         if (!filenames)
         {
-            printf("Memory allocation failed\n");
+            DPRINTF("Memory allocation failed\n");
             return NULL;
         }
         filenames[*num_files] = strdup(fno.fname); // Store the filename
@@ -113,7 +113,7 @@ static int load(char *path, char *filename, uint32_t rom_load_offset)
     char fullpath[512]; // Assuming 512 bytes as the max path+filename length. Adjust if necessary.
     snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
 
-    printf("Loading file '%s'  ", fullpath);
+    DPRINTF("Loading file '%s'  ", fullpath);
 
     /* Open source file on the drive 0 */
     fr = f_open(&fsrc, fullpath, FA_READ);
@@ -122,7 +122,7 @@ static int load(char *path, char *filename, uint32_t rom_load_offset)
 
     // Get file size
     size = f_size(&fsrc);
-    printf("File size: %i bytes\n", size);
+    DPRINTF("File size: %i bytes\n", size);
 
     // If the size of the image is not 65536 or 131072 bytes, check if the file
     // is 4 bytes larger and the first 4 bytes are 0x0000. If so, skip them
@@ -139,7 +139,7 @@ static int load(char *path, char *filename, uint32_t rom_load_offset)
         // Check if the first 4 bytes are 0x0000
         if (buffer[0] == 0x00 && buffer[1] == 0x00 && buffer[2] == 0x00 && buffer[3] == 0x00)
         {
-            printf("Skipping first 4 bytes. Looks like a STEEM cartridge image.\n");
+            DPRINTF("Skipping first 4 bytes. Looks like a STEEM cartridge image.\n");
         }
         else
         {
@@ -177,15 +177,15 @@ static int load(char *path, char *filename, uint32_t rom_load_offset)
         dest_address += br; // Increment the pointer to the ROM address
         size += br;
 
-        printf(".");
+        DPRINTF(".");
     }
 
     // Close open file
     f_close(&fsrc);
 
-    printf(" %i bytes loaded\n", size);
-    printf("File loaded at offset 0x%x\n", rom_load_offset);
-    printf("Dest ROM address end is 0x%x\n", dest_address - 1);
+    DPRINTF(" %i bytes loaded\n", size);
+    DPRINTF("File loaded at offset 0x%x\n", rom_load_offset);
+    DPRINTF("Dest ROM address end is 0x%x\n", dest_address - 1);
     return (int)fr;
 }
 
@@ -241,7 +241,7 @@ static int get_number_within_range(int num_files)
     while (1)
     {
         // Prompt the user
-        printf("Enter the ROM to load (1 to %d): ", num_files);
+        DPRINTF("Enter the ROM to load (1 to %d): ", num_files);
 
         // Get the input as a string (this is to handle empty input)
         if (fgets(input, sizeof(input), stdin) == NULL || strlen(input) <= 1)
@@ -261,7 +261,7 @@ static int get_number_within_range(int num_files)
         }
 
         // If out of range or not a valid number, print an error message
-        printf("Invalid input! Please enter a number between 1 and %d.\n", num_files);
+        DPRINTF("Invalid input! Please enter a number between 1 and %d.\n", num_files);
     }
 }
 
@@ -316,32 +316,32 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     {
     case DOWNLOAD_ROM:
         // Download the ROM index passed as argument in the payload
-        printf("Command DOWNLOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command DOWNLOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
-        printf("Value: %d\n", value_payload);
+        DPRINTF("Value: %d\n", value_payload);
         rom_network_selected = value_payload;
         break;
     case LOAD_ROM:
         // Load ROM passed as argument in the payload
-        printf("Command LOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command LOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
-        printf("Value: %d\n", value_payload);
+        DPRINTF("Value: %d\n", value_payload);
         if (microsd_mounted)
         {
             rom_file_selected = value_payload;
         }
         else
         {
-            printf("SD card not mounted. Cannot load ROM.\n");
+            DPRINTF("SD card not mounted. Cannot load ROM.\n");
             null_words((uint16_t *)memory_area, 4096 / 2);
         }
         break;
     case LIST_ROMS:
         // Get the list of roms in the SD card
-        printf("Command LIST_ROMS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command LIST_ROMS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         if (!microsd_mounted)
         {
-            printf("SD card not mounted. Cannot list ROMs.\n");
+            DPRINTF("SD card not mounted. Cannot list ROMs.\n");
             null_words((uint16_t *)memory_area, 4096 / 2);
         }
         else
@@ -351,7 +351,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         break;
     case GET_CONFIG:
         // Get the list of parameters in the device
-        printf("Command GET_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command GET_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         memcpy(memory_area, &configData, sizeof(configData));
 
         // Swap the keys and values section bytes in the words
@@ -366,65 +366,65 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         break;
     case PUT_CONFIG_STRING:
         // Put a configuration string parameter in the device
-        printf("Command PUT_CONFIG_STRING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command PUT_CONFIG_STRING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         entry = malloc(sizeof(ConfigEntry));
         memcpy(entry, protocol->payload, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
-        printf("Key:%s - Value: %s\n", entry->key, entry->value);
+        DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_string(entry->key, entry->value);
         break;
     case PUT_CONFIG_INTEGER:
         // Put a configuration integer parameter in the device
-        printf("Command PUT_CONFIG_INTEGER (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command PUT_CONFIG_INTEGER (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         entry = malloc(sizeof(ConfigEntry));
         memcpy(entry, protocol->payload, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
-        printf("Key:%s - Value: %s\n", entry->key, entry->value);
+        DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_integer(entry->key, atoi(entry->value));
         break;
     case PUT_CONFIG_BOOL:
         // Put a configuration boolean parameter in the device
-        printf("Command PUT_CONFIG_BOOL (6) received: %d\n", protocol->payload_size);
+        DPRINTF("Command PUT_CONFIG_BOOL (6) received: %d\n", protocol->payload_size);
         entry = malloc(sizeof(ConfigEntry));
         memcpy(entry, protocol->payload, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
-        printf("Key:%s - Value: %s\n", entry->key, entry->value);
+        DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_bool(entry->key, (strcmp(entry->value, "true") == 0) ? true : false);
         break;
     case SAVE_CONFIG:
         // Save the current configuration in the FLASH of the device
-        printf("Command SAVE_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        printf("Protocol payload: %s\n", &protocol->payload);
+        DPRINTF("Command SAVE_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Protocol payload: %s\n", &protocol->payload);
         persist_config = true; // now the active loop should stop and save the config
         break;
     case RESET_DEVICE:
         // Reset the device
-        printf("Command RESET_DEVICE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command RESET_DEVICE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         reset_config_default();
         reset_default = true; // now the active loop should stop and reset the config
         break;
     case LAUNCH_SCAN_NETWORKS:
         // Scan the networks and return the results
-        printf("Command LAUNCH_SCAN_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command LAUNCH_SCAN_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         scan_network = true; // now the active loop should stop and scan the networks
         break;
     case GET_SCANNED_NETWORKS:
         // Get the results of the scanned networks
-        printf("Command GET_SCANNED_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command GET_SCANNED_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         memcpy(memory_area, &wifiScanData, sizeof(wifiScanData));
         network_swap_data((__uint16_t *)memory_area, wifiScanData.count);
         break;
     case CONNECT_NETWORK:
         // Put a configuration string parameter in the device
-        printf("Command CONNECT_NETWORK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command CONNECT_NETWORK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         wifi_auth = malloc(sizeof(WifiNetworkAuthInfo));
         memcpy(wifi_auth, protocol->payload, sizeof(WifiNetworkAuthInfo));
         network_swap_auth_data((__uint16_t *)wifi_auth);
-        printf("SSID:%s - Pass: %s - Auth: %d\n", wifi_auth->ssid, wifi_auth->password, wifi_auth->auth_mode);
+        DPRINTF("SSID:%s - Pass: %s - Auth: %d\n", wifi_auth->ssid, wifi_auth->password, wifi_auth->auth_mode);
         break;
     case GET_IP_DATA:
         // Get IPv4 and IPv6 and SSID info
-        printf("Command GET_IP_DATA (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command GET_IP_DATA (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         ConnectionData *connection_data = malloc(sizeof(ConnectionData));
         get_connection_data(connection_data);
         memcpy(memory_area, connection_data, sizeof(ConnectionData));
@@ -433,35 +433,35 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         break;
     case DISCONNECT_NETWORK:
         // Disconnect from the network
-        printf("Command DISCONNECT_NETWORK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command DISCONNECT_NETWORK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         disconnect_network = true; // now in the active loop should stop and disconnect from the network
         break;
     case GET_ROMS_JSON_FILE:
         // Download the JSON file of the ROMs from the URL
-        printf("Command GET_ROMS_JSON_FILE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command GET_ROMS_JSON_FILE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         get_json_file = true; // now in the active loop should stop and download the JSON file
         break;
     case LOAD_FLOPPY:
         // Load the floppy image passed as argument in the payload
-        printf("Command LOAD_FLOPPY (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command LOAD_FLOPPY (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
-        printf("Value: %d\n", value_payload);
+        DPRINTF("Value: %d\n", value_payload);
         if (microsd_mounted)
         {
             floppy_file_selected = value_payload;
         }
         else
         {
-            printf("SD card not mounted. Cannot load ROM.\n");
+            DPRINTF("SD card not mounted. Cannot load ROM.\n");
             null_words((uint16_t *)memory_area, 4096 / 2);
         }
         break;
     case LIST_FLOPPIES:
         // Get the list of floppy images in the SD card
-        printf("Command LIST_FLOPPIES (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        DPRINTF("Command LIST_FLOPPIES (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         if (!microsd_mounted)
         {
-            printf("SD card not mounted. Cannot list Floppies.\n");
+            DPRINTF("SD card not mounted. Cannot list Floppies.\n");
             null_words((uint16_t *)memory_area, 4096 / 2);
         }
         else
@@ -472,7 +472,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
 
     // ... handle other commands
     default:
-        printf("Unknown command: %d\n", protocol->command_id);
+        DPRINTF("Unknown command: %d\n", protocol->command_id);
     }
 }
 
@@ -486,7 +486,7 @@ void __not_in_flash_func(dma_irq_handler_lookup_callback)(void)
     uint32_t addr = (uint32_t)dma_hw->ch[lookup_data_rom_dma_channel].al3_read_addr_trig;
 
     // Avoid priting anything inside an IRQ handled function
-    // printf("DMA LOOKUP: $%x\n", addr);
+    // DPRINTF("DMA LOOKUP: $%x\n", addr);
     if (addr >= ROM3_START_ADDRESS)
     {
         parse_protocol((uint16_t)(addr & 0xFFFF), handle_protocol_command);
@@ -504,7 +504,7 @@ int copy_firmware_to_RAM()
         uint16_t value = *rom4_src++;
         *rom4_dest++ = value;
     }
-    printf("Firmware copied to RAM.\n");
+    DPRINTF("Firmware copied to RAM.\n");
     return 0;
 }
 
@@ -512,9 +512,9 @@ int delete_FLASH(void)
 {
     // Erase the content before loading the new file. It seems that
     // overwriting it's not enough
-    printf("Erasing FLASH...\n");
+    DPRINTF("Erasing FLASH...\n");
     flash_range_erase(FLASH_ROM_LOAD_OFFSET, (ROM_SIZE_BYTES * 2) - 1); // Two banks of 64K
-    printf("FLASH erased.\n");
+    DPRINTF("FLASH erased.\n");
     return 0;
 }
 
@@ -526,15 +526,15 @@ int init_firmware()
     int num_files = 0;
     char **file_list = NULL;
 
-    printf("\033[2J\033[H"); // Clear Screen
-    printf("\n> ");
+    DPRINTF("\033[2J\033[H"); // Clear Screen
+    DPRINTF("\n> ");
     stdio_flush();
 
     // Initialize SD card
     microsd_initialized = sd_init_driver();
     if (!microsd_initialized)
     {
-        printf("ERROR: Could not initialize SD card\r\n");
+        DPRINTF("ERROR: Could not initialize SD card\r\n");
     }
 
     if (microsd_initialized)
@@ -544,7 +544,7 @@ int init_firmware()
         microsd_mounted = (fr == FR_OK);
         if (!microsd_mounted)
         {
-            printf("ERROR: Could not mount filesystem (%d)\r\n", fr);
+            DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
         }
     }
     microsd_mounted = microsd_mounted & microsd_initialized;
@@ -580,7 +580,7 @@ int init_firmware()
     }
     else
     {
-        printf("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
+        DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
     }
 
     u_int16_t network_poll_counter = 0;
@@ -607,12 +607,12 @@ int init_firmware()
             }
             else
             {
-                printf("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
+                DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
             }
         }
         if (wifi_auth != NULL)
         {
-            printf("Connecting to network...\n");
+            DPRINTF("Connecting to network...\n");
             put_string("WIFI_SSID", wifi_auth->ssid);
             put_string("WIFI_PASSWORD", wifi_auth->password);
             put_integer("WIFI_AUTH", wifi_auth->auth_mode);
@@ -637,11 +637,11 @@ int init_firmware()
                 ConnectionStatus current_status = get_network_connection_status();
                 if (current_status != previous_status)
                 {
-                    printf("Network status: %d\n", current_status);
-                    printf("Network previous status: %d\n", previous_status);
+                    DPRINTF("Network status: %d\n", current_status);
+                    DPRINTF("Network previous status: %d\n", previous_status);
                     ConnectionData *connection_data = malloc(sizeof(ConnectionData));
                     get_connection_data(connection_data);
-                    printf("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s\n", connection_data->ssid, connection_data->status, connection_data->ipv4_address, connection_data->ipv6_address, print_ipv4(get_gateway()), print_ipv4(get_netmask()));
+                    DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s\n", connection_data->ssid, connection_data->status, connection_data->ipv4_address, connection_data->ipv6_address, print_ipv4(get_gateway()), print_ipv4(get_netmask()));
 
                     free(connection_data);
                 }
@@ -694,7 +694,7 @@ int init_firmware()
             {
                 dir = "";
             }
-            printf("ROM images folder: %s\n", dir);
+            DPRINTF("ROM images folder: %s\n", dir);
             file_list = show_dir_files(dir, &num_files);
 
             // Remove hidden files from the list
@@ -715,7 +715,7 @@ int init_firmware()
             {
                 dir = "";
             }
-            printf("Floppy images folder: %s\n", dir);
+            DPRINTF("Floppy images folder: %s\n", dir);
             // Get the list of floppy image files in the directory
             file_list = show_dir_files(dir, &num_files);
 
@@ -733,7 +733,7 @@ int init_firmware()
 
     if (rom_file_selected > 0)
     {
-        printf("ROM file selected: %d\n", rom_file_selected);
+        DPRINTF("ROM file selected: %d\n", rom_file_selected);
 
         // Erase the content before loading the new file. It seems that
         // overwriting it's not enough
@@ -743,7 +743,7 @@ int init_firmware()
         int res = load(find_entry("ROMS_FOLDER")->value, filtered_local_list[rom_file_selected - 1], FLASH_ROM_LOAD_OFFSET);
 
         if (res != FR_OK)
-            printf("f_open error: %s (%d)\n", FRESULT_str(res), res);
+            DPRINTF("f_open error: %s (%d)\n", FRESULT_str(res), res);
 
         release_memory_files(file_list, num_files);
         release_memory_files(filtered_local_list, filtered_num_local_files);
@@ -754,7 +754,7 @@ int init_firmware()
 
     if (rom_network_selected > 0)
     {
-        printf("ROM network selected: %d\n", rom_network_selected);
+        DPRINTF("ROM network selected: %d\n", rom_network_selected);
         int res = download(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
 
         // Free dynamically allocated memory
@@ -770,10 +770,10 @@ int init_firmware()
 
     if (floppy_file_selected > 0)
     {
-        printf("Floppy file selected: %d\n", floppy_file_selected);
+        DPRINTF("Floppy file selected: %d\n", floppy_file_selected);
 
         char *new_floppy = filtered_local_list[floppy_file_selected - 1];
-        printf("Load file: %s\n", new_floppy);
+        DPRINTF("Load file: %s\n", new_floppy);
 
         put_string("FLOPPY_IMAGE_A", new_floppy);
         put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
@@ -785,12 +785,12 @@ int init_firmware()
 
     if (persist_config)
     {
-        printf("Saving configuration to FLASH\n");
+        DPRINTF("Saving configuration to FLASH\n");
         write_all_entries();
     }
     if (reset_default)
     {
-        printf("Resetting configuration to default\n");
+        DPRINTF("Resetting configuration to default\n");
         reset_config_default();
     }
     // Release memory from the protocol

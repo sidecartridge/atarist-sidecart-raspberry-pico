@@ -9,6 +9,7 @@
 #ifndef NETWORK_H
 #define NETWORK_H
 
+#include "debug.h"
 #include "constants.h"
 #include "firmware.h"
 #include "config.h"

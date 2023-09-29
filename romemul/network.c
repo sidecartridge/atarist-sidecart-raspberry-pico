@@ -80,18 +80,18 @@ void network_init()
 {
     // Enable the STA mode
     cyw43_arch_enable_sta_mode();
-    printf("STA network mode enabled\n");
+    DPRINTF("STA network mode enabled\n");
 
     // Set hostname
     char *hostname = find_entry("HOSTNAME")->value;
     netif_set_hostname(netif_default, hostname + '\0');
-    printf("Hostname: %s\n", hostname);
+    DPRINTF("Hostname: %s\n", hostname);
 
     // Initialize the scan data
     wifiScanData.magic = NETWORK_MAGIC;
     memset(wifiScanData.networks, 0, sizeof(wifiScanData.networks));
     wifiScanData.count = 0;
-    printf("Scan data initialized\n");
+    DPRINTF("Scan data initialized\n");
 }
 
 void network_scan()
@@ -130,7 +130,7 @@ void network_scan()
                 {
                     wifiScanData.networks[wifiScanData.count] = network;
                     wifiScanData.count++;
-                    printf("Found network %s\n", network.ssid);
+                    DPRINTF("Found network %s\n", network.ssid);
                 }
             }
         }
@@ -138,21 +138,21 @@ void network_scan()
     }
     if (!cyw43_wifi_scan_active(&cyw43_state))
     {
-        printf("Scanning networks...\n");
+        DPRINTF("Scanning networks...\n");
         cyw43_wifi_scan_options_t scan_options = {0};
         int err = cyw43_wifi_scan(&cyw43_state, &scan_options, NULL, scan_result);
         if (err == 0)
         {
-            printf("\nPerforming wifi scan\n");
+            DPRINTF("Performing wifi scan\n");
         }
         else
         {
-            printf("Failed to start scan: %d\n", err);
+            DPRINTF("Failed to start scan: %d\n", err);
         }
     }
     else
     {
-        printf("Scan already in progress\n");
+        DPRINTF("Scan already in progress\n");
     }
 }
 
@@ -161,11 +161,11 @@ void network_disconnect()
     int error = cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
     if (error == 0)
     {
-        printf("Disconnected\n");
+        DPRINTF("Disconnected\n");
     }
     else
     {
-        printf("Failed to disconnect: %d\n", error);
+        DPRINTF("Failed to disconnect: %d\n", error);
     }
     connection_status = DISCONNECTED;
 }
@@ -176,7 +176,7 @@ void network_connect(bool force, bool async)
     {
         if ((connection_status == CONNECTED_WIFI_IP) || (connection_status == CONNECTED_WIFI))
         {
-            printf("Already connected\n");
+            DPRINTF("Already connected\n");
             return;
         }
     }
@@ -184,7 +184,7 @@ void network_connect(bool force, bool async)
     ConfigEntry *ssid = find_entry("WIFI_SSID");
     if (strlen(ssid->value) == 0)
     {
-        printf("No SSID found in config. Can't connect\n");
+        DPRINTF("No SSID found in config. Can't connect\n");
         connection_status = DISCONNECTED;
         return;
     }
@@ -198,10 +198,10 @@ void network_connect(bool force, bool async)
     }
     else
     {
-        printf("No password found in config. Trying to connect without password\n");
+        DPRINTF("No password found in config. Trying to connect without password\n");
     }
     uint32_t auth_value = get_auth_pico_code(atoi(auth_mode->value));
-    printf("Connecting to SSID=%s, password=%s, auth=%08x\n", ssid->value, password_value, auth_value);
+    DPRINTF("Connecting to SSID=%s, password=%s, auth=%08x\n", ssid->value, password_value, auth_value);
     int error_code = 0;
     if (!async)
     {
@@ -215,51 +215,51 @@ void network_connect(bool force, bool async)
     if ((error_code == 0) && (async))
     {
         connection_status = CONNECTING;
-        printf("Connecting to SSID=%s\n", ssid->value);
+        DPRINTF("Connecting to SSID=%s\n", ssid->value);
     }
     else
     {
         switch (error_code)
         {
         case PICO_ERROR_TIMEOUT:
-            printf("Failed to connect to SSID=%s. Timeout\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. Timeout\n", ssid->value);
             connection_status = TIMEOUT_ERROR;
             break;
         case PICO_ERROR_GENERIC:
-            printf("Failed to connect to SSID=%s. Generic error\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. Generic error\n", ssid->value);
             connection_status = GENERIC_ERROR;
             break;
         case PICO_ERROR_NO_DATA:
-            printf("Failed to connect to SSID=%s. No data\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. No data\n", ssid->value);
             connection_status = NO_DATA_ERROR;
             break;
         case PICO_ERROR_NOT_PERMITTED:
-            printf("Failed to connect to SSID=%s. Not permitted\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. Not permitted\n", ssid->value);
             connection_status = NOT_PERMITTED_ERROR;
             break;
         case PICO_ERROR_INVALID_ARG:
-            printf("Failed to connect to SSID=%s. Invalid argument\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. Invalid argument\n", ssid->value);
             connection_status = INVALID_ARG_ERROR;
             break;
         case PICO_ERROR_IO:
-            printf("Failed to connect to SSID=%s. IO error\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. IO error\n", ssid->value);
             connection_status = IO_ERROR;
             break;
         case PICO_ERROR_BADAUTH:
-            printf("Failed to connect to SSID=%s. Bad auth\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. Bad auth\n", ssid->value);
             connection_status = BADAUTH_ERROR;
             break;
         case PICO_ERROR_CONNECT_FAILED:
-            printf("Failed to connect to SSID=%s. Connect failed\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. Connect failed\n", ssid->value);
             connection_status = CONNECT_FAILED_ERROR;
             break;
         case PICO_ERROR_INSUFFICIENT_RESOURCES:
-            printf("Failed to connect to SSID=%s. Insufficient resources\n", ssid->value);
+            DPRINTF("Failed to connect to SSID=%s. Insufficient resources\n", ssid->value);
             connection_status = INSUFFICIENT_RESOURCES_ERROR;
             break;
         default:
             connection_status = CONNECTED_WIFI;
-            printf("Connected to SSID=%s\n", ssid->value);
+            DPRINTF("Connected to SSID=%s\n", ssid->value);
         }
     }
 }
@@ -298,22 +298,22 @@ ConnectionStatus get_network_connection_status()
         switch (link_status)
         {
         case CYW43_LINK_DOWN:
-            printf("Link down\n");
+            DPRINTF("Link down\n");
             break;
         case CYW43_LINK_JOIN:
-            printf("Link join. Connected!\n");
+            DPRINTF("Link join. Connected!\n");
             break;
         case CYW43_LINK_FAIL:
-            printf("Link fail\n");
+            DPRINTF("Link fail\n");
             break;
         case CYW43_LINK_NONET:
-            printf("Link no net\n");
+            DPRINTF("Link no net\n");
             break;
         case CYW43_LINK_BADAUTH:
-            printf("Link bad auth\n");
+            DPRINTF("Link bad auth\n");
             break;
         default:
-            printf("Link unknown\n");
+            DPRINTF("Link unknown\n");
         }
     }
     return connection_status;
@@ -536,19 +536,19 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
         complete = true;
         if (srv_res != 200)
         {
-            printf("JSON something went wrong. HTTP error: %d\n", srv_res);
+            DPRINTF("JSON something went wrong. HTTP error: %d\n", srv_res);
         }
         else
         {
-            printf("JSON Transfer complete. %d transfered.\n", rx_content_len);
+            DPRINTF("JSON Transfer complete. %d transfered.\n", rx_content_len);
         }
     }
 
     err_t body(void *arg, struct altcp_pcb *conn,
                struct pbuf *p, err_t err)
     {
-        // printf("Body received. ");
-        // printf("Buffer size:%d\n", p->tot_len);
+        // DPRINTF("Body received. ");
+        // DPRINTF("Buffer size:%d\n", p->tot_len);
         // fflush(stdout);
         pbuf_copy_partial(p, (buff + buff_pos), p->tot_len, 0);
         buff_pos += p->tot_len;
@@ -561,16 +561,16 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
         return ERR_OK;
     }
 
-    printf("Downloading JSON file from %s\n", url);
+    DPRINTF("Downloading JSON file from %s\n", url);
     if (split_url(url, &parts) != 0)
     {
-        printf("Failed to split URL\n");
+        DPRINTF("Failed to split URL\n");
         return;
     }
 
-    printf("Protocol %s\n", parts.protocol);
-    printf("Domain %s\n", parts.domain);
-    printf("URI %s\n", parts.uri);
+    DPRINTF("Protocol %s\n", parts.protocol);
+    DPRINTF("Domain %s\n", parts.domain);
+    DPRINTF("URI %s\n", parts.uri);
 
     httpc_connection_t settings;
     settings.result_fn = result;
@@ -591,7 +591,7 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
 
     if (err != ERR_OK)
     {
-        printf("HTTP GET failed: %d\n", err);
+        DPRINTF("HTTP GET failed: %d\n", err);
         free_url_parts(&parts);
         return;
     }
@@ -631,10 +631,10 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
         // Print parsed data as a test
         // for (int i = 0; i < *itemCount; i++)
         // {
-        //     printf("URL: %s\n", (*items)[i].url);
-        //     printf("Name: %s\n", (*items)[i].name);
-        //     printf("Description: %s\n", (*items)[i].description);
-        //     printf("Size (KB): %d\n", (*items)[i].size_kb);
+        //     DPRINTF("URL: %s\n", (*items)[i].url);
+        //     DPRINTF("Name: %s\n", (*items)[i].name);
+        //     DPRINTF("Description: %s\n", (*items)[i].description);
+        //     DPRINTF("Size (KB): %d\n", (*items)[i].size_kb);
         // }
 
         // Free dynamically allocated memory
@@ -671,21 +671,21 @@ int download(const char *url, uint32_t rom_load_offset)
         complete = true;
         if (srv_res != 200)
         {
-            printf("ROM image download something went wrong. HTTP error: %d\n", srv_res);
+            DPRINTF("ROM image download something went wrong. HTTP error: %d\n", srv_res);
         }
         else
         {
-            printf("ROM image transfer complete. %d transfered.\n", rx_content_len);
-            printf("Pending bytes to write: %d\n", flash_buff_pos);
+            DPRINTF("ROM image transfer complete. %d transfered.\n", rx_content_len);
+            DPRINTF("Pending bytes to write: %d\n", flash_buff_pos);
         }
     }
 
     err_t body(void *arg, struct altcp_pcb *conn,
                struct pbuf *p, err_t err)
     {
-        // printf("Body received. ");
-        // printf("Buffer size:%d. ", p->tot_len);
-        // printf("Copying to address: %p\n", dest_address);
+        // DPRINTF("Body received. ");
+        // DPRINTF("Buffer size:%d. ", p->tot_len);
+        // DPRINTF("Copying to address: %p\n", dest_address);
         // fflush(stdout);
 
         // Transform buffer's words from little endian to big endian inline
@@ -697,7 +697,7 @@ int download(const char *url, uint32_t rom_load_offset)
             // Check if the first 4 bytes are 0x0000
             if (buffer[0] == 0x00 && buffer[1] == 0x00 && buffer[2] == 0x00 && buffer[3] == 0x00)
             {
-                printf("Skipping first 4 bytes. Looks like a STEEM cartridge image.\n");
+                DPRINTF("Skipping first 4 bytes. Looks like a STEEM cartridge image.\n");
                 steem_offset = 4;
             }
             first_chunk = false;
@@ -705,19 +705,19 @@ int download(const char *url, uint32_t rom_load_offset)
         uint16_t flash_buffer_current_size = FLASH_BUFFER_SIZE - flash_buff_pos - steem_offset;
         if (total_bytes_copy < flash_buffer_current_size)
         {
-            // printf("Copying %d bytes to address: %p...", (total_bytes_copy - steem_offset), (flash_buff + flash_buff_pos));
+            // DPRINTF("Copying %d bytes to address: %p...", (total_bytes_copy - steem_offset), (flash_buff + flash_buff_pos));
             // THere is room in the flash_buff to copy the whole buffer
             pbuf_copy_partial(p, (flash_buff + flash_buff_pos), (total_bytes_copy - steem_offset), steem_offset);
             // increment the flash buffer position
             flash_buff_pos += (total_bytes_copy - steem_offset);
-            // printf("Done.\n");
+            // DPRINTF("Done.\n");
         }
         else
         {
-            // printf("Copying %d bytes to address: %p...", flash_buffer_current_size, (flash_buff + flash_buff_pos));
+            // DPRINTF("Copying %d bytes to address: %p...", flash_buffer_current_size, (flash_buff + flash_buff_pos));
             // There is no room, so we have to fill it first, invert, write to flash and continue
             pbuf_copy_partial(p, (flash_buff + flash_buff_pos), flash_buffer_current_size, 0);
-            // printf("Done.\n");
+            // DPRINTF("Done.\n");
 
             // Change to big endian
             for (int j = 0; j < FLASH_BUFFER_SIZE; j += 2)
@@ -727,13 +727,13 @@ int download(const char *url, uint32_t rom_load_offset)
             }
 
             // Write chunk to flash
-            printf("Writing %d bytes to address: %p...", flash_buff_pos + flash_buffer_current_size, dest_address);
+            DPRINTF("Writing %d bytes to address: %p...", flash_buff_pos + flash_buffer_current_size, dest_address);
             uint32_t ints = save_and_disable_interrupts();
             flash_range_program(dest_address, flash_buff, FLASH_BUFFER_SIZE);
             restore_interrupts(ints);
             dest_address += FLASH_BUFFER_SIZE;
             flash_buff_pos = 0;
-            printf("Done.\n");
+            DPRINTF("Done.\n");
 
             // Reset the flash buffer position
             flash_buff_pos = 0;
@@ -742,10 +742,10 @@ int download(const char *url, uint32_t rom_load_offset)
             uint16_t bytes_left = total_bytes_copy - flash_buffer_current_size;
             if (bytes_left > 0)
             {
-                // printf("Copying pending %d bytes to address: %p...", bytes_left, (flash_buff + flash_buff_pos));
+                // DPRINTF("Copying pending %d bytes to address: %p...", bytes_left, (flash_buff + flash_buff_pos));
                 pbuf_copy_partial(p, (flash_buff + flash_buff_pos), bytes_left, flash_buffer_current_size);
                 flash_buff_pos += bytes_left;
-                // printf("Done.\n");
+                // DPRINTF("Done.\n");
             }
         }
 
@@ -757,14 +757,14 @@ int download(const char *url, uint32_t rom_load_offset)
         //     flash_buff_pos += 2;
         //     if (flash_buff_pos == FLASH_BUFFER_SIZE)
         //     {
-        //         printf("Writing %d bytes to address: %p...", flash_buff_pos, dest_address);
+        //         DPRINTF("Writing %d bytes to address: %p...", flash_buff_pos, dest_address);
         //         // Disable the flash writing for now until I fix this issue
         //         uint32_t ints = save_and_disable_interrupts();
         //         flash_range_program(dest_address, flash_buff, FLASH_BUFFER_SIZE);
         //         restore_interrupts(ints);
         //         dest_address += FLASH_BUFFER_SIZE;
         //         flash_buff_pos = 0;
-        //         printf("Done.\n");
+        //         DPRINTF("Done.\n");
         //     }
         // }
 
@@ -776,26 +776,26 @@ int download(const char *url, uint32_t rom_load_offset)
         }
         return ERR_OK;
     }
-    printf("Downloading ROM image from %s\n", url);
+    DPRINTF("Downloading ROM image from %s\n", url);
     if (split_url(url, &parts) != 0)
     {
-        printf("Failed to split URL\n");
+        DPRINTF("Failed to split URL\n");
         return -1;
     }
 
-    printf("Protocol %s\n", parts.protocol);
-    printf("Domain %s\n", parts.domain);
-    printf("URI %s\n", parts.uri);
+    DPRINTF("Protocol %s\n", parts.protocol);
+    DPRINTF("Domain %s\n", parts.domain);
+    DPRINTF("URI %s\n", parts.uri);
 
     is_steem = check_STEEM_extension(parts);
 
     // Erase the content before loading the new file. It seems that
     // overwriting it's not enough
-    printf("Erasing FLASH ROM image area at address: %p...\n", rom_load_offset);
+    DPRINTF("Erasing FLASH ROM image area at address: %p...\n", rom_load_offset);
     uint32_t ints = save_and_disable_interrupts();
     flash_range_erase(rom_load_offset, ROM_SIZE_BYTES * 2); // Two banks of 64K
     restore_interrupts(ints);
-    printf("Erased.\n");
+    DPRINTF("Erased.\n");
 
     httpc_connection_t settings;
     memset(&settings, 0, sizeof(settings));
@@ -806,7 +806,7 @@ int download(const char *url, uint32_t rom_load_offset)
 
     complete = false;
     cyw43_arch_lwip_begin();
-    printf("Downloading ROM image from %s\n", url);
+    DPRINTF("Downloading ROM image from %s\n", url);
     err_t err = httpc_get_file_dns(
         parts.domain,
         LWIP_IANA_PORT_HTTP,
@@ -819,13 +819,13 @@ int download(const char *url, uint32_t rom_load_offset)
 
     if (err != ERR_OK)
     {
-        printf("HTTP GET failed: %d\n", err);
+        DPRINTF("HTTP GET failed: %d\n", err);
         free_url_parts(&parts);
         return -1;
     }
     else
     {
-        printf("HTTP GET sent\n");
+        DPRINTF("HTTP GET sent\n");
     }
     while (!complete)
     {
