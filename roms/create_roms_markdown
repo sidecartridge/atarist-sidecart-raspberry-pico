@@ -6,8 +6,8 @@ import json
 with open("roms.json", "r") as file:
     data = json.load(file)
 
-# Sort the data lexicographically by the name key
-sorted_data = sorted(data, key=lambda x: x["name"])
+# Sort the data alphabetically ignoring case by the name key
+sorted_data = sorted(data, key=lambda x: x["name"].lower())
 
 # Write the content to a markdown file
 with open("roms.md", "w") as output_file:
@@ -23,18 +23,16 @@ permalink: /roms/
 
 You can find the full list in the JSON file [here](http://roms.sidecart.xyz/roms.json).
 
+| Name | Description | Size (KB) |
+| --- | --- | --- |
 """
     )
 
-    # Write the sorted list of ROMs
     for item in sorted_data:
-        rom_name = item["name"]
+        rom_name = f"[{item['name']}]({item['url']})"
         rom_description = item["description"]
         rom_size = item["size_kb"]
-        rom_url = item["url"]
 
-        output_file.write(
-            f"- **{rom_name}**\n  - *Description*: {rom_description}\n  - *Size*: {rom_size} KB\n  - [Link to ROM]({rom_url})\n\n"
-        )
+        output_file.write(f"| {rom_name} | {rom_description} | {rom_size} |\n")
 
 print("Markdown file 'roms.md' has been created successfully.")

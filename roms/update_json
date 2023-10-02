@@ -16,17 +16,48 @@ from urllib.parse import quote
 s3 = boto3.client("s3")
 
 
+def get_s3_files(bucket_name: str):
+    """Returns a set of file names currently in the S3 bucket."""
+    s3_files = set()
+    result = s3.list_objects(Bucket=bucket_name)
+    for content in result.get("Contents", []):
+        s3_files.add(content["Key"])
+    return s3_files
+
+
 def upload_to_s3(directory: str, bucket_name: str):
     """Uploads all files from directory to the specified S3 bucket."""
-    for file_name in os.listdir(directory):
-        if not file_name.startswith(".") and file_name != "update_json":
-            file_path = os.path.join(directory, file_name)
-            with open(file_path, "rb") as file_data:
-                s3.upload_fileobj(file_data, bucket_name, file_name)
-            print(f"Uploaded {file_name} to S3 bucket {bucket_name}")
+
+    # Get a list of all local files not starting with "." and not equal to "update_json"
+    local_files = set(
+        file_name
+        for file_name in os.listdir(directory)
+        if not file_name.startswith(".")
+        and file_name != "update_json"
+        and file_name != "roms.md"
+        and file_name != "create_roms_markdown"
+    )
+
+    # Get a list of all files currently in the S3 bucket
+    s3_files = get_s3_files(bucket_name)
+
+    # Files in local but not in S3 are new files that need to be uploaded.
+    to_upload = local_files - s3_files
+    for file_name in to_upload:
+        file_path = os.path.join(directory, file_name)
+        with open(file_path, "rb") as file_data:
+            s3.upload_fileobj(file_data, bucket_name, file_name)
+        print(f"Uploaded {file_name} to S3 bucket {bucket_name}")
+
+    # Files in S3 but not in local are deleted files that need to be removed from S3.
+    to_delete = s3_files - local_files
+    for file_name in to_delete:
+        s3.delete_object(Bucket=bucket_name, Key=file_name)
+        print(f"Deleted {file_name} from S3 bucket {bucket_name}")
 
 
 def update_roms(directory: str, base_url: str):
+    """Updates roms.json with new files and their URLs."""
     # Allowed file extensions
     allowed_extensions = [".img", ".bin", ".stc", ".rom"]
 
@@ -38,7 +69,7 @@ def update_roms(directory: str, base_url: str):
         with open(json_path, "r", encoding="utf-8") as f:
             roms_data = json.load(f)
 
-    current_files = [rom["name"].lower() for rom in roms_data]
+    current_files = [rom["url"].split("/")[-1].lower() for rom in roms_data]
 
     # Loop through each file in the directory, excluding roms.json
     for file_name in os.listdir(directory):
@@ -46,7 +77,7 @@ def update_roms(directory: str, base_url: str):
 
         if (
             file_name != "roms.json"
-            and file_base_name.lower() not in current_files
+            and quote(file_name).lower() not in current_files
             and file_ext.lower() in allowed_extensions
         ):
             file_size_kb = int(
