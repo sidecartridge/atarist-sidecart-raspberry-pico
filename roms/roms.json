@@ -41,16 +41,6 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Falcon%20Test%20v1.27b.img",
-        "name": "Falcon Test v1.27b",
-        "description": "A diagnostic tool for Atari Falcon computers.",
-        "tags": [
-            "diagnostic",
-            "tool"
-        ],
-        "size_kb": 128
-    },
-    {
         "url": "http://roms.sidecart.xyz/Star%20Wars.STC",
         "name": "Star Wars",
         "description": "A space simulation game based on the Star Wars movies.",
@@ -63,7 +53,7 @@
     },
     {
         "url": "http://roms.sidecart.xyz/STE%20Test%20v1.9.img",
-        "name": "STE Test v1.9",
+        "name": "STE Diagnostic v1.9",
         "description": "A diagnostic tool for Atari STE computers.",
         "tags": [
             "diagnostic",
@@ -93,54 +83,25 @@
     },
     {
         "url": "http://roms.sidecart.xyz/CA3F_1W.BIN",
-        "name": "CA3F_1W",
-        "description": "Several PPera tools as an example of custom built cartridge.",
+        "name": "DiskDoctor, FIRDC and MonST",
+        "description": "DiskDoctor, FIRDC and MonST in a PPera example of custom built cartridge.",
         "tags": [
             "coding",
-            "tool"
+            "tool",
+            "homebrew"
         ],
         "size_kb": 64
     },
     {
         "url": "http://roms.sidecart.xyz/Xenon.STC",
         "name": "Xenon",
-        "description": "A vertical scrolling shooter game where players control a transforming vehicle.",
+        "description": "A vertical scrolling shooter game where players control a vehicle.",
         "tags": [
             "arcade",
             "shooter",
             "action"
         ],
         "size_kb": 128
-    },
-    {
-        "url": "http://roms.sidecart.xyz/TT%20Test%20v1.4.img",
-        "name": "TT Test v1.4",
-        "description": "A diagnostic tool designed for the Atari TT computer series.",
-        "tags": [
-            "diagnostic",
-            "tool"
-        ],
-        "size_kb": 64
-    },
-    {
-        "url": "http://roms.sidecart.xyz/TT%20Test%20v1.5.img",
-        "name": "TT Test v1.5",
-        "description": "Another version of the diagnostic tool for the Atari TT computer series.",
-        "tags": [
-            "diagnostic",
-            "tool"
-        ],
-        "size_kb": 64
-    },
-    {
-        "url": "http://roms.sidecart.xyz/Falcon%20Test%20v1.25.img",
-        "name": "Falcon Test v1.25",
-        "description": "A diagnostic tool specifically designed for the Atari Falcon computer series.",
-        "tags": [
-            "diagnostic",
-            "tool"
-        ],
-        "size_kb": 64
     },
     {
         "url": "http://roms.sidecart.xyz/Ultimate%20Ripper%20v1.2.img",
@@ -154,7 +115,7 @@
     },
     {
         "url": "http://roms.sidecart.xyz/TESTROM.BIN",
-        "name": "TESTROM",
+        "name": "TESTROM Cartridge for Sidecart",
         "description": "A generic test ROM for Atari hardware, used to verify functionality.",
         "tags": [
             "test",
@@ -163,34 +124,15 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/TT%20Test%20v1.6.img",
-        "name": "TT Test v1.6",
-        "description": "Yet another version of the diagnostic tool for the Atari TT computer series.",
-        "tags": [
-            "diagnostic",
-            "tool"
-        ],
-        "size_kb": 64
-    },
-    {
         "url": "http://roms.sidecart.xyz/ST%20Diagnostic%203.61.img",
         "name": "ST Diagnostic 3.61",
         "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
         "tags": [
             "diagnostic",
-            "tool"
+            "tool",
+            "ST"
         ],
         "size_kb": 32
-    },
-    {
-        "url": "http://roms.sidecart.xyz/XENCRT2.img",
-        "name": "XENCRT2",
-        "description": "A ROM image, possibly related to a game or an application for Atari computers.",
-        "tags": [
-            "rom",
-            "binary"
-        ],
-        "size_kb": 128
     },
     {
         "url": "http://roms.sidecart.xyz/Start%20Raiders.STC",
@@ -202,26 +144,6 @@
             "arcade"
         ],
         "size_kb": 128
-    },
-    {
-        "url": "http://roms.sidecart.xyz/ST%20Test%20v4.4.img",
-        "name": "ST Test v4.4",
-        "description": "A diagnostic tool for the Atari ST computer series, ensuring its smooth functioning.",
-        "tags": [
-            "diagnostic",
-            "tool"
-        ],
-        "size_kb": 64
-    },
-    {
-        "url": "http://roms.sidecart.xyz/MegaSTE%20Test%20v1.5.img",
-        "name": "MegaSTE Test v1.5",
-        "description": "A diagnostic tool tailored for the Atari MegaSTE computer series.",
-        "tags": [
-            "diagnostic",
-            "tool"
-        ],
-        "size_kb": 64
     },
     {
         "url": "http://roms.sidecart.xyz/cumana%20OS-9.stc",
@@ -294,7 +216,7 @@
     },
     {
         "url": "http://roms.sidecart.xyz/VT100.stc",
-        "name": "VT100",
+        "name": "VT100 Terminal Emulator",
         "description": "Terminal emulation software.",
         "tags": [
             "emulator",
@@ -359,5 +281,218 @@
             "os"
         ],
         "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/MegaSTE%20Diagnostic%20v1.5.bin",
+        "name": "MegaSTE Diagnostic v1.5",
+        "description": "A diagnostic tool tailored for the Atari MegaSTE computer series.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Falcon%20Diagnostic%20v1.21.bin",
+        "name": "Falcon Diagnostic v1.21",
+        "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "falcon"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Falcon%20Diagnostic%20v1.20.bin",
+        "name": "Falcon Diagnostic v1.20",
+        "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "falcon"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/TT%20Diagnostic%20v1.6.bin",
+        "name": "TT Diagnostic v1.6",
+        "description": "A diagnostic tool tailored for the Atari TT computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "TT"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/SYSINFO.STC",
+        "name": "SYSINFO",
+        "description": "System information tool",
+        "tags": [
+            "system",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Falcon%20Diagnostic%20v1.25.bin",
+        "name": "Falcon Diagnostic v1.25",
+        "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "falcon"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/TT%20Diagnostic%20v1.5.bin",
+        "name": "TT Diagnostic v1.5",
+        "description": "A diagnostic tool tailored for the Atari TT computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "TT"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/REVCART.STC",
+        "name": "Revenge of the Mutant Camels",
+        "description": "The follow-up game of the classic Attack of the Mutant Camels.",
+        "tags": [
+            "space",
+            "arcade"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/TT%20Diagnostic%20v1.4.bin",
+        "name": "TT Diagnostic v1.4",
+        "description": "A diagnostic tool tailored for the Atari TT computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "TT"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/YAART_TT.STC",
+        "name": "Yet Another Atari RAM Test for TT",
+        "description": "Yet Another Atari RAM Test for TT series",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "TT"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/ULTIBOOT.STC",
+        "name": "ULTIBOOT - Disk utilities",
+        "description": "A set of disk utilities for Atari ST computers.",
+        "tags": [
+            "tool",
+            "disk"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/YAART_ST.STC",
+        "name": "Yet Another Atari RAM Test for ST/STE series",
+        "description": "Yet Another Atari RAM Test for ST/STE series",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "ST"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%204.21.bin",
+        "name": "ST Diagnostic 4.21",
+        "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "ST"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/GB6.STC",
+        "name": "GEMBENCH 6.0",
+        "description": "GEMBENCH 6.0 - A diagnostic tool for Atari ST computers by Exxos.",
+        "tags": [
+            "diagnostic",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/CARD1.STC",
+        "name": "DiskDoctor, Kobold and Tracc 4",
+        "description": "Copy disk utilities for Atari ST computers.",
+        "tags": [
+            "tool",
+            "disk"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%204.0c.bin",
+        "name": "ST Diagnostic 4.0c",
+        "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "ST"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Falcon%20Diagnostic%20v1.27b.bin",
+        "name": "Falcon Diagnostic v1.27b",
+        "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "falcon"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%20v4.3.bin",
+        "name": "ST Diagnostic v4.3",
+        "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "ST"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%20v4.4.bin",
+        "name": "ST Diagnostic v4.4",
+        "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
+        "tags": [
+            "diagnostic",
+            "tool",
+            "ST"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Ultimate%20Ripper%201.2fr.bin",
+        "name": "Ultimate Ripper v1.2fr",
+        "description": "A tool for extracting or 'ripping' data from games or applications on Atari. French version.",
+        "tags": [
+            "tool",
+            "ripper"
+        ],
+        "size_kb": 64
     }
 ]
