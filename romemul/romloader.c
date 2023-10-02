@@ -642,8 +642,14 @@ int init_firmware()
                     ConnectionData *connection_data = malloc(sizeof(ConnectionData));
                     get_connection_data(connection_data);
                     DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s\n", connection_data->ssid, connection_data->status, connection_data->ipv4_address, connection_data->ipv6_address, print_ipv4(get_gateway()), print_ipv4(get_netmask()));
-
                     free(connection_data);
+
+                    // If there is a connection and an IP address, get the latest version from the github repository
+                    if (current_status == CONNECTED_WIFI_IP)
+                    {
+                        // Print the latest release found in the github repository
+                        DPRINTF("Latest version found: %s\n", get_latest_release());
+                    }
                 }
             }
         }

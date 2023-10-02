@@ -3,6 +3,7 @@
 static ConnectionStatus connection_status = DISCONNECTED;
 static ConnectionStatus previous_connection_status = NOT_SUPPORTED;
 WifiScanData wifiScanData;
+char *latest_release = NULL;
 
 u_int32_t get_auth_pico_code(u_int16_t connect_code)
 {
@@ -513,6 +514,128 @@ bool check_STEEM_extension(UrlParts parts)
     }
 
     return steem_extension;
+}
+
+void download_latest_release(const char *url)
+{
+    char *buff = malloc(32768);
+    uint32_t buff_pos = 0;
+    httpc_state_t *connection;
+    bool complete = false;
+    UrlParts parts;
+
+    err_t headers(httpc_state_t * connection, void *arg,
+                  struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
+    {
+        printf("headers recieved\n");
+        printf("content length=%d\n", content_len);
+        printf("header length %d\n", hdr_len);
+        pbuf_copy_partial(hdr, buff, hdr->tot_len, 0);
+        printf("headers \n");
+        printf("%s", buff);
+        return ERR_OK;
+    }
+
+    void result(void *arg, httpc_result_t httpc_result,
+                u32_t rx_content_len, u32_t srv_res, err_t err)
+
+    {
+        complete = true;
+        if (srv_res != 200)
+        {
+            DPRINTF("JSON something went wrong. HTTP error: %d\n", srv_res);
+        }
+        else
+        {
+            DPRINTF("JSON Transfer complete. %d transfered.\n", rx_content_len);
+        }
+    }
+
+    err_t body(void *arg, struct altcp_pcb *conn,
+               struct pbuf *p, err_t err)
+    {
+        pbuf_copy_partial(p, (buff + buff_pos), p->tot_len, 0);
+        buff_pos += p->tot_len;
+        tcp_recved(conn, p->tot_len);
+        if (p != NULL)
+        {
+            pbuf_free(p);
+        }
+
+        return ERR_OK;
+    }
+
+    DPRINTF("Getting latest release JSON description %s\n", url);
+    if (split_url(url, &parts) != 0)
+    {
+        DPRINTF("Failed to split URL\n");
+        return;
+    }
+
+    DPRINTF("Protocol %s\n", parts.protocol);
+    DPRINTF("Domain %s\n", parts.domain);
+    DPRINTF("URI %s\n", parts.uri);
+
+    httpc_connection_t settings;
+    settings.result_fn = result;
+    settings.headers_done_fn = headers;
+    settings.use_proxy = false;
+
+    complete = false;
+    cyw43_arch_lwip_begin();
+    err_t err = httpc_get_file_dns(
+        parts.domain,
+        LWIP_IANA_PORT_HTTP,
+        parts.uri,
+        &settings,
+        body,
+        NULL,
+        NULL);
+    cyw43_arch_lwip_end();
+
+    if (err != ERR_OK)
+    {
+        DPRINTF("HTTP GET failed: %d\n", err);
+        free_url_parts(&parts);
+        return;
+    }
+    while (!complete)
+    {
+#if PICO_CYW43_ARCH_POLL
+        cyw43_arch_lwip_begin();
+        network_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
+        cyw43_arch_lwip_end();
+#else
+        sleep_ms(100);
+#endif
+    }
+
+    free_url_parts(&parts);
+
+    cJSON *json = cJSON_Parse(buff);
+    if (json != NULL)
+    {
+
+        cJSON *json_item = cJSON_GetObjectItemCaseSensitive(json, "tag_name");
+        if (cJSON_IsString(json_item) && json_item->valuestring)
+        {
+            latest_release = strdup(json_item->valuestring);
+        }
+
+        cJSON_Delete(json);
+        free(buff);
+    }
+}
+
+char *get_latest_release(void)
+{
+
+    if (latest_release == NULL)
+    {
+        download_latest_release(FIRMWARE_RELEASE_VERSION_URL);
+    }
+    return latest_release;
 }
 
 void get_json_files(RomInfo **items, int *itemCount, const char *url)

@@ -35,6 +35,7 @@
 #define NETWORK_POLL_INTERVAL 10 // 5 seconds
 #define NETWORK_CONNECTION_ASYNC true
 #define NETWORK_CONNECTION_TIMEOUT 5000 // 5 seconds
+#define FIRMWARE_RELEASE_VERSION_URL "https://api.github.com/repos/diegoparrilla/atarist-sidecart-raspberry-pico/releases/latest"
 
 typedef enum
 {
@@ -122,6 +123,7 @@ char *print_ipv4(uint32_t ip);
 void get_connection_data(ConnectionData *connection_data);
 void get_json_files(RomInfo **items, int *itemCount, const char *url);
 int download(const char *url, uint32_t rom_load_offset);
+char *get_latest_release(void);
 
 void freeRomItem(RomInfo *item);
 
