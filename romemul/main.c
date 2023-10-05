@@ -97,12 +97,40 @@ int main()
     ConfigEntry *default_config_entry = find_entry("BOOT_FEATURE");
     DPRINTF("BOOT_FEATURE: %s\n", default_config_entry->value);
 
+    // No SELECT button pressed or CONFIGURATOR entry found in config. Normal boot
     if ((gpio_get(5) == 0) && (strcmp(default_config_entry->value, "CONFIGURATOR") != 0))
     {
-        DPRINTF("No SELECT button pressed. ");
+        DPRINTF("No SELECT button pressed.\n");
         if (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0)
         {
-            DPRINTF("ROM_EMULATOR entry found in config. Launching.\n");
+            DPRINTF("No SELECT button pressed. ROM_EMULATOR entry found in config. Launching.\n");
+
+            // Check if Delay ROM emulation (ripper style boot) is true
+            ConfigEntry *rom_delay_config_entry = find_entry("DELAY_ROM_EMULATION");
+            DPRINTF("DELAY_ROM_EMULATION: %s\n", rom_delay_config_entry->value);
+            if ((strcmp(rom_delay_config_entry->value, "true") == 0) || (strcmp(rom_delay_config_entry->value, "TRUE") == 0) || (strcmp(rom_delay_config_entry->value, "T") == 0))
+            {
+                DPRINTF("Delaying ROM emulation.\n");
+                // The "D" character stands for "D"
+                blink_morse('D');
+
+                // While until the user presses the SELECT button again to launch the ROM emulator
+                while (gpio_get(5) == 0)
+                {
+                    tight_loop_contents();
+                    sleep_ms(1000); // Give me a break... to display the message
+                }
+
+                DPRINTF("SELECT button pressed.\n");
+                // Now wait for the user to release the SELECT button
+                while (gpio_get(5) != 0)
+                {
+                    tight_loop_contents();
+                }
+
+                DPRINTF("SELECT button released. Launching ROM emulator.\n");
+            }
+
             // Canonical way to initialize the ROM emulator:
             // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
             init_romemul(NULL, NULL, true);
