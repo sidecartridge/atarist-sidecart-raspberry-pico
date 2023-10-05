@@ -103,12 +103,12 @@ static char **show_dir_files(const char *dir, int *num_files)
 
 static int load(char *path, char *filename, uint32_t rom_load_offset)
 {
-    FIL fsrc;                                /* File objects */
-    BYTE buffer[4096];                       /* File copy buffer */
-    FRESULT fr;                              /* FatFs function common result code */
-    unsigned int br = 0;                     /* File read/write count */
-    unsigned int size = 0;                   // File size
-    uint32_t dest_address = rom_load_offset; // Initialize pointer to the ROM address
+    FIL fsrc;                                           /* File objects */
+    BYTE buffer[CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES]; /* File copy buffer */
+    FRESULT fr;                                         /* FatFs function common result code */
+    unsigned int br = 0;                                /* File read/write count */
+    unsigned int size = 0;                              // File size
+    uint32_t dest_address = rom_load_offset;            // Initialize pointer to the ROM address
 
     char fullpath[512]; // Assuming 512 bytes as the max path+filename length. Adjust if necessary.
     snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
@@ -273,6 +273,11 @@ static void store_file_list(char **file_list, int num_files, uint8_t *memory_loc
     // Iterate through each file in the file_list
     for (int i = 0; i < num_files; i++)
     {
+        if ((total_size + strlen(file_list[i]) + 5) > CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES)
+        {
+            DPRINTF("ERROR: Not enough memory to store the file list.\n");
+            break;
+        }
         char *current_file = file_list[i];
         total_size += strlen(current_file) + 1; // +1 for null terminator
 
@@ -310,7 +315,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
 {
     ConfigEntry *entry = NULL;
     uint16_t value_payload = 0;
-    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - 4096); // 4Kbytes = 4096 bytes
+    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
     // Handle the protocol
     switch (protocol->command_id)
     {
@@ -333,7 +338,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             DPRINTF("SD card not mounted. Cannot load ROM.\n");
-            null_words((uint16_t *)memory_area, 4096 / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
         }
         break;
     case LIST_ROMS:
@@ -342,7 +347,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         if (!microsd_mounted)
         {
             DPRINTF("SD card not mounted. Cannot list ROMs.\n");
-            null_words((uint16_t *)memory_area, 4096 / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
         }
         else
         {
@@ -453,7 +458,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             DPRINTF("SD card not mounted. Cannot load ROM.\n");
-            null_words((uint16_t *)memory_area, 4096 / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
         }
         break;
     case LIST_FLOPPIES:
@@ -462,7 +467,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         if (!microsd_mounted)
         {
             DPRINTF("SD card not mounted. Cannot list Floppies.\n");
-            null_words((uint16_t *)memory_area, 4096 / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
         }
         else
         {
@@ -561,7 +566,7 @@ int init_firmware()
     // x=PEEK(&HFB0002) 'Size of the payload (always even numbers)
     // x=PEEK(&HFB0001) 'Payload (two bytes per word)
 
-    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - 4096); // 4Kbytes = 4096 bytes
+    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
 
     // Start the network.
     network_connect(false, NETWORK_CONNECTION_ASYNC);
@@ -654,7 +659,7 @@ int init_firmware()
             get_json_file = false;
 
             // Clean memory space
-            memset(memory_area, 0, 4096);
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
 
             // Get the URL from the configuration
             char *url = find_entry("ROMS_YAML_URL")->value;

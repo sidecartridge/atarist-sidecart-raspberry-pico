@@ -30,6 +30,7 @@ extern const uint WRITE_SIGNAL_PIN_COUNT;
 extern const float SAMPLE_DIV_FREQ;
 extern const uint32_t RP2040_CLOCK_FREQ_KHZ;
 
+// FLASH and RAM sections constants.
 extern const uint8_t ROM_BANKS;
 extern const uint32_t FLASH_ROM_LOAD_OFFSET;
 extern const uint32_t FLASH_ROM4_LOAD_OFFSET;
@@ -46,6 +47,9 @@ extern const uint32_t CONFIG_FLASH_SIZE;
 extern const uint32_t CONFIG_VERSION;
 extern const uint32_t CONFIG_MAGIC;
 extern const uint32_t NETWORK_MAGIC;
+
+// Configurator constants.
+extern const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES;
 
 // Morse code
 #define DOT_DURATION_MS 250
