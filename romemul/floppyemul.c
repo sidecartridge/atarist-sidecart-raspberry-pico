@@ -45,7 +45,7 @@ static uint16_t BpbData[] = {
 };
 
 uint16_t *payloadPtr = NULL;
-
+char *fullpath_a = NULL;
 static uint32_t random_token;
 static bool ping_received = false;
 static bool floppy_read_write = true;
@@ -248,7 +248,7 @@ int init_floppyemul()
             }
             char *dir = find_entry("FLOPPIES_FOLDER")->value;
             char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
-            char *fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
+            fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
             strcpy(fullpath_a, dir);
             strcat(fullpath_a, "/");
             strcat(fullpath_a, filename_a);
