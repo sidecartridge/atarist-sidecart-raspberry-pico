@@ -44,8 +44,8 @@ static uint16_t BpbData[] = {
     0 /*            16: disk_number                                  */
 };
 
-uint16_t *payloadPtr = NULL;
-char *fullpath_a = NULL;
+static uint16_t *payloadPtr = NULL;
+static char *fullpath_a = NULL;
 static uint32_t random_token;
 static bool ping_received = false;
 static bool floppy_read_write = true;
