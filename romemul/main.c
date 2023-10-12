@@ -33,6 +33,8 @@ void blink_morse(char ch)
 {
     const char *morseCode = NULL;
 
+    return;
+
     // Search for character's Morse code
     for (int i = 0; morseAlphabet[i].character != '\0'; i++)
     {
@@ -110,8 +112,8 @@ int main()
             DPRINTF("DELAY_ROM_EMULATION: %s\n", rom_delay_config_entry->value);
             if ((strcmp(rom_delay_config_entry->value, "true") == 0) || (strcmp(rom_delay_config_entry->value, "TRUE") == 0) || (strcmp(rom_delay_config_entry->value, "T") == 0))
             {
-                DPRINTF("Delaying ROM emulation.\n");
-                // The "D" character stands for "D"
+                printf("Delaying ROM emulation.\n"); // Always print this line
+                // The "D" character stands for "Delay"
                 blink_morse('D');
 
                 // While until the user presses the SELECT button again to launch the ROM emulator
@@ -135,6 +137,7 @@ int main()
             // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
             init_romemul(NULL, NULL, true);
 
+            printf("ROM Emulation started.\n"); // Always print this line
             // The "E" character stands for "Emulator"
             blink_morse('E');
 
@@ -155,7 +158,7 @@ int main()
         }
         if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
         {
-            DPRINTF("FLOPPY_EMULATOR entry found in config. Launching.\n");
+            printf("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
             // Copy the ST floppy firmware emulator to RAM
             copy_floppy_firmware_to_RAM();
@@ -221,8 +224,8 @@ int main()
 
         DPRINTF("Ready to accept commands.\n");
 
-        // The "F" character stands for "Firmware"
-        blink_morse('F');
+        // The "C" character stands for "Configurator"
+        blink_morse('C');
 
         init_firmware();
 
