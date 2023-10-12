@@ -229,9 +229,6 @@ int init_floppyemul()
     unsigned int br_a = 0;   /* File read/write count */
     unsigned int size_a = 0; // File size
 
-    // The "F" character stands for "Floppy"
-    blink_morse('F');
-
     DPRINTF("Waiting for commands...\n");
 
     while (true)

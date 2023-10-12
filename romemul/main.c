@@ -165,6 +165,10 @@ int main()
 
             // Reserve memory for the protocol parser
             init_protocol_parser();
+
+            // The "F" character stands for "Floppy"
+            blink_morse('F');
+
             // Hybrid way to initialize the ROM emulator:
             // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
             // and start the state machine
