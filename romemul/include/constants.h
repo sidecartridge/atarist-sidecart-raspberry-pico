@@ -52,10 +52,10 @@ extern const uint32_t NETWORK_MAGIC;
 extern const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES;
 
 // Morse code
-#define DOT_DURATION_MS 250
-#define DASH_DURATION_MS 750
-#define SYMBOL_GAP_MS 250
-#define CHARACTER_GAP_MS 500
+#define DOT_DURATION_MS 150
+#define DASH_DURATION_MS 450
+#define SYMBOL_GAP_MS 150
+#define CHARACTER_GAP_MS 700
 
 typedef struct
 {

@@ -35,6 +35,9 @@
 #include "romemul.h"
 #include "network.h"
 
+// Define a custom error code for the case where the destination file exists and the flag is false
+#define FR_FILE_EXISTS 100
+
 // Delete flash
 int delete_FLASH(void);
 

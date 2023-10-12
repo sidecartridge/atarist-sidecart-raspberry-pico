@@ -22,6 +22,7 @@ static int rom_file_selected = -1;
 // Floppy images in sd card variables
 static bool list_floppies = false;
 static int floppy_file_selected = -1;
+static bool floppy_read_write = true;
 
 // Network variables
 RomInfo *network_files;
@@ -36,6 +37,94 @@ static bool get_json_file = false;
 
 // ROMs in network variables
 static int rom_network_selected = -1;
+
+/**
+ * @brief Copies a file within the same folder to a new file with a specified name.
+ *
+ * This function reads a specified file from a specified folder, and creates a new file
+ * with a specified name in the same folder, copying the contents of the original file
+ * to the new file. If a file with the specified new name already exists, the behavior
+ * depends on the value of the overwrite_flag argument: if true, the existing file is
+ * overwritten; if false, the function returns an error code and the operation is canceled.
+ *
+ * @param folder The path of the folder containing the source file, as a null-terminated string.
+ * @param src_filename The name of the source file, as a null-terminated string.
+ * @param dest_filename The name for the new file, as a null-terminated string.
+ * @param overwrite_flag A flag indicating whether to overwrite the destination file
+ *        if it already exists: true to overwrite, false to cancel the operation.
+ *
+ * @return A result code of type FRESULT, indicating the result of the operation:
+ *         - FR_OK on success.
+ *         - FR_FILE_EXISTS if the destination file exists and overwrite_flag is false.
+ *         - Other FatFS error codes for other error conditions.
+ *
+ * @note This function uses the FatFS library to perform file operations, and is designed
+ *       to work in environments where FatFS is available. It requires the ff.h header file.
+ *
+ * Usage:
+ * @code
+ * FRESULT result = copy_file("/folder", "source.txt", "destination.txt", true);  // Overwrite if destination.txt exists
+ * @endcode
+ */
+static FRESULT copy_file(const char *folder, const char *src_filename, const char *dest_filename, bool overwrite_flag)
+{
+    FRESULT fr;   // FatFS function common result code
+    FIL src_file; // File objects
+    FIL dest_file;
+    UINT br, bw;       // File read/write count
+    BYTE buffer[4096]; // File copy buffer
+
+    char src_path[256];
+    char dest_path[256];
+
+    // Create full paths for source and destination files
+    sprintf(src_path, "%s/%s", folder, src_filename);
+    sprintf(dest_path, "%s/%s", folder, dest_filename);
+
+    DPRINTF("Copying file '%s' to '%s'. Overwrite? %s\n", src_path, dest_path, overwrite_flag ? "YES" : "NO");
+
+    // Check if the destination file already exists
+    FILINFO fno;
+    fr = f_stat(dest_path, &fno);
+    if (fr == FR_OK && !overwrite_flag)
+    {
+        DPRINTF("Destination file exists and overwrite_flag is false, canceling operation\n");
+        return FR_FILE_EXISTS; // Destination file exists and overwrite_flag is false, cancel the operation
+    }
+
+    // Open the source file
+    fr = f_open(&src_file, src_path, FA_READ);
+    if (fr != FR_OK)
+    {
+        DPRINTF("f_open error: %s (%d)\n", FRESULT_str(fr), fr);
+        return fr;
+    }
+
+    // Create and open the destination file
+    fr = f_open(&dest_file, dest_path, FA_CREATE_ALWAYS | FA_WRITE);
+    if (fr != FR_OK)
+    {
+        DPRINTF("f_open error: %s (%d)\n", FRESULT_str(fr), fr);
+        f_close(&src_file); // Close the source file if it was opened successfully
+        return fr;
+    }
+
+    // Copy the file
+    do
+    {
+        fr = f_read(&src_file, buffer, sizeof buffer, &br); // Read a chunk of source file
+        if (fr != FR_OK)
+            break;                                 // Break on error
+        fr = f_write(&dest_file, buffer, br, &bw); // Write it to the destination file
+    } while (fr == FR_OK && br == sizeof buffer);
+
+    // Close files
+    f_close(&src_file);
+    f_close(&dest_file);
+
+    DPRINTF("File copied\n");
+    return fr; // Return the result
+}
 
 static void release_memory_files(char **files, int num_files)
 {
@@ -446,14 +535,31 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         DPRINTF("Command GET_ROMS_JSON_FILE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         get_json_file = true; // now in the active loop should stop and download the JSON file
         break;
-    case LOAD_FLOPPY:
-        // Load the floppy image passed as argument in the payload
-        DPRINTF("Command LOAD_FLOPPY (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+    case LOAD_FLOPPY_RO:
+        // Load the floppy image in ro mode passed as argument in the payload
+        DPRINTF("Command LOAD_FLOPPY_RO (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
         DPRINTF("Value: %d\n", value_payload);
         if (microsd_mounted)
         {
             floppy_file_selected = value_payload;
+            floppy_read_write = false;
+        }
+        else
+        {
+            DPRINTF("SD card not mounted. Cannot load ROM.\n");
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
+        }
+        break;
+    case LOAD_FLOPPY_RW:
+        // Load the floppy image in rw mode passed as argument in the payload
+        DPRINTF("Command LOAD_FLOPPY_RW (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
+        DPRINTF("Value: %d\n", value_payload);
+        if (microsd_mounted)
+        {
+            floppy_file_selected = value_payload;
+            floppy_read_write = true;
         }
         else
         {
@@ -533,6 +639,7 @@ int init_firmware()
 
     DPRINTF("\033[2J\033[H"); // Clear Screen
     DPRINTF("\n> ");
+    printf("Initializing Configurator...\n"); // Always this print message to the console
     stdio_flush();
 
     // Initialize SD card
@@ -777,8 +884,24 @@ int init_firmware()
     {
         DPRINTF("Floppy file selected: %d\n", floppy_file_selected);
 
-        char *new_floppy = filtered_local_list[floppy_file_selected - 1];
-        DPRINTF("Load file: %s\n", new_floppy);
+        char *old_floppy = filtered_local_list[floppy_file_selected - 1];
+        DPRINTF("Load file: %s\n", old_floppy);
+
+        char *new_floppy = NULL;
+        if (floppy_read_write)
+        {
+            new_floppy = malloc(strlen(old_floppy) + strlen(".rw") + 1); // Allocate space for the old string, the new suffix, and the null terminator
+            sprintf(new_floppy, "%s.rw", old_floppy);                    // Create the new string with the .rw suffix
+            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+            FRESULT result = copy_file(dir, old_floppy, new_floppy, true); // Overwrite if exists
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+        }
+        else
+        {
+            new_floppy = strdup(old_floppy);
+        }
+        DPRINTF("Floppy Read/Write: %s\n", floppy_read_write ? "true" : "false");
 
         put_string("FLOPPY_IMAGE_A", new_floppy);
         put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
@@ -786,6 +909,9 @@ int init_firmware()
 
         release_memory_files(file_list, num_files);
         release_memory_files(filtered_local_list, filtered_num_local_files);
+
+        free(new_floppy);
+        fflush(stdout);
     }
 
     if (persist_config)
