@@ -11,6 +11,7 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"HOSTNAME", TYPE_STRING, "sidecart"},
     {"ROMS_FOLDER", TYPE_STRING, "/roms"},
     {"ROMS_YAML_URL", TYPE_STRING, "http://roms.sidecart.xyz/roms.json"},
+    {"SAFE_CONFIG_REBOOT", TYPE_BOOL, "true"},
     {"WIFI_SCAN_SECONDS", TYPE_INT, "15"},
     {"WIFI_PASSWORD", TYPE_STRING, ""},
     {"WIFI_SSID", TYPE_STRING, ""},
@@ -304,5 +305,27 @@ void swap_data(uint16_t *dest_ptr_word)
     {
         uint16_t value = *(uint16_t *)(dest_ptr_word);
         *(uint16_t *)(dest_ptr_word)++ = (value << 8) | (value >> 8);
+    }
+}
+
+void select_button_action(bool safe_config_reboot, bool write_config_only_once)
+{
+    if (safe_config_reboot)
+    {
+        if (write_config_only_once)
+        {
+            DPRINTF("SELECT button pressed. Configurator will start after power cycling the computer.\n");
+            // Do not reboot if the user has disabled it
+            put_string("BOOT_FEATURE", "CONFIGURATOR");
+            write_all_entries();
+        }
+    }
+    else
+    {
+
+        DPRINTF("SELECT button pressed. Launch configurator.\n");
+        watchdog_reboot(0, SRAM_END, 10);
+        while (1)
+            ;
     }
 }

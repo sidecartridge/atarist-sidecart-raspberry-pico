@@ -101,7 +101,7 @@ if(NOT RELEASE_DATE)
 endif()
 
 if (NOT _DEBUG)
-        set(_DEBUG 0)
+        set(_DEBUG 1)
 endif()
 
 # Pass these values to the C compiler
