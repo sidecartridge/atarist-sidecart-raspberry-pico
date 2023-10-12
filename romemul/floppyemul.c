@@ -207,7 +207,7 @@ int copy_floppy_firmware_to_RAM()
     return 0;
 }
 
-int init_floppyemul()
+int init_floppyemul(bool safe_config_reboot)
 {
 
     FRESULT fr; /* FatFs function common result code */
@@ -228,6 +228,8 @@ int init_floppyemul()
     BYTE buffer_a[512];      /* File copy buffer */
     unsigned int br_a = 0;   /* File read/write count */
     unsigned int size_a = 0; // File size
+
+    bool write_config_only_once = true;
 
     DPRINTF("Waiting for commands...\n");
 
@@ -389,15 +391,12 @@ int init_floppyemul()
             }
             *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
-
         // If SELECT button is pressed, launch the configurator
         if (gpio_get(5) != 0)
         {
-            DPRINTF("SELECT button pressed. Launch configurator.\n");
-            watchdog_reboot(0, SRAM_END, 10);
-            while (1)
-                ;
-            return 0;
+            select_button_action(safe_config_reboot, write_config_only_once);
+            // Write config only once to avoid hitting the flash too much
+            write_config_only_once = false;
         }
     }
 }

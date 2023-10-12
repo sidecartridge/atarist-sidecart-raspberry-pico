@@ -57,6 +57,6 @@ void __not_in_flash_func(floppyemul_dma_irq_handler_lookup_callback)(void);
 int copy_floppy_firmware_to_RAM();
 
 // Function Prototypes
-int init_floppyemul();
+int init_floppyemul(bool safe_config_reboot);
 
 #endif // FLOPPYEMUL_H

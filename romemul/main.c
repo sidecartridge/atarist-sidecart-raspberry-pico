@@ -68,6 +68,12 @@ void blink_morse(char ch)
     sleep_ms(CHARACTER_GAP_MS); // Gap between characters
 }
 
+static void set_configurator()
+{
+    put_string("BOOT_FEATURE", "CONFIGURATOR");
+    write_all_entries();
+}
+
 int main()
 {
     // Set the clock frequency. 20% overclocking
@@ -98,6 +104,11 @@ int main()
 
     ConfigEntry *default_config_entry = find_entry("BOOT_FEATURE");
     DPRINTF("BOOT_FEATURE: %s\n", default_config_entry->value);
+
+    ConfigEntry *default_config_reboot_mode = find_entry("SAFE_CONFIG_REBOOT");
+    DPRINTF("SAFE_CONFIG_REBOOT: %s\n", default_config_reboot_mode->value);
+
+    bool safe_config_reboot = default_config_reboot_mode->value[0] == 't' || default_config_reboot_mode->value[0] == 'T';
 
     // No SELECT button pressed or CONFIGURATOR entry found in config. Normal boot
     if ((gpio_get(5) == 0) && (strcmp(default_config_entry->value, "CONFIGURATOR") != 0))
@@ -141,6 +152,7 @@ int main()
             // The "E" character stands for "Emulator"
             blink_morse('E');
 
+            bool write_config_only_once = true;
             // Loop forever and block until the state machine put data into the FIFO
             while (true)
             {
@@ -148,11 +160,9 @@ int main()
                 sleep_ms(1000); // Give me a break... to display the message
                 if (gpio_get(5) != 0)
                 {
-                    DPRINTF("SELECT button pressed. Launch configurator.\n");
-                    watchdog_reboot(0, SRAM_END, 10);
-                    while (1)
-                        ;
-                    return 0;
+                    select_button_action(safe_config_reboot, write_config_only_once);
+                    // Write config only once to avoid hitting the flash too much
+                    write_config_only_once = false;
                 }
             }
         }
@@ -175,21 +185,9 @@ int main()
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
             DPRINTF("Ready to accept commands.\n");
 
-            init_floppyemul();
+            init_floppyemul(safe_config_reboot);
 
-            // Loop forever and block until the state machine put data into the FIFO
-            while (true)
-            {
-                tight_loop_contents();
-                if (gpio_get(5) != 0)
-                {
-                    DPRINTF("SELECT button pressed. Launch configurator.\n");
-                    watchdog_reboot(0, SRAM_END, 10);
-                    while (1)
-                        ;
-                    return 0;
-                }
-            }
+            // You should never reach this line...
         }
 
         DPRINTF("You should never see this line...\n");
@@ -201,10 +199,7 @@ int main()
 
         // Keep in development mode
         if (strcmp(default_config_entry->value, "CONFIGURATOR") != 0)
-        {
-            put_string("BOOT_FEATURE", "CONFIGURATOR");
-            write_all_entries();
-        }
+            set_configurator();
 
         network_init();
 
