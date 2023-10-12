@@ -44,10 +44,14 @@ static uint16_t BpbData[] = {
     0 /*            16: disk_number                                  */
 };
 
+uint16_t *payloadPtr = NULL;
+
 static uint32_t random_token;
 static bool ping_received = false;
+static bool floppy_read_write = true;
 static bool file_ready_a = false;
 static bool sector_read = false;
+static bool sector_write = false;
 static bool set_bpb = false;
 static bool save_vectors = false;
 static uint16_t logical_sector = 0;
@@ -114,7 +118,6 @@ static int create_BPB(FRESULT *fr, FIL *fsrc)
 
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
 {
-    uint16_t *payloadPtr = NULL;
     ConfigEntry *entry = NULL;
     uint16_t value_payload = 0;
     // Handle the protocol
@@ -145,8 +148,13 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         sector_read = true;
         break;
     case FLOPPYEMUL_WRITE_SECTORS:
-        // Write sectors to the floppy emulator
+        // Write sectors from the floppy emulator
         DPRINTF("Command WRITE_SECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        payloadPtr = (uint16_t *)protocol->payload + 2;
+        sector_size = *(uint16_t *)payloadPtr++;
+        logical_sector = *(uint16_t *)payloadPtr++;
+        sector_write = true;
         break;
     case FLOPPYEMUL_SET_BPB:
         // Set the BPB of the floppy
@@ -237,7 +245,7 @@ int init_floppyemul()
     unsigned int size_a = 0; // File size
 
     /* Open source file on the drive 0 */
-    fr = f_open(&fsrc_a, fullpath_a, FA_READ);
+    fr = f_open(&fsrc_a, fullpath_a, floppy_read_write ? FA_READ | FA_WRITE : FA_READ);
     if (fr)
     {
         DPRINTF("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
@@ -302,7 +310,6 @@ int init_floppyemul()
 
             *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
-
         if (file_ready_a && sector_read)
         {
             sector_read = false;
@@ -332,6 +339,38 @@ int init_floppyemul()
                 value = (value << 8) | (value >> 8);
                 *(target++) = value;
             }
+            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+        }
+        if (file_ready_a && sector_write)
+        {
+            sector_write = false;
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+            DPRINTF("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
+            // Transform buffer's words from little endian to big endian inline
+            uint16_t *target_start = payloadPtr;
+            volatile uint16_t *target = (volatile uint16_t *)target_start;
+            for (int i = 0; i < (sector_size / 2); i += 1)
+            {
+                uint16_t value = *(uint16_t *)(target + i);
+                value = (value << 8) | (value >> 8);
+                *(target) = value;
+            }
+            /* Set read/write pointer to logical sector position */
+            fr = f_lseek(&fsrc_a, logical_sector * sector_size);
+            if (fr)
+            {
+                DPRINTF("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                f_close(&fsrc_a);
+                //                                return (int)fr; // Check for error in reading
+            }
+            fr = f_write(&fsrc_a, target_start, sector_size, &br_a); /* Write a chunk of data from the source file */
+            if (fr)
+            {
+                DPRINTF("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                f_close(&fsrc_a);
+                //                                return (int)fr; // Check for error in reading
+            }
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
             *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
 

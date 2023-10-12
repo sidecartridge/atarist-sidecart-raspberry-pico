@@ -24,8 +24,9 @@
 #define GET_IP_DATA 12          // Get the IP, mask and gateway of the device
 #define DISCONNECT_NETWORK 13   // Disconnect from the network
 #define GET_ROMS_JSON_FILE 14   // Download the JSON file of ROMs from the URL
-#define LOAD_FLOPPY 15          // Load a floppy image from the SD card
+#define LOAD_FLOPPY_RO 15       // Load a floppy image from the SD card in read-only mode
 #define LIST_FLOPPIES 16        // List the floppy images in the SD card
+#define LOAD_FLOPPY_RW 17       // Load a floppy image from the SD card in read-write mode
 
 // APP_ROMEMUL commands
 // No commands
