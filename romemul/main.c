@@ -10,70 +10,6 @@
 #include "include/romemul.h"
 #include "include/floppyemul.h"
 
-// List of roms to include in the program
-// Keep in mind that actually they don't load in RAM, but in FLASH
-// and then the code has to move them manually to the .rom3 or .rom4 sections
-// #include "stetest.h"
-
-/**
- * @brief   Blinks an LED to represent a given character in Morse code.
- *
- * @param   ch  The character to blink in Morse code.
- *
- * @details This function searches for the provided character in the
- *          `morseAlphabet` structure array to get its Morse code representation.
- *          If found, it then blinks an LED in the pattern of dots and dashes
- *          corresponding to the Morse code of the character. The LED blinks are
- *          separated by time intervals defined by constants such as DOT_DURATION_MS,
- *          DASH_DURATION_MS, SYMBOL_GAP_MS, and CHARACTER_GAP_MS.
- *
- * @return  void
- */
-void blink_morse(char ch)
-{
-    const char *morseCode = NULL;
-
-    return;
-
-    // Search for character's Morse code
-    for (int i = 0; morseAlphabet[i].character != '\0'; i++)
-    {
-        if (morseAlphabet[i].character == ch)
-        {
-            morseCode = morseAlphabet[i].morse;
-            break;
-        }
-    }
-
-    // If character not found in Morse alphabet, return
-    if (!morseCode)
-        return;
-
-    // Blink pattern
-    for (int i = 0; morseCode[i] != '\0'; i++)
-    {
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-        if (morseCode[i] == '.')
-        {
-            sleep_ms(DOT_DURATION_MS); // Short blink for dot
-        }
-        else
-        {
-            sleep_ms(DASH_DURATION_MS); // Long blink for dash
-        }
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-        sleep_ms(SYMBOL_GAP_MS); // Gap between symbols
-    }
-
-    sleep_ms(CHARACTER_GAP_MS); // Gap between characters
-}
-
-static void set_configurator()
-{
-    put_string("BOOT_FEATURE", "CONFIGURATOR");
-    write_all_entries();
-}
-
 int main()
 {
     // Set the clock frequency. 20% overclocking
@@ -168,6 +104,9 @@ int main()
         }
         if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
         {
+            // The "F" character stands for "Floppy"
+            blink_morse('F');
+
             printf("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
             // Copy the ST floppy firmware emulator to RAM
@@ -175,9 +114,6 @@ int main()
 
             // Reserve memory for the protocol parser
             init_protocol_parser();
-
-            // The "F" character stands for "Floppy"
-            blink_morse('F');
 
             // Hybrid way to initialize the ROM emulator:
             // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
@@ -199,8 +135,10 @@ int main()
 
         // Keep in development mode
         if (strcmp(default_config_entry->value, "CONFIGURATOR") != 0)
-            set_configurator();
-
+        {
+            put_string("BOOT_FEATURE", "CONFIGURATOR");
+            write_all_entries();
+        }
         network_init();
 
         // Print the config
@@ -222,9 +160,6 @@ int main()
         init_romemul(NULL, dma_irq_handler_lookup_callback, false);
 
         DPRINTF("Ready to accept commands.\n");
-
-        // The "C" character stands for "Configurator"
-        blink_morse('C');
 
         init_firmware();
 

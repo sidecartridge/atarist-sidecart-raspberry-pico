@@ -329,3 +329,58 @@ void select_button_action(bool safe_config_reboot, bool write_config_only_once)
             ;
     }
 }
+
+/**
+ * @brief   Blinks an LED to represent a given character in Morse code.
+ *
+ * @param   ch  The character to blink in Morse code.
+ *
+ * @details This function searches for the provided character in the
+ *          `morseAlphabet` structure array to get its Morse code representation.
+ *          If found, it then blinks an LED in the pattern of dots and dashes
+ *          corresponding to the Morse code of the character. The LED blinks are
+ *          separated by time intervals defined by constants such as DOT_DURATION_MS,
+ *          DASH_DURATION_MS, SYMBOL_GAP_MS, and CHARACTER_GAP_MS.
+ *
+ * @return  void
+ */
+void blink_morse(char ch)
+{
+    void blink_morse_in_second_core()
+    {
+        const char *morseCode = NULL;
+        // Search for character's Morse code
+        for (int i = 0; morseAlphabet[i].character != '\0'; i++)
+        {
+            if (morseAlphabet[i].character == ch)
+            {
+                morseCode = morseAlphabet[i].morse;
+                break;
+            }
+        }
+
+        // If character not found in Morse alphabet, return
+        if (!morseCode)
+            return;
+
+        // Blink pattern
+        for (int i = 0; morseCode[i] != '\0'; i++)
+        {
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+            if (morseCode[i] == '.')
+            {
+                // Short blink for dot
+                sleep_ms(DOT_DURATION_MS);
+            }
+            else
+            {
+                // Long blink for dash
+                sleep_ms(DASH_DURATION_MS);
+            }
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+            // Gap between symbols
+            sleep_ms(SYMBOL_GAP_MS);
+        }
+    }
+    multicore_launch_core1(blink_morse_in_second_core);
+}

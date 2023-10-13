@@ -58,9 +58,9 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         hardware_pio             # for GPIO
         hardware_dma             # for DMA
 #        pico_cyw43_arch_none     # we need Wifi to access the GPIO, but we don't need anything else
-#        pico_cyw43_arch_lwip_threadsafe_background # for lwip
-        pico_cyw43_arch_lwip_poll
-#        pico_multicore                # for multicore functionality
+        pico_cyw43_arch_lwip_threadsafe_background # for lwip
+#        pico_cyw43_arch_lwip_poll
+        pico_multicore                # for multicore functionality
         pico_lwip_http
         )
 
@@ -101,7 +101,7 @@ if(NOT RELEASE_DATE)
 endif()
 
 if (NOT _DEBUG)
-        set(_DEBUG 1)
+        set(_DEBUG 0)
 endif()
 
 # Pass these values to the C compiler
