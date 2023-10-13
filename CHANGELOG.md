@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.10 (2023-09-13) - Feature aditions release, Update recommended
+## 0.0.10 (2023-10-13) - Feature aditions release, Update recommended
 ### Fixed
 No fixes in this release
 
