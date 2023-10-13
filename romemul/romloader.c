@@ -695,6 +695,9 @@ int init_firmware()
         DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
     }
 
+    // The "C" character stands for "Configurator"
+    blink_morse('C');
+
     u_int16_t network_poll_counter = 0;
     while ((rom_file_selected < 0) && (rom_network_selected < 0) && (floppy_file_selected < 0) && (persist_config == false) && (reset_default == false))
     {
@@ -704,6 +707,10 @@ int init_firmware()
         cyw43_arch_lwip_begin();
         network_poll();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(1000));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
         cyw43_arch_lwip_end();
 #else
         sleep_ms(1000);

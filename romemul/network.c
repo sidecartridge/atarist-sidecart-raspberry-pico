@@ -599,11 +599,15 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
     {
 #if PICO_CYW43_ARCH_POLL
         cyw43_arch_lwip_begin();
-        network_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
+        cyw43_arch_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
         cyw43_arch_lwip_end();
 #else
-        sleep_ms(100);
+        sleep_ms(1000);
 #endif
     }
 
@@ -833,6 +837,10 @@ int download(const char *url, uint32_t rom_load_offset)
 #if PICO_CYW43_ARCH_POLL
         cyw43_arch_lwip_begin();
         cyw43_arch_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
         cyw43_arch_lwip_end();
 #else

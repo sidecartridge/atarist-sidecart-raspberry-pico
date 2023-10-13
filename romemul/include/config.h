@@ -20,6 +20,8 @@
 #include <hardware/flash.h>
 #include <hardware/sync.h>
 #include <hardware/watchdog.h>
+#include "pico/multicore.h"
+#include "pico/cyw43_arch.h"
 
 #define MAX_ENTRIES 13
 #define MAX_KEY_LENGTH 20
@@ -69,6 +71,7 @@ int put_string(const char key[MAX_KEY_LENGTH], const char *value);
 int put_integer(const char key[MAX_KEY_LENGTH], int value);
 
 void select_button_action(bool safe_config_reboot, bool write_config_only_once);
+void blink_morse(char ch);
 
 // int remove_entry(const char *key);
 
