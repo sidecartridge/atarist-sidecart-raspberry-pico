@@ -20,7 +20,6 @@
 #include <hardware/flash.h>
 #include <hardware/sync.h>
 #include <hardware/watchdog.h>
-#include "pico/multicore.h"
 #include "pico/cyw43_arch.h"
 
 #define MAX_ENTRIES 13

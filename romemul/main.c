@@ -85,6 +85,7 @@ int main()
             init_romemul(NULL, NULL, true);
 
             printf("ROM Emulation started.\n"); // Always print this line
+
             // The "E" character stands for "Emulator"
             blink_morse('E');
 
@@ -104,9 +105,6 @@ int main()
         }
         if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
         {
-            // The "F" character stands for "Floppy"
-            blink_morse('F');
-
             printf("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
             // Copy the ST floppy firmware emulator to RAM
@@ -120,6 +118,9 @@ int main()
             // and start the state machine
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
             DPRINTF("Ready to accept commands.\n");
+
+            // The "F" character stands for "Floppy"
+            //            blink_morse('F');
 
             init_floppyemul(safe_config_reboot);
 

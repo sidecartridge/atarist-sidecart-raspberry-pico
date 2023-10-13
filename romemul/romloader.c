@@ -895,13 +895,16 @@ int init_firmware()
         DPRINTF("Load file: %s\n", old_floppy);
 
         char *new_floppy = NULL;
-        if (floppy_read_write)
+        // Check if old_floppy ends with ".rw"
+        bool use_existing_rw = (strlen(old_floppy) > 3 && strcmp(&old_floppy[strlen(old_floppy) - 3], ".rw") == 0);
+
+        if (floppy_read_write && !use_existing_rw)
         {
             new_floppy = malloc(strlen(old_floppy) + strlen(".rw") + 1); // Allocate space for the old string, the new suffix, and the null terminator
             sprintf(new_floppy, "%s.rw", old_floppy);                    // Create the new string with the .rw suffix
             char *dir = find_entry("FLOPPIES_FOLDER")->value;
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
-            FRESULT result = copy_file(dir, old_floppy, new_floppy, true); // Overwrite if exists
+            FRESULT result = copy_file(dir, old_floppy, new_floppy, false); // Do not overwrite if exists
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
         }
         else
@@ -919,6 +922,9 @@ int init_firmware()
 
         free(new_floppy);
         fflush(stdout);
+
+        // The "F" character stands for "Floppy"
+        blink_morse('F');
     }
 
     if (persist_config)

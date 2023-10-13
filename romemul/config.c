@@ -346,7 +346,7 @@ void select_button_action(bool safe_config_reboot, bool write_config_only_once)
  */
 void blink_morse(char ch)
 {
-    void blink_morse_in_second_core()
+    void blink_morse_container()
     {
         const char *morseCode = NULL;
         // Search for character's Morse code
@@ -382,5 +382,5 @@ void blink_morse(char ch)
             sleep_ms(SYMBOL_GAP_MS);
         }
     }
-    multicore_launch_core1(blink_morse_in_second_core);
+    blink_morse_container();
 }
