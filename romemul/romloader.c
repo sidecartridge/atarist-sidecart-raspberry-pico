@@ -761,8 +761,12 @@ int init_firmware()
                     ConnectionData *connection_data = malloc(sizeof(ConnectionData));
                     get_connection_data(connection_data);
                     DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s\n", connection_data->ssid, connection_data->status, connection_data->ipv4_address, connection_data->ipv6_address, print_ipv4(get_gateway()), print_ipv4(get_netmask()));
-
                     free(connection_data);
+                }
+                if (current_status == CONNECT_FAILED_ERROR) {
+                    DPRINTF("Connection failed. Resetting network...\n");
+                    network_disconnect();
+                    network_connect(true, NETWORK_CONNECTION_ASYNC);
                 }
             }
         }
