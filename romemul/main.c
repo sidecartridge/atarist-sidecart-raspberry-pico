@@ -153,7 +153,6 @@ int main()
             put_string("BOOT_FEATURE", "CONFIGURATOR");
             write_all_entries();
         }
-        network_init();
 
         // Print the config
         print_config_table();
@@ -165,13 +164,15 @@ int main()
         // Copy the firmware to RAM
         copy_firmware_to_RAM();
 
-        // Reserve memory for the protocol parser
-        init_protocol_parser();
-
         // Hybrid way to initialize the ROM emulator:
         // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
         // and start the state machine
         init_romemul(NULL, dma_irq_handler_lookup_callback, false);
+
+        network_init();
+
+        // Reserve memory for the protocol parser
+        init_protocol_parser();
 
         DPRINTF("Ready to accept commands.\n");
 
