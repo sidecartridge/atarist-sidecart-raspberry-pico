@@ -1,13 +1,13 @@
 /**
- * File: cubaseemul.h
+ * File: dongleemul.h
  * Author: Diego Parrilla Santamaría
  * Date: July 2023
  * Copyright: 2023 - GOODDATA LABS SL
- * Description: Header file for Cubase dongle emulator experiment.
+ * Description: Header file for Dongle dongle emulator experiment.
  */
 
-#ifndef CUBASEEMUL_H
-#define CUBASEEMUL_H
+#ifndef DONGLEEMUL_H
+#define DONGLEEMUL_H
 
 // JED file with the functions in the 5C060
 // The datasheet https://pdf1.alldatasheet.com/datasheet-pdf/view/101883/INTEL/5C060.html
@@ -116,5 +116,19 @@
 
 #include "debug.h"
 #include "constants.h"
+#include "hardware/dma.h"
 
-#endif // CUBASEEMUL_H
+#include "../../build/romemul.pio.h"
+#include "hardware/structs/bus_ctrl.h"
+
+#include "config.h"
+
+typedef void (*IRQInterceptionCallback)();
+
+extern int read_addr_rom_dma_channel;
+extern int lookup_data_rom_dma_channel;
+
+// Function Prototypes
+int init_dongleemul(int safe_config_reboot);
+
+#endif // DONGLEEMUL_H
