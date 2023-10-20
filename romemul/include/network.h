@@ -95,6 +95,16 @@ typedef struct
 
 typedef struct
 {
+    char *name;
+    char *status;
+    char *description;
+    char *tags;
+    char *extra;
+    char *url;
+} FloppyImageInfo;
+
+typedef struct
+{
     char *protocol;
     char *domain;
     char *uri;
@@ -122,6 +132,8 @@ char *print_ipv4(uint32_t ip);
 void get_connection_data(ConnectionData *connection_data);
 void get_json_files(RomInfo **items, int *itemCount, const char *url);
 int download(const char *url, uint32_t rom_load_offset);
+
+void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url);
 
 void freeRomItem(RomInfo *item);
 

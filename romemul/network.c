@@ -852,3 +852,188 @@ int download(const char *url, uint32_t rom_load_offset)
     free(flash_buff);
     return 0;
 }
+
+void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url)
+{
+    char *buff = malloc(32768);
+    uint32_t buff_pos = 0;
+    httpc_state_t *connection;
+    bool complete = false;
+    UrlParts parts;
+
+    err_t headers(httpc_state_t * connection, void *arg,
+                  struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
+    {
+        return ERR_OK;
+    }
+
+    void result(void *arg, httpc_result_t httpc_result,
+                u32_t rx_content_len, u32_t srv_res, err_t err)
+
+    {
+        complete = true;
+        if (srv_res != 200)
+        {
+            DPRINTF("Floppy images db something went wrong. HTTP error: %d\n", srv_res);
+        }
+        else
+        {
+            DPRINTF("Floppy images db Transfer complete. %d transfered.\n", rx_content_len);
+        }
+    }
+
+    err_t body(void *arg, struct altcp_pcb *conn,
+               struct pbuf *p, err_t err)
+    {
+        // DPRINTF("Body received. ");
+        // DPRINTF("Buffer size:%d\n", p->tot_len);
+        // fflush(stdout);
+        pbuf_copy_partial(p, (buff + buff_pos), p->tot_len, 0);
+        buff_pos += p->tot_len;
+        tcp_recved(conn, p->tot_len);
+        if (p != NULL)
+        {
+            pbuf_free(p);
+        }
+
+        return ERR_OK;
+    }
+
+    DPRINTF("Downloading Floppy images db file from %s\n", url);
+    if (split_url(url, &parts) != 0)
+    {
+        DPRINTF("Failed to split URL\n");
+        return;
+    }
+
+    DPRINTF("Protocol %s\n", parts.protocol);
+    DPRINTF("Domain %s\n", parts.domain);
+    DPRINTF("URI %s\n", parts.uri);
+
+    httpc_connection_t settings;
+    settings.result_fn = result;
+    settings.headers_done_fn = headers;
+    settings.use_proxy = false;
+
+    complete = false;
+    cyw43_arch_lwip_begin();
+    err_t err = httpc_get_file_dns(
+        parts.domain,
+        LWIP_IANA_PORT_HTTP,
+        parts.uri,
+        &settings,
+        body,
+        NULL,
+        NULL);
+    cyw43_arch_lwip_end();
+
+    if (err != ERR_OK)
+    {
+        DPRINTF("HTTP GET failed: %d\n", err);
+        free_url_parts(&parts);
+        return;
+    }
+    while (!complete)
+    {
+#if PICO_CYW43_ARCH_POLL
+        cyw43_arch_lwip_begin();
+        cyw43_arch_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#else
+        sleep_ms(1000);
+#endif
+    }
+
+    bool inside_quotes = false;
+    char *start = NULL;
+    int items_count = 0;
+
+    // First, count the number of entries
+    int count = 0;
+    const char *p = buff;
+    while (*p)
+    {
+        if (*p == ';')
+            count++;
+        p++;
+    }
+    *itemCount = (count / 6) + 1; // +1 to adjust for the last entry
+
+    // Allocate memory for the entries
+    *items = malloc(*itemCount * sizeof(FloppyImageInfo));
+    if (!*items)
+    {
+        fprintf(stderr, "Memory allocation failed\n");
+        return;
+    }
+
+    for (int i = 0; i < *itemCount; i++)
+    {
+        (*items)[i].name = NULL;
+        (*items)[i].status = NULL;
+        (*items)[i].description = NULL;
+        (*items)[i].tags = NULL;
+        (*items)[i].extra = NULL;
+        (*items)[i].url = NULL;
+    }
+
+    FloppyImageInfo *current = &(*items)[0];
+    while (*buff)
+    {
+        if (*buff == '"')
+        {
+            inside_quotes = !inside_quotes;
+
+            if (inside_quotes)
+            {
+                start = (char *)(buff + 1); // Start of a new value
+            }
+            else
+            {
+                char *value = strndup(start, buff - start);
+                switch (items_count % 6)
+                {
+                case 0:
+                    current->name = value;
+                    break;
+                case 1:
+                    current->status = value;
+                    break;
+                case 2:
+                    current->description = value;
+                    break;
+                case 3:
+                    current->tags = value;
+                    break;
+                case 4:
+                    current->extra = value;
+                    break;
+                case 5:
+                    current->url = value;
+                    break;
+                }
+
+                items_count++;
+                if (items_count % 6 == 0)
+                {
+                    current++;
+                }
+            }
+        }
+        buff++;
+    }
+    // Demonstrate the results
+    for (int i = 0; i < *itemCount; i++)
+    {
+        printf("Name: %s, Status: %s, Description: %s, Tags: %s, Extra: %s, URL: %s\n",
+               (*items)[i].name, (*items)[i].status, (*items)[i].description,
+               (*items)[i].tags, (*items)[i].extra, (*items)[i].url);
+    }
+
+    free_url_parts(&parts);
+}

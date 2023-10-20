@@ -8,6 +8,10 @@
 
 #include "include/romloader.h"
 
+// Synchronous command variables
+static uint16_t *payloadPtr = NULL;
+static uint32_t random_token;
+
 // Microsd variables
 bool microsd_initialized = false;
 bool microsd_mounted = false;
@@ -24,9 +28,15 @@ static bool list_floppies = false;
 static int floppy_file_selected = -1;
 static bool floppy_read_write = true;
 
+// Query floppy database variables
+static bool query_floppy_db = false;
+static char query_floppy_letter = 'a';
+static FloppyImageInfo *floppy_images_files;
+static int filtered_num_floppy_images_files = 0;
+
 // Network variables
-RomInfo *network_files;
-int filtered_num_network_files = 0;
+static RomInfo *network_files;
+static int filtered_num_network_files = 0;
 
 WifiNetworkAuthInfo *wifi_auth = NULL; // IF NULL, do not connect to any network
 static bool persist_config = false;
@@ -580,6 +590,13 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
             list_floppies = true; // now the active loop should stop and list the floppy images
         }
         break;
+    case QUERY_FLOPPY_DB:
+        // Get the list of floppy images for a given letter from the Atari ST Databse
+        DPRINTF("Command QUERY_FLOPPY_DB (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        payloadPtr = (uint16_t *)protocol->payload + 2;
+        query_floppy_letter = *(char *)(payloadPtr + 2);
+        query_floppy_db = true;
 
     // ... handle other commands
     default:
@@ -844,6 +861,32 @@ int init_firmware()
             qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
             // Store the list in the ROM memory space
             store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
+        }
+
+        // Query the Atari ST Database for the list of floppy images for a given letter
+        if (query_floppy_db)
+        {
+            query_floppy_db = false;
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+            // Clean memory space
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+
+            // Get the URL from the configuration
+            char *url = find_entry("FLOPPY_DB_URL")->value;
+
+            get_floppy_db_files(&floppy_images_files, &filtered_num_floppy_images_files, url);
+
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+
+            // Transform buffer's words from little endian to big endian inline
+            volatile uint16_t *target = (volatile uint16_t *)(memory_area + 4);
+            for (int i = 0; i < CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES; i += 2)
+            {
+                uint16_t value = *(uint16_t *)(floppy_images_files + i);
+                value = (value << 8) | (value >> 8);
+                *(target++) = value;
+            }
+            *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
         // Increase the counter and reset it if it reaches the limit
