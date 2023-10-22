@@ -35,8 +35,8 @@
 #include "romemul.h"
 #include "network.h"
 
-// Define a custom error code for the case where the destination file exists and the flag is false
-#define FR_FILE_EXISTS 100
+// Size of the random seed to use in the sync commands
+#define RANDOM_SEED_SIZE 4 // 4 bytes
 
 // Delete flash
 int delete_FLASH(void);
