@@ -9,6 +9,7 @@
 #include "include/romloader.h"
 #include "include/romemul.h"
 #include "include/floppyemul.h"
+#include "include/dongleemul.h"
 
 int main()
 {
@@ -89,6 +90,9 @@ int main()
             // The "E" character stands for "Emulator"
             blink_morse('E');
 
+            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+            cyw43_arch_deinit();
+
             bool write_config_only_once = true;
             // Loop forever and block until the state machine put data into the FIFO
             while (true)
@@ -119,10 +123,25 @@ int main()
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
             DPRINTF("Ready to accept commands.\n");
 
+            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+            cyw43_arch_deinit();
+
             // The "F" character stands for "Floppy"
             //            blink_morse('F');
 
             init_floppyemul(safe_config_reboot);
+
+            // You should never reach this line...
+        }
+
+        if (strcmp(default_config_entry->value, "DONGLE_EMULATOR") == 0)
+        {
+            printf("DONGLE_EMULATOR entry found in config. Launching.\n");
+
+            // The "M" character stands for "Music"
+            //            blink_morse('M');
+
+            init_dongleemul(safe_config_reboot);
 
             // You should never reach this line...
         }
@@ -140,7 +159,6 @@ int main()
             put_string("BOOT_FEATURE", "CONFIGURATOR");
             write_all_entries();
         }
-        network_init();
 
         // Print the config
         print_config_table();
@@ -152,13 +170,15 @@ int main()
         // Copy the firmware to RAM
         copy_firmware_to_RAM();
 
-        // Reserve memory for the protocol parser
-        init_protocol_parser();
-
         // Hybrid way to initialize the ROM emulator:
         // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
         // and start the state machine
         init_romemul(NULL, dma_irq_handler_lookup_callback, false);
+
+        network_init();
+
+        // Reserve memory for the protocol parser
+        init_protocol_parser();
 
         DPRINTF("Ready to accept commands.\n");
 
@@ -167,6 +187,9 @@ int main()
         // Now the user needs to reset or poweroff the board to load the ROMs
         DPRINTF("Rebooting the board.\n");
         sleep_ms(1000); // Give me a break... to display the message
+
+        // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+        cyw43_arch_deinit();
 
         watchdog_reboot(0, SRAM_END, 10);
         while (1)

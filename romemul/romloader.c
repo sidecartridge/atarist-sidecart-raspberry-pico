@@ -8,6 +8,10 @@
 
 #include "include/romloader.h"
 
+// Synchronous command variables
+static uint16_t *payloadPtr = NULL;
+static uint32_t random_token;
+
 // Microsd variables
 bool microsd_initialized = false;
 bool microsd_mounted = false;
@@ -24,9 +28,17 @@ static bool list_floppies = false;
 static int floppy_file_selected = -1;
 static bool floppy_read_write = true;
 
+// Query floppy database variables
+static bool query_floppy_db = false;
+static char query_floppy_letter = 'a';
+static FloppyImageInfo *floppy_images_files = NULL;
+static int filtered_num_floppy_images_files = 0;
+static int floppy_image_selected = -1;
+static int floppy_image_selected_status = 0;
+
 // Network variables
-RomInfo *network_files;
-int filtered_num_network_files = 0;
+static RomInfo *network_files;
+static int filtered_num_network_files = 0;
 
 WifiNetworkAuthInfo *wifi_auth = NULL; // IF NULL, do not connect to any network
 static bool persist_config = false;
@@ -37,6 +49,30 @@ static bool get_json_file = false;
 
 // ROMs in network variables
 static int rom_network_selected = -1;
+
+/**
+ * @brief Checks if a directory exists in the filesystem.
+ *
+ * This function uses the FatFS library's f_stat() method to determine if
+ * a specified directory exists on the filesystem. It returns 1 if the directory
+ * exists and 0 otherwise.
+ *
+ * @param dir A pointer to a string containing the path of the directory to check.
+ * @return int Returns 1 if the directory exists, 0 otherwise.
+ */
+static int directory_exists(const char *dir)
+{
+    FILINFO fno;
+    FRESULT res = f_stat(dir, &fno);
+
+    // Check if the result is OK and if the attribute indicates it's a directory
+    if (res == FR_OK && (fno.fattrib & AM_DIR))
+    {
+        return 1; // Directory exists
+    }
+
+    return 0; // Directory does not exist
+}
 
 /**
  * @brief Copies a file within the same folder to a new file with a specified name.
@@ -411,14 +447,16 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     case DOWNLOAD_ROM:
         // Download the ROM index passed as argument in the payload
         DPRINTF("Command DOWNLOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        value_payload = protocol->payload[4] | (protocol->payload[5] << 8);
         DPRINTF("Value: %d\n", value_payload);
         rom_network_selected = value_payload;
         break;
     case LOAD_ROM:
         // Load ROM passed as argument in the payload
         DPRINTF("Command LOAD_ROM (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        value_payload = protocol->payload[4] | (protocol->payload[5] << 8);
         DPRINTF("Value: %d\n", value_payload);
         if (microsd_mounted)
         {
@@ -433,6 +471,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     case LIST_ROMS:
         // Get the list of roms in the SD card
         DPRINTF("Command LIST_ROMS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         if (!microsd_mounted)
         {
             DPRINTF("SD card not mounted. Cannot list ROMs.\n");
@@ -446,67 +485,79 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     case GET_CONFIG:
         // Get the list of parameters in the device
         DPRINTF("Command GET_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        memcpy(memory_area, &configData, sizeof(configData));
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        memcpy(memory_area + RANDOM_SEED_SIZE, &configData, sizeof(configData));
 
         // Swap the keys and values section bytes in the words
         // The endians conversions should be done always in the rp2040 side to relief
         // the ST side from this task
-        uint16_t *dest_ptr = (uint16_t *)(memory_area + 4); // Bypass magic number
+        uint16_t *dest_ptr = (uint16_t *)(memory_area + sizeof(__uint32_t) + RANDOM_SEED_SIZE); // Bypass magic number and random size
         for (int i = 0; i < configData.count; i++)
         {
             swap_data(dest_ptr);
             dest_ptr += sizeof(ConfigEntry) / 2;
         }
+        *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case PUT_CONFIG_STRING:
         // Put a configuration string parameter in the device
         DPRINTF("Command PUT_CONFIG_STRING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         entry = malloc(sizeof(ConfigEntry));
-        memcpy(entry, protocol->payload, sizeof(ConfigEntry));
+        memcpy(entry, protocol->payload + RANDOM_SEED_SIZE, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
         DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_string(entry->key, entry->value);
+        *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case PUT_CONFIG_INTEGER:
         // Put a configuration integer parameter in the device
         DPRINTF("Command PUT_CONFIG_INTEGER (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         entry = malloc(sizeof(ConfigEntry));
-        memcpy(entry, protocol->payload, sizeof(ConfigEntry));
+        memcpy(entry, protocol->payload + RANDOM_SEED_SIZE, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
         DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_integer(entry->key, atoi(entry->value));
+        *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case PUT_CONFIG_BOOL:
         // Put a configuration boolean parameter in the device
         DPRINTF("Command PUT_CONFIG_BOOL (6) received: %d\n", protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         entry = malloc(sizeof(ConfigEntry));
-        memcpy(entry, protocol->payload, sizeof(ConfigEntry));
+        memcpy(entry, protocol->payload + RANDOM_SEED_SIZE, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
         DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_bool(entry->key, (strcmp(entry->value, "true") == 0) ? true : false);
+        *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case SAVE_CONFIG:
         // Save the current configuration in the FLASH of the device
         DPRINTF("Command SAVE_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        DPRINTF("Protocol payload: %s\n", &protocol->payload);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         persist_config = true; // now the active loop should stop and save the config
         break;
     case RESET_DEVICE:
         // Reset the device
         DPRINTF("Command RESET_DEVICE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        reset_config_default();
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         reset_default = true; // now the active loop should stop and reset the config
         break;
     case LAUNCH_SCAN_NETWORKS:
         // Scan the networks and return the results
         DPRINTF("Command LAUNCH_SCAN_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         scan_network = true; // now the active loop should stop and scan the networks
+        *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case GET_SCANNED_NETWORKS:
         // Get the results of the scanned networks
         DPRINTF("Command GET_SCANNED_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        memcpy(memory_area, &wifiScanData, sizeof(wifiScanData));
-        network_swap_data((__uint16_t *)memory_area, wifiScanData.count);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        memcpy(memory_area + RANDOM_SEED_SIZE, &wifiScanData, sizeof(wifiScanData));
+        network_swap_data((__uint16_t *)(memory_area + RANDOM_SEED_SIZE), wifiScanData.count);
+        *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case CONNECT_NETWORK:
         // Put a configuration string parameter in the device
@@ -519,11 +570,13 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     case GET_IP_DATA:
         // Get IPv4 and IPv6 and SSID info
         DPRINTF("Command GET_IP_DATA (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         ConnectionData *connection_data = malloc(sizeof(ConnectionData));
         get_connection_data(connection_data);
-        memcpy(memory_area, connection_data, sizeof(ConnectionData));
-        network_swap_connection_data((__uint16_t *)memory_area);
+        memcpy(memory_area + RANDOM_SEED_SIZE, connection_data, sizeof(ConnectionData));
+        network_swap_connection_data((__uint16_t *)(memory_area + RANDOM_SEED_SIZE));
         free(connection_data);
+        *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case DISCONNECT_NETWORK:
         // Disconnect from the network
@@ -533,12 +586,14 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     case GET_ROMS_JSON_FILE:
         // Download the JSON file of the ROMs from the URL
         DPRINTF("Command GET_ROMS_JSON_FILE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         get_json_file = true; // now in the active loop should stop and download the JSON file
         break;
     case LOAD_FLOPPY_RO:
         // Load the floppy image in ro mode passed as argument in the payload
         DPRINTF("Command LOAD_FLOPPY_RO (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        value_payload = protocol->payload[4] | (protocol->payload[5] << 8);
         DPRINTF("Value: %d\n", value_payload);
         if (microsd_mounted)
         {
@@ -554,7 +609,8 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     case LOAD_FLOPPY_RW:
         // Load the floppy image in rw mode passed as argument in the payload
         DPRINTF("Command LOAD_FLOPPY_RW (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        value_payload = protocol->payload[0] | (protocol->payload[1] << 8);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        value_payload = protocol->payload[4] | (protocol->payload[5] << 8);
         DPRINTF("Value: %d\n", value_payload);
         if (microsd_mounted)
         {
@@ -570,6 +626,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     case LIST_FLOPPIES:
         // Get the list of floppy images in the SD card
         DPRINTF("Command LIST_FLOPPIES (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         if (!microsd_mounted)
         {
             DPRINTF("SD card not mounted. Cannot list Floppies.\n");
@@ -578,6 +635,42 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             list_floppies = true; // now the active loop should stop and list the floppy images
+        }
+        break;
+    case QUERY_FLOPPY_DB:
+        // Get the list of floppy images for a given letter from the Atari ST Databse
+        DPRINTF("Command QUERY_FLOPPY_DB (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        payloadPtr = (uint16_t *)protocol->payload + 2;
+        query_floppy_letter = (char)(*(payloadPtr)&0xFF);
+
+        // Convert to lowercase if it's an uppercase letter
+        if (query_floppy_letter >= 'A' && query_floppy_letter <= 'Z')
+        {
+            query_floppy_letter += 'a' - 'A';
+        }
+
+        DPRINTF("Random token: %x\n", random_token);
+        DPRINTF("Letter: %c\n", query_floppy_letter);
+        query_floppy_db = true;
+        break;
+    case DOWNLOAD_FLOPPY:
+        // Download the floppy image passed as argument in the payload
+        DPRINTF("Command DOWNLOAD_FLOPPY (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        value_payload = protocol->payload[4] | (protocol->payload[5] << 8);
+        DPRINTF("Value: %d\n", value_payload);
+        floppy_image_selected_status = 0; // Reset the status
+        if (microsd_mounted)
+        {
+            floppy_image_selected = value_payload;
+        }
+        else
+        {
+            DPRINTF("SD card not mounted. Cannot save the image to download.\n");
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
+            floppy_image_selected_status = 1; // Error: SD card not mounted
+            floppy_image_selected = 0;
         }
         break;
 
@@ -699,7 +792,7 @@ int init_firmware()
     blink_morse('C');
 
     u_int16_t network_poll_counter = 0;
-    while ((rom_file_selected < 0) && (rom_network_selected < 0) && (floppy_file_selected < 0) && (persist_config == false) && (reset_default == false))
+    while ((rom_file_selected < 0) && (rom_network_selected < 0) && (floppy_file_selected < 0) && (floppy_image_selected < 0) && (reset_default == false))
     {
         tight_loop_contents();
 
@@ -772,13 +865,21 @@ int init_firmware()
             }
         }
 
+        if (persist_config)
+        {
+            persist_config = false;
+            DPRINTF("Saving configuration to FLASH\n");
+            write_all_entries();
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
+
         // Download the json file
         if (get_json_file)
         {
             get_json_file = false;
 
             // Clean memory space
-            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
 
             // Get the URL from the configuration
             char *url = find_entry("ROMS_YAML_URL")->value;
@@ -787,7 +888,7 @@ int init_firmware()
             get_json_files(&network_files, &filtered_num_network_files, url);
 
             // Iterate over the RomInfo items and populate the names array
-            char *dest_ptr = (char *)(memory_area);
+            char *dest_ptr = (char *)(memory_area + RANDOM_SEED_SIZE);
             for (int i = 0; i < filtered_num_network_files; i++)
             {
                 // Copy the string from network_files[i].name to dest_ptr with strcpy
@@ -805,7 +906,9 @@ int init_firmware()
             *dest_ptr++ = 0x00;
 
             // Swap the words to motorola endian format: BIG ENDIAN
-            network_swap_json_data((__uint16_t *)memory_area);
+            network_swap_json_data((__uint16_t *)(memory_area + RANDOM_SEED_SIZE));
+
+            *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
         // List the ROM images in the SD card
@@ -826,7 +929,9 @@ int init_firmware()
             // Sort remaining valid filenames lexicographically
             qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
             // Store the list in the ROM memory space
-            store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
+            store_file_list(filtered_local_list, filtered_num_local_files, (memory_area + RANDOM_SEED_SIZE));
+
+            *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
         // List the floppy images in the SD card
@@ -848,11 +953,86 @@ int init_firmware()
             // Sort remaining valid filenames lexicographically
             qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
             // Store the list in the ROM memory space
-            store_file_list(filtered_local_list, filtered_num_local_files, memory_area);
+            store_file_list(filtered_local_list, filtered_num_local_files, (memory_area + RANDOM_SEED_SIZE));
+
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
+
+        // Query the Atari ST Database for the list of floppy images for a given letter
+        if (query_floppy_db)
+        {
+            query_floppy_db = false;
+
+            // Free dynamically allocated memory first
+            if (floppy_images_files != NULL)
+            {
+                for (int i = 0; i < filtered_num_floppy_images_files; i++)
+                {
+                    free(floppy_images_files[i].name);
+                    free(floppy_images_files[i].status);
+                    free(floppy_images_files[i].description);
+                    free(floppy_images_files[i].tags);
+                    free(floppy_images_files[i].extra);
+                    free(floppy_images_files[i].url);
+                }
+
+                free(floppy_images_files);
+            }
+
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+
+            // Clean memory space
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+
+            // Get the URL from the configuration
+            char *base_url = find_entry("FLOPPY_DB_URL")->value;
+
+            // Ensure that the buffer is large enough for the original URL, the `/db/`, the letter, `.csv`, and the null terminator.
+            char url[256]; // Adjust the size as needed based on the maximum length of base_url.
+
+            sprintf(url, "%s/db/%c.csv", base_url, query_floppy_letter);
+
+            get_floppy_db_files(&floppy_images_files, &filtered_num_floppy_images_files, url);
+
+            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+
+            // Demonstrate the results
+            // for (int i = 0; i < filtered_num_floppy_images_files; i++)
+            // {
+            //     DPRINTF("Name: %s, Status: %s, Description: %s, Tags: %s, Extra: %s, URL: %s\n",
+            //             floppy_images_files[i].name, floppy_images_files[i].status, floppy_images_files[i].description,
+            //             floppy_images_files[i].tags, floppy_images_files[i].extra, floppy_images_files[i].url);
+            // }
+
+            // Iterate over the RomInfo items and populate the names array
+            char *dest_ptr = (char *)(memory_area + 4); // Bypass random token
+            for (int i = 0; i < filtered_num_floppy_images_files; i++)
+            {
+                // Copy the string from network_files[i].name to dest_ptr
+                sprintf(dest_ptr, "%s", floppy_images_files[i].name);
+                dest_ptr += strlen(dest_ptr) + 1;
+            }
+            // If dest_ptr is odd, add a 0x00 byte to align the next string
+            if ((uintptr_t)dest_ptr & 1)
+            {
+                *dest_ptr++ = 0x00;
+            } // Add an additional 0x00 word to mark the end of the list
+            *dest_ptr++ = 0x00;
+            *dest_ptr++ = 0x00;
+
+            // Swap the words to motorola endian format: BIG ENDIAN
+            network_swap_json_data((__uint16_t *)(memory_area + 4));
+
+            DPRINTF("Random token: %x\n", random_token);
+
+            *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
         // Increase the counter and reset it if it reaches the limit
         network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
+
+        // Store the seed of the random number generator in the ROM memory space
+        *((volatile uint32_t *)(memory_area - RANDOM_SEED_SIZE)) = rand() % 0xFFFFFFFF;
     }
 
     if (rom_file_selected > 0)
@@ -874,12 +1054,13 @@ int init_firmware()
 
         put_string("BOOT_FEATURE", "ROM_EMULATOR");
         write_all_entries();
+        *((volatile uint32_t *)(memory_area)) = random_token;
     }
 
     if (rom_network_selected > 0)
     {
         DPRINTF("ROM network selected: %d\n", rom_network_selected);
-        int res = download(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
+        int res = download_rom(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
 
         // Free dynamically allocated memory
         for (int i = 0; i < filtered_num_network_files; i++)
@@ -890,6 +1071,8 @@ int init_firmware()
 
         put_string("BOOT_FEATURE", "ROM_EMULATOR");
         write_all_entries();
+
+        *((volatile uint32_t *)(memory_area)) = random_token;
     }
 
     if (floppy_file_selected > 0)
@@ -930,17 +1113,89 @@ int init_firmware()
 
         // The "F" character stands for "Floppy"
         blink_morse('F');
+        *((volatile uint32_t *)(memory_area)) = random_token;
     }
 
-    if (persist_config)
+    if (floppy_image_selected > 0)
     {
-        DPRINTF("Saving configuration to FLASH\n");
-        write_all_entries();
+        char *extract_filename(char *path)
+        {
+            char *last_slash = strrchr(path, '/'); // Find the last occurrence of '/'
+
+            // If '/' was found, return the string after it
+            if (last_slash && *(last_slash + 1))
+            {
+                return last_slash + 1;
+            }
+            return path; // Return the original path if '/' wasn't found
+        }
+
+        DPRINTF("Floppy image selected to download: %d\n", floppy_image_selected);
+        FloppyImageInfo remote = floppy_images_files[floppy_image_selected - 1];
+        char *remote_name = remote.name;
+        char *remote_uri = remote.url;
+
+        char full_url[512];
+        // Get the URL from the configuration
+        char *base_url = find_entry("FLOPPY_DB_URL")->value;
+
+        char *dest_filename = extract_filename(remote.url);
+        char *dir = find_entry("FLOPPIES_FOLDER")->value;
+
+        if (strncmp(remote_uri, "http", 4) == 0)
+        { // Check if remote_uri starts with "http"
+            strcpy(full_url, remote_uri);
+        }
+        else
+        {
+            // Use sprintf to format and concatenate strings
+            sprintf(full_url, "%s/%s", base_url, remote_uri);
+        }
+
+        DPRINTF("Full URL: %s\n", full_url);
+        DPRINTF("Remote name: %s\n", remote_name);
+        DPRINTF("Name in folder: %s\n", dest_filename);
+        DPRINTF("Directory: %s\n", dir);
+
+        if (directory_exists(dir))
+        {
+            // Directory exists
+            DPRINTF("Directory exists: %s\n", dir);
+
+            int err = download_floppy(&full_url[0], dir, dest_filename, true);
+
+            if (err != 0)
+            {
+                floppy_image_selected = 0;
+                floppy_image_selected_status = 3; // Error: Failed downloading file
+                DPRINTF("Download floppy error: %d\n", err);
+            }
+            else
+            {
+                put_string("FLOPPY_IMAGE_A", dest_filename);
+                put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
+                write_all_entries();
+                // The "F" character stands for "Floppy"
+                blink_morse('F');
+            }
+        }
+        else
+        {
+            floppy_image_selected_status = 2; // Error: Directory does not exist
+            floppy_image_selected = 0;
+            DPRINTF("Directory does not exist: %s\n", dir);
+        }
+
+        *((volatile uint16_t *)(memory_area + 4)) = floppy_image_selected_status;
+
+        DPRINTF("Random token: %x\n", random_token);
+        *((volatile uint32_t *)(memory_area)) = random_token;
     }
     if (reset_default)
     {
-        DPRINTF("Resetting configuration to default\n");
+        DPRINTF("Resetting configuration to default and rebooting SidecarT.\n");
         reset_config_default();
+        *((volatile uint32_t *)(memory_area)) = random_token;
     }
     // Release memory from the protocol
     terminate_protocol_parser();
