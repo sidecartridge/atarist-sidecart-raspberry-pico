@@ -6,6 +6,7 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"BOOT_FEATURE", TYPE_STRING, "CONFIGURATOR"},
     {"DELAY_ROM_EMULATION", TYPE_BOOL, "false"},
     {"FLOPPIES_FOLDER", TYPE_STRING, "/floppies"},
+    {"FLOPPY_DB_URL", TYPE_STRING, "http://ataristdb.sidecart.xyz"},
     {"FLOPPY_IMAGE_A", TYPE_STRING, ""},
     {"FLOPPY_IMAGE_B", TYPE_STRING, ""},
     {"HOSTNAME", TYPE_STRING, "sidecart"},
