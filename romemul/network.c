@@ -650,7 +650,7 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
     }
 }
 
-int download(const char *url, uint32_t rom_load_offset)
+int download_rom(const char *url, uint32_t rom_load_offset)
 {
     const int FLASH_BUFFER_SIZE = 4096;
     uint8_t *flash_buff = malloc(FLASH_BUFFER_SIZE);
@@ -855,11 +855,12 @@ int download(const char *url, uint32_t rom_load_offset)
 
 void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url)
 {
-    char *buff = malloc(32768);
+    char *buff = malloc(16384);
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
     bool complete = false;
     UrlParts parts;
+    u32_t content_len = 0;
 
     err_t headers(httpc_state_t * connection, void *arg,
                   struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
@@ -871,6 +872,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
                 u32_t rx_content_len, u32_t srv_res, err_t err)
 
     {
+        content_len = rx_content_len;
         complete = true;
         if (srv_res != 200)
         {
@@ -949,6 +951,8 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
 #endif
     }
 
+    free_url_parts(&parts);
+
     bool inside_quotes = false;
     char *start = NULL;
     int items_count = 0;
@@ -956,19 +960,22 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     // First, count the number of entries
     int count = 0;
     const char *p = buff;
-    while (*p)
+    for (int i = 0; i < content_len; i++)
     {
         if (*p == ';')
             count++;
         p++;
     }
-    *itemCount = (count / 6) + 1; // +1 to adjust for the last entry
+    *itemCount = (count / 5);
+
+    DPRINTF("Found %d entries\n", *itemCount);
 
     // Allocate memory for the entries
-    *items = malloc(*itemCount * sizeof(FloppyImageInfo));
+    *items = malloc(CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES * 2); // The size of the random number
     if (!*items)
     {
-        fprintf(stderr, "Memory allocation failed\n");
+        DPRINTF("Memory allocation failed\n");
+        free(buff);
         return;
     }
 
@@ -983,19 +990,20 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     }
 
     FloppyImageInfo *current = &(*items)[0];
-    while (*buff)
+    char *buff_iter = buff;
+    while (*buff_iter)
     {
-        if (*buff == '"')
+        if (*buff_iter == '"')
         {
             inside_quotes = !inside_quotes;
 
             if (inside_quotes)
             {
-                start = (char *)(buff + 1); // Start of a new value
+                start = (char *)(buff_iter + 1); // Start of a new value
             }
             else
             {
-                char *value = strndup(start, buff - start);
+                char *value = strndup(start, buff_iter - start);
                 switch (items_count % 6)
                 {
                 case 0:
@@ -1025,15 +1033,155 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
                 }
             }
         }
-        buff++;
+        buff_iter++;
     }
-    // Demonstrate the results
-    for (int i = 0; i < *itemCount; i++)
+    if (buff != NULL)
     {
-        printf("Name: %s, Status: %s, Description: %s, Tags: %s, Extra: %s, URL: %s\n",
-               (*items)[i].name, (*items)[i].status, (*items)[i].description,
-               (*items)[i].tags, (*items)[i].extra, (*items)[i].url);
+        free(buff);
+    }
+}
+
+int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag)
+{
+    const int BUFFER_SIZE = 16384;
+    uint8_t *buff = malloc(BUFFER_SIZE);
+    uint32_t buff_pos = 0;
+    httpc_state_t *connection;
+    bool complete = false;
+    UrlParts parts;
+
+    FRESULT fr;    // FatFS function common result code
+    FIL dest_file; // File object
+    UINT bw;       // File read/write count
+    FILINFO fno;
+
+    err_t headers(httpc_state_t * connection, void *arg,
+                  struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
+    {
+        return ERR_OK;
     }
 
+    void result(void *arg, httpc_result_t httpc_result,
+                u32_t rx_content_len, u32_t srv_res, err_t err)
+
+    {
+        complete = true;
+        if (srv_res != 200)
+        {
+            DPRINTF("Floppy image download something went wrong. HTTP error: %d\n", srv_res);
+        }
+        else
+        {
+            DPRINTF("Floppy image transfer complete. %d transfered.\n", rx_content_len);
+            DPRINTF("Pending bytes to write: %d\n", buff_pos);
+        }
+    }
+
+    err_t body(void *arg, struct altcp_pcb *conn,
+               struct pbuf *p, err_t err)
+    {
+
+        pbuf_copy_partial(p, buff, p->tot_len, 0);
+
+        fr = f_write(&dest_file, buff, p->tot_len, &bw); // Write it to the destination file
+        if (fr != FR_OK)
+        {
+            DPRINTF("f_write error: %s (%d)\n", FRESULT_str(fr), fr);
+        }
+        // Write chunk to flash
+        DPRINTF("Writing %d bytes to file: %s...\n", p->tot_len, dest_filename);
+
+        tcp_recved(conn, p->tot_len);
+
+        if (p != NULL)
+        {
+            pbuf_free(p);
+        }
+        return ERR_OK;
+    }
+
+    // Create full paths for source and destination files
+    char dest_path[256];
+    sprintf(dest_path, "%s/%s", folder, dest_filename);
+
+    // Check if the destination file exists
+    fr = f_stat(dest_path, &fno);
+    if (fr == FR_OK && !overwrite_flag)
+    {
+        DPRINTF("Destination file exists and overwrite_flag is false, canceling operation\n");
+        return FR_FILE_EXISTS; // Destination file exists and overwrite_flag is false, cancel the operation
+    }
+
+    // Create and open the destination file
+    fr = f_open(&dest_file, dest_path, FA_CREATE_ALWAYS | FA_WRITE);
+    if (fr != FR_OK)
+    {
+        DPRINTF("f_open error: %s (%d)\n", FRESULT_str(fr), fr);
+        f_close(&dest_file); // Close the source file if it was opened successfully
+        return FR_CANNOT_OPEN_FILE_FOR_WRITE;
+    }
+
+    DPRINTF("Downloading Floppy image from %s\n", url);
+    if (split_url(url, &parts) != 0)
+    {
+        DPRINTF("Failed to split URL\n");
+        return -1;
+    }
+
+    DPRINTF("Protocol %s\n", parts.protocol);
+    DPRINTF("Domain %s\n", parts.domain);
+    DPRINTF("URI %s\n", parts.uri);
+
+    httpc_connection_t settings;
+    memset(&settings, 0, sizeof(settings));
+
+    settings.result_fn = result;
+    settings.headers_done_fn = headers;
+    settings.use_proxy = false;
+
+    complete = false;
+    cyw43_arch_lwip_begin();
+    err_t err = httpc_get_file_dns(
+        parts.domain,
+        LWIP_IANA_PORT_HTTP,
+        parts.uri,
+        &settings,
+        body,
+        NULL,
+        NULL);
+    cyw43_arch_lwip_end();
+
+    if (err != ERR_OK)
+    {
+        DPRINTF("HTTP GET failed: %d\n", err);
+        free_url_parts(&parts);
+        return -1;
+    }
+    else
+    {
+        DPRINTF("HTTP GET sent\n");
+    }
+    while (!complete)
+    {
+        tight_loop_contents();
+#if PICO_CYW43_ARCH_POLL
+        cyw43_arch_lwip_begin();
+        cyw43_arch_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#else
+        sleep_ms(1000);
+#endif
+    }
+
+    // Close open file
+    f_close(&dest_file);
+
     free_url_parts(&parts);
+    free(buff);
+    return 0;
 }
