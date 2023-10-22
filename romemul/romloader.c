@@ -777,11 +777,13 @@ int init_firmware()
     // two 0x00 bytes.
 
     u_int16_t wifi_scan_poll_counter = 0;
-    u_int64_t wifi_scal_poll_counter_mcs = 0; // Force the first scan to be done in the loop
+    u_int64_t wifi_scan_poll_counter_mcs = 0; // Force the first scan to be done in the loop
+
     ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
     if (default_config_entry != NULL)
     {
         wifi_scan_poll_counter = atoi(default_config_entry->value);
+        network_scan();
     }
     else
     {
@@ -808,14 +810,14 @@ int init_firmware()
 #else
         sleep_ms(1000);
 #endif
-        if ((time_us_64() - wifi_scal_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
+        if ((time_us_64() - wifi_scan_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
         {
             ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
             if (default_config_entry != NULL)
             {
                 network_scan();
                 wifi_scan_poll_counter = atoi(default_config_entry->value);
-                wifi_scal_poll_counter_mcs = time_us_64();
+                wifi_scan_poll_counter_mcs = time_us_64();
             }
             else
             {
@@ -854,8 +856,42 @@ int init_firmware()
                     ConnectionData *connection_data = malloc(sizeof(ConnectionData));
                     get_connection_data(connection_data);
                     DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s\n", connection_data->ssid, connection_data->status, connection_data->ipv4_address, connection_data->ipv6_address, print_ipv4(get_gateway()), print_ipv4(get_netmask()));
-
                     free(connection_data);
+                    if (current_status == BADAUTH_ERROR)
+                    {
+                        DPRINTF("Bad authentication. Should enter again the credentials...\n");
+                        network_disconnect();
+
+                        // Need to deinit and init again the full network stack to be able to scan again
+                        cyw43_arch_deinit();
+                        cyw43_arch_init();
+                        network_init();
+
+                        network_scan();
+
+                        // Clean the credentials configuration
+                        put_string("WIFI_SSID", "");
+                        put_string("WIFI_PASSWORD", "");
+                        put_integer("WIFI_AUTH", 0);
+                        write_all_entries();
+
+                        // Start the network.
+                        network_connect(false, NETWORK_CONNECTION_ASYNC);
+                    }
+                    else if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
+                    {
+                        DPRINTF("Connection failed. Resetting network...\n");
+                        network_disconnect();
+
+                        // Need to deinit and init again the full network stack to be able to scan again
+                        cyw43_arch_deinit();
+                        cyw43_arch_init();
+                        network_init();
+
+                        network_scan();
+                        // Start the network.
+                        network_connect(true, NETWORK_CONNECTION_ASYNC);
+                    }
                 }
             }
         }

@@ -9,7 +9,6 @@
 #include "include/romloader.h"
 #include "include/romemul.h"
 #include "include/floppyemul.h"
-#include "include/dongleemul.h"
 
 int main()
 {
@@ -130,18 +129,6 @@ int main()
             //            blink_morse('F');
 
             init_floppyemul(safe_config_reboot);
-
-            // You should never reach this line...
-        }
-
-        if (strcmp(default_config_entry->value, "DONGLE_EMULATOR") == 0)
-        {
-            printf("DONGLE_EMULATOR entry found in config. Launching.\n");
-
-            // The "M" character stands for "Music"
-            //            blink_morse('M');
-
-            init_dongleemul(safe_config_reboot);
 
             // You should never reach this line...
         }
