@@ -57,6 +57,10 @@ extern const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES;
 #define SYMBOL_GAP_MS 150
 #define CHARACTER_GAP_MS 700
 
+// Custom errors for the filesystem
+#define FR_FILE_EXISTS 100
+#define FR_CANNOT_OPEN_FILE_FOR_WRITE 101
+
 typedef struct
 {
     char character;
