@@ -90,6 +90,9 @@ int main()
             // The "E" character stands for "Emulator"
             blink_morse('E');
 
+            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+            cyw43_arch_deinit();
+
             bool write_config_only_once = true;
             // Loop forever and block until the state machine put data into the FIFO
             while (true)
@@ -119,6 +122,9 @@ int main()
             // and start the state machine
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
             DPRINTF("Ready to accept commands.\n");
+
+            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+            cyw43_arch_deinit();
 
             // The "F" character stands for "Floppy"
             //            blink_morse('F');
@@ -181,6 +187,9 @@ int main()
         // Now the user needs to reset or poweroff the board to load the ROMs
         DPRINTF("Rebooting the board.\n");
         sleep_ms(1000); // Give me a break... to display the message
+
+        // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+        cyw43_arch_deinit();
 
         watchdog_reboot(0, SRAM_END, 10);
         while (1)
