@@ -158,6 +158,17 @@ void network_scan()
 
 void network_disconnect()
 {
+    // The library seems to have a bug when disconnecting. It doesn't work. So I'm using the ioctl directly
+    int custom_cyw43_wifi_leave(cyw43_t * self, int itf)
+    {
+        // Disassociate with SSID
+        cyw43_wifi_set_up(self,
+                          itf,
+                          false,
+                          CYW43_COUNTRY_WORLDWIDE);
+        return cyw43_ioctl(self, 0x76, 0, NULL, itf);
+    }
+
     int error = cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
     if (error == 0)
     {
@@ -363,6 +374,11 @@ void get_connection_data(ConnectionData *connection_data)
         snprintf(connection_data->ssid, sizeof(connection_data->ssid), "%s", ssid->value);
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Waiting address" + '\0');
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Waiting address" + '\0');
+        break;
+    case CONNECTING:
+        snprintf(connection_data->ssid, MAX_SSID_LENGTH, "%s", "Initializing" + '\0');
+        snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Initializing" + '\0');
         break;
     case DISCONNECTED:
         snprintf(connection_data->ssid, MAX_SSID_LENGTH, "%s", "Not connected" + '\0');
