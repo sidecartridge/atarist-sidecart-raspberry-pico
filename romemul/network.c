@@ -67,7 +67,7 @@ void network_swap_data(uint16_t *dest_ptr_word, uint16_t total_items)
 void network_swap_connection_data(uint16_t *dest_ptr_word)
 {
     // No need to swap the connection status
-    swap_words(dest_ptr_word, MAX_SSID_LENGTH + IPV4_ADDRESS_LENGTH + IPV6_ADDRESS_LENGTH);
+    swap_words(dest_ptr_word, MAX_SSID_LENGTH + IPV4_ADDRESS_LENGTH + IPV6_ADDRESS_LENGTH + MAX_BSSID_LENGTH);
 }
 
 void network_swap_json_data(uint16_t *dest_ptr_word)
@@ -78,6 +78,12 @@ void network_swap_json_data(uint16_t *dest_ptr_word)
 
 void network_init()
 {
+
+    cyw43_wifi_set_up(&cyw43_state,
+                      CYW43_ITF_STA,
+                      true,
+                      CYW43_COUNTRY_WORLDWIDE);
+
     // Enable the STA mode
     cyw43_arch_enable_sta_mode();
     DPRINTF("STA network mode enabled\n");
@@ -169,7 +175,7 @@ void network_disconnect()
         return cyw43_ioctl(self, 0x76, 0, NULL, itf);
     }
 
-    int error = cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+    int error = custom_cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
     if (error == 0)
     {
         DPRINTF("Disconnected\n");
@@ -185,7 +191,7 @@ void network_connect(bool force, bool async)
 {
     if (!force)
     {
-        if ((connection_status == CONNECTED_WIFI_IP) || (connection_status == CONNECTED_WIFI))
+        if ((connection_status == CONNECTED_WIFI_IP))
         {
             DPRINTF("Already connected\n");
             return;
@@ -340,6 +346,11 @@ u_int32_t get_ip_address()
     return cyw43_state.netif[0].ip_addr.addr;
 }
 
+u_int8_t *get_mac_address()
+{
+    return cyw43_state.mac;
+}
+
 u_int32_t get_netmask()
 {
     return cyw43_state.netif[0].netmask.addr;
@@ -357,18 +368,33 @@ char *print_ipv4(u_int32_t ip)
     return ip_str;
 }
 
+char *print_mac(uint8_t *mac_address)
+{
+    static char mac_str[18];
+    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac_address[0],
+             mac_address[1],
+             mac_address[2],
+             mac_address[3],
+             mac_address[4],
+             mac_address[5]);
+    return mac_str;
+}
+
 void get_connection_data(ConnectionData *connection_data)
 {
     ConfigEntry *ssid = find_entry("WIFI_SSID");
     connection_data->status = (u_int16_t)connection_status;
     snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Not connected" + '\0');
     snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Not connected" + '\0');
+    snprintf(connection_data->mac_address, sizeof(connection_data->mac_address), "%s", "Not connected" + '\0');
     switch (connection_status)
     {
     case CONNECTED_WIFI_IP:
         snprintf(connection_data->ssid, sizeof(connection_data->ssid), "%s", ssid->value);
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", print_ipv4(get_ip_address()));
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Not implemented" + '\0');
+        snprintf(connection_data->mac_address, sizeof(connection_data->mac_address), "%s", print_mac(get_mac_address()));
         break;
     case CONNECTED_WIFI:
         snprintf(connection_data->ssid, sizeof(connection_data->ssid), "%s", ssid->value);

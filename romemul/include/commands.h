@@ -29,6 +29,7 @@
 #define LOAD_FLOPPY_RW 17       // Load a floppy image from the SD card in read-write mode
 #define QUERY_FLOPPY_DB 18      // Query the floppy database. Need to pass the letter or number to query
 #define DOWNLOAD_FLOPPY 19      // Download a floppy image from the URL
+#define GET_SD_DATA 20          // Get the SD card status, size, free space and folders
 
 // APP_ROMEMUL commands
 // No commands
