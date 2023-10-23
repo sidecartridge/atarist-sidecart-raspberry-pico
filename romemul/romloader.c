@@ -15,6 +15,8 @@ static uint32_t random_token;
 // Microsd variables
 bool microsd_initialized = false;
 bool microsd_mounted = false;
+bool microsd_status = false;
+
 // Filtered files list variables
 int filtered_num_local_files = 0;
 char **filtered_local_list = NULL;
@@ -50,6 +52,72 @@ static bool get_json_file = false;
 // ROMs in network variables
 static int rom_network_selected = -1;
 
+#include "ff.h"
+
+void get_card_info(FATFS *fs_ptr, uint32_t *totalSize_MB, uint32_t *freeSpace_MB)
+{
+    DWORD fre_clust;
+
+    // Set initial values to zero as a precaution
+    *totalSize_MB = 0;
+    *freeSpace_MB = 0;
+
+    // Get volume information and free clusters of drive
+    if (f_getfree("", &fre_clust, &fs_ptr) != FR_OK)
+    {
+        return; // Error handling: Set values to zero if getfree fails
+    }
+
+    // Calculate total sectors in the SD card
+    uint64_t total_sectors = (fs_ptr->n_fatent - 2) * fs_ptr->csize;
+
+    // Convert total sectors to bytes and then to megabytes
+    *totalSize_MB = (total_sectors * 512) / 1048576;
+
+    // Convert free clusters to sectors and then to bytes
+    uint64_t free_space_bytes = (uint64_t)fre_clust * fs_ptr->csize * 512;
+
+    // Convert bytes to megabytes
+    *freeSpace_MB = free_space_bytes / 1048576;
+}
+
+static uint32_t calculate_folder_count(const char *path)
+{
+    FRESULT res;
+    DIR dir;
+    FILINFO fno;
+    uint32_t totalSize = 0;
+    char newPath[256]; // Buffer to hold sub-directory paths
+
+    res = f_opendir(&dir, path); // Open the directory
+    if (res != FR_OK)
+    {
+        return 0; // Error, return 0
+    }
+
+    while (1)
+    {
+        res = f_readdir(&dir, &fno); // Read a directory item
+        if (res != FR_OK || fno.fname[0] == 0)
+        {
+            break; // Error or end of dir, exit
+        }
+
+        if (fno.fattrib & AM_DIR)
+        { // It's a directory
+            sprintf(newPath, "%s/%s", path, fno.fname);
+            totalSize += calculate_folder_count(newPath); // Recursive call
+        }
+        else
+        { // It's a file
+            totalSize += 1;
+        }
+    }
+
+    f_closedir(&dir);
+    return totalSize;
+}
+
 /**
  * @brief Checks if a directory exists in the filesystem.
  *
@@ -72,6 +140,60 @@ static int directory_exists(const char *dir)
     }
 
     return 0; // Directory does not exist
+}
+
+static void get_sdcard_data(FATFS *fs, SdCardData *sd_data)
+{
+
+    sd_data->status = microsd_mounted ? SD_CARD_MOUNTED : SD_CARD_NOT_MOUNTED; // SD card status
+    strncpy(sd_data->floppies_folder, find_entry("FLOPPIES_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
+    sd_data->floppies_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
+
+    strncpy(sd_data->roms_folder, find_entry("ROMS_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
+    sd_data->roms_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
+
+    // strncpy(sd_data->harddisks_folder, find_entry("HARDDISKS_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
+    // sd_data->harddisks_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
+
+    if (microsd_mounted)
+    {
+        sd_data->floppies_folder_status = directory_exists(sd_data->floppies_folder) ? FLOPPIES_FOLDER_OK : FLOPPIES_FOLDER_NOTFOUND;
+        sd_data->roms_folder_status = directory_exists(sd_data->roms_folder) ? ROMS_FOLDER_OK : ROMS_FOLDER_NOTFOUND;
+        // sd_data->harddisks_folder_status = directory_exists(sd_data->harddisks_folder) ? HARDDISKS_FOLDER_OK : HARDDISKS_FOLDER_NOTFOUND;
+
+        uint32_t total, freeSpace;
+        get_card_info(fs, &total, &freeSpace);
+
+        sd_data->sd_size = total;
+        sd_data->sd_free_space = freeSpace;
+
+        sd_data->roms_folder_count = calculate_folder_count(sd_data->roms_folder);
+        sd_data->floppies_folder_count = calculate_folder_count(sd_data->floppies_folder);
+        // sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);
+    }
+    else
+    {
+        sd_data->floppies_folder_status = FLOPPIES_FOLDER_NOTFOUND;
+        sd_data->roms_folder_status = ROMS_FOLDER_NOTFOUND;
+        // sd_data->harddisks_folder_status = HARDDISKS_FOLDER_NOTFOUND;
+        sd_data->sd_size = 0;
+        sd_data->sd_free_space = 0;
+        sd_data->roms_folder_count = 0;
+        sd_data->floppies_folder_count = 0;
+        // sd_data->harddisks_folder_count = 0;
+    }
+    DPRINTF("SD card status: %d\n", sd_data->status);
+    DPRINTF("SD card size: %d MB\n", sd_data->sd_size);
+    DPRINTF("SD card free space: %d MB\n", sd_data->sd_free_space);
+    DPRINTF("Floppies folder: %s\n", sd_data->floppies_folder);
+    DPRINTF("Floppies folder status: %d\n", sd_data->floppies_folder_status);
+    DPRINTF("Floppies folder size: %d\n", sd_data->floppies_folder_count);
+    DPRINTF("ROMs folder: %s\n", sd_data->roms_folder);
+    DPRINTF("ROMs folder status: %d\n", sd_data->roms_folder_status);
+    DPRINTF("ROMs folder size: %d\n", sd_data->roms_folder_count);
+    // DPRINTF("Hard disks folder: %s\n", sd_data->harddisks_folder);
+    // DPRINTF("Hard disks folder status: %d\n", sd_data->harddisks_folder_status);
+    // DPRINTF("Hard disks folder size: %d MB\n", sd_data->harddisks_folder_count/ (1024 * 1024));
 }
 
 /**
@@ -673,6 +795,12 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
             floppy_image_selected = 0;
         }
         break;
+    case GET_SD_DATA:
+        // Get the SD card data
+        DPRINTF("Command GET_SD_DATA (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        microsd_status = true;
+        break;
 
     // ... handle other commands
     default:
@@ -752,7 +880,6 @@ int init_firmware()
             DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
         }
     }
-    microsd_mounted = microsd_mounted & microsd_initialized;
 
     // Copy the content of the file list to the end of the ROM4 memory minus 4Kbytes
     // Translated to pure ROM4 address of the ST: 0xFB0000 - 0x1000 = 0xFAF000
@@ -768,9 +895,6 @@ int init_firmware()
 
     uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
 
-    // Start the network.
-    network_connect(false, NETWORK_CONNECTION_ASYNC);
-
     // Here comes the tricky part. We have to put in the higher section of the ROM4 memory the content
     // of the file list available in the SD card.
     // The structure is a list of chars separated with a 0x00 byte. The end of the list is marked with
@@ -783,12 +907,14 @@ int init_firmware()
     if (default_config_entry != NULL)
     {
         wifi_scan_poll_counter = atoi(default_config_entry->value);
-        network_scan();
     }
     else
     {
         DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
     }
+
+    // Start the network.
+    network_connect(false, NETWORK_CONNECTION_ASYNC);
 
     // The "C" character stands for "Configurator"
     blink_morse('C');
@@ -831,7 +957,7 @@ int init_firmware()
             put_string("WIFI_PASSWORD", wifi_auth->password);
             put_integer("WIFI_AUTH", wifi_auth->auth_mode);
             write_all_entries();
-            network_disconnect();
+
             network_connect(true, NETWORK_CONNECTION_ASYNC);
             free(wifi_auth);
             wifi_auth = NULL;
@@ -841,6 +967,18 @@ int init_firmware()
             disconnect_network = false;
             // Force  network disconnection
             network_disconnect();
+            // Need to deinit and init again the full network stack to be able to scan again
+            cyw43_arch_deinit();
+            cyw43_arch_init();
+            network_init();
+
+            network_scan();
+
+            // Clean the credentials configuration
+            put_string("WIFI_SSID", "");
+            put_string("WIFI_PASSWORD", "");
+            put_integer("WIFI_AUTH", 0);
+            write_all_entries();
         }
         if (network_poll_counter == 0)
         {
@@ -855,7 +993,14 @@ int init_firmware()
                     DPRINTF("Network previous status: %d\n", previous_status);
                     ConnectionData *connection_data = malloc(sizeof(ConnectionData));
                     get_connection_data(connection_data);
-                    DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s\n", connection_data->ssid, connection_data->status, connection_data->ipv4_address, connection_data->ipv6_address, print_ipv4(get_gateway()), print_ipv4(get_netmask()));
+                    DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s\n",
+                            connection_data->ssid,
+                            connection_data->status,
+                            connection_data->ipv4_address,
+                            connection_data->ipv6_address,
+                            print_ipv4(get_gateway()),
+                            print_ipv4(get_netmask()),
+                            print_mac(get_mac_address()));
                     free(connection_data);
                     if (current_status == BADAUTH_ERROR)
                     {
@@ -901,6 +1046,31 @@ int init_firmware()
             persist_config = false;
             DPRINTF("Saving configuration to FLASH\n");
             write_all_entries();
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
+
+        if (microsd_status)
+        {
+            microsd_status = false;
+            SdCardData *sd_data = malloc(sizeof(SdCardData));
+            get_sdcard_data(&fs, sd_data);
+
+            // Swap the bytes to motorola endian format
+            sd_data->roms_folder_count = (sd_data->roms_folder_count >> 16) | (sd_data->roms_folder_count << 16);
+            sd_data->floppies_folder_count = (sd_data->floppies_folder_count >> 16) | (sd_data->floppies_folder_count << 16);
+            sd_data->harddisks_folder_count = (sd_data->harddisks_folder_count >> 16) | (sd_data->harddisks_folder_count << 16);
+            sd_data->sd_free_space = (sd_data->sd_free_space >> 16) | (sd_data->sd_free_space << 16);
+            sd_data->sd_size = (sd_data->sd_size >> 16) | (sd_data->sd_size << 16);
+            memcpy(memory_area + RANDOM_SEED_SIZE, sd_data, sizeof(SdCardData));
+
+            // More endian conversions
+            uint16_t *dest_ptr_word = (uint16_t *)(memory_area + RANDOM_SEED_SIZE);
+            for (int j = 0; j < (MAX_FOLDER_LENGTH * 3); j += 2)
+            {
+                uint16_t value = *(uint16_t *)(dest_ptr_word);
+                *(uint16_t *)(dest_ptr_word)++ = (value << 8) | (value >> 8);
+            }
+            free(sd_data);
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 

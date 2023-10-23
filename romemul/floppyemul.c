@@ -61,7 +61,7 @@ static uint32_t hdv_rw_payload = 0;
 static uint32_t hdv_mediach_payload = 0;
 static uint32_t XBIOS_trap_payload = 0;
 
-static int create_BPB(FRESULT *fr, FIL *fsrc)
+static int __not_in_flash_func(create_BPB(FRESULT *fr, FIL *fsrc))
 {
     BYTE buffer[512];    /* File copy buffer */
     unsigned int br = 0; /* File read/write count */
@@ -225,7 +225,7 @@ int init_floppyemul(bool safe_config_reboot)
     }
 
     FIL fsrc_a;              /* File objects */
-    BYTE buffer_a[512];      /* File copy buffer */
+    BYTE buffer_a[4096];     /* File copy buffer */
     unsigned int br_a = 0;   /* File read/write count */
     unsigned int size_a = 0; // File size
 
@@ -328,18 +328,19 @@ int init_floppyemul(bool safe_config_reboot)
             fr = f_lseek(&fsrc_a, logical_sector * sector_size);
             if (fr)
             {
-                DPRINTF("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                printf("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
                 f_close(&fsrc_a);
                 //                                return (int)fr; // Check for error in reading
             }
-            fr = f_read(&fsrc_a, buffer_a, sizeof buffer_a, &br_a); /* Read a chunk of data from the source file */
+            fr = f_read(&fsrc_a, buffer_a, sector_size, &br_a); /* Read a chunk of data from the source file */
             if (fr)
             {
-                DPRINTF("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                printf("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
                 f_close(&fsrc_a);
                 //                                return (int)fr; // Check for error in reading
             }
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+
             // Transform buffer's words from little endian to big endian inline
             volatile uint16_t *target = (volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_IMAGE);
             for (int i = 0; i < br_a; i += 2)
