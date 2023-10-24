@@ -3,7 +3,6 @@
 static ConnectionStatus connection_status = DISCONNECTED;
 static ConnectionStatus previous_connection_status = NOT_SUPPORTED;
 WifiScanData wifiScanData;
-char *latest_release = NULL;
 
 u_int32_t get_auth_pico_code(u_int16_t connect_code)
 {
@@ -558,9 +557,9 @@ bool check_STEEM_extension(UrlParts parts)
     return steem_extension;
 }
 
-void download_latest_release(const char *url)
+char *download_latest_release(const char *url)
 {
-    char *buff = malloc(32768);
+    char *buff = malloc(4096);
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
     bool complete = false;
@@ -569,12 +568,7 @@ void download_latest_release(const char *url)
     err_t headers(httpc_state_t * connection, void *arg,
                   struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
     {
-        printf("headers recieved\n");
-        printf("content length=%d\n", content_len);
-        printf("header length %d\n", hdr_len);
         pbuf_copy_partial(hdr, buff, hdr->tot_len, 0);
-        printf("headers \n");
-        printf("%s", buff);
         return ERR_OK;
     }
 
@@ -585,11 +579,11 @@ void download_latest_release(const char *url)
         complete = true;
         if (srv_res != 200)
         {
-            DPRINTF("JSON something went wrong. HTTP error: %d\n", srv_res);
+            DPRINTF("version.txt something went wrong. HTTP error: %d\n", srv_res);
         }
         else
         {
-            DPRINTF("JSON Transfer complete. %d transfered.\n", rx_content_len);
+            DPRINTF("version.txt Transfer complete. %d transfered.\n", rx_content_len);
         }
     }
 
@@ -607,11 +601,11 @@ void download_latest_release(const char *url)
         return ERR_OK;
     }
 
-    DPRINTF("Getting latest release JSON description %s\n", url);
+    DPRINTF("Getting latest release version.txt %s\n", url);
     if (split_url(url, &parts) != 0)
     {
         DPRINTF("Failed to split URL\n");
-        return;
+        return NULL;
     }
 
     DPRINTF("Protocol %s\n", parts.protocol);
@@ -639,7 +633,7 @@ void download_latest_release(const char *url)
     {
         DPRINTF("HTTP GET failed: %d\n", err);
         free_url_parts(&parts);
-        return;
+        return NULL;
     }
     while (!complete)
     {
@@ -653,31 +647,39 @@ void download_latest_release(const char *url)
 #endif
     }
 
+    char *newline_pos = strchr(buff, '\n');
+    char *latest_release_version = strndup(buff, newline_pos ? newline_pos - buff : strlen(buff));
+
     free_url_parts(&parts);
+    free(buff);
 
-    cJSON *json = cJSON_Parse(buff);
-    if (json != NULL)
-    {
-
-        cJSON *json_item = cJSON_GetObjectItemCaseSensitive(json, "tag_name");
-        if (cJSON_IsString(json_item) && json_item->valuestring)
-        {
-            latest_release = strdup(json_item->valuestring);
-        }
-
-        cJSON_Delete(json);
-        free(buff);
-    }
+    return latest_release_version;
 }
 
 char *get_latest_release(void)
 {
+    ConfigEntry *entry = find_entry("LASTEST_RELEASE_URL");
 
-    if (latest_release == NULL)
+    if (entry == NULL)
     {
-        download_latest_release(FIRMWARE_RELEASE_VERSION_URL);
+        DPRINTF("LASTEST_RELEASE_URL not found in config\n");
+        return NULL;
     }
-    return latest_release;
+    if (strlen(entry->value) == 0)
+    {
+        DPRINTF("LASTEST_RELEASE_URL is empty\n");
+        return NULL;
+    }
+
+    char *latest_release = download_latest_release(entry->value);
+    char *formatted_release = malloc(strlen(latest_release) + 2);
+
+    if (formatted_release)
+    {
+        sprintf(formatted_release, "v%s", latest_release);
+        free(latest_release);
+    }
+    return formatted_release ? formatted_release : latest_release;
 }
 
 void get_json_files(RomInfo **items, int *itemCount, const char *url)

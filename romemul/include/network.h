@@ -133,6 +133,7 @@ void network_poll();
 u_int32_t get_ip_address();
 u_int32_t get_netmask();
 u_int32_t get_gateway();
+u_int8_t *get_mac_address();
 char *print_ipv4(uint32_t ip);
 char *print_mac(uint8_t *mac_address);
 void get_connection_data(ConnectionData *connection_data);
