@@ -19,8 +19,10 @@
 
 #include <hardware/flash.h>
 #include <hardware/sync.h>
+#include <hardware/watchdog.h>
+#include "pico/cyw43_arch.h"
 
-#define MAX_ENTRIES 12
+#define MAX_ENTRIES 14
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
@@ -66,6 +68,9 @@ ConfigEntry *find_entry(const char *key);
 int put_bool(const char key[MAX_KEY_LENGTH], bool value);
 int put_string(const char key[MAX_KEY_LENGTH], const char *value);
 int put_integer(const char key[MAX_KEY_LENGTH], int value);
+
+void select_button_action(bool safe_config_reboot, bool write_config_only_once);
+void blink_morse(char ch);
 
 // int remove_entry(const char *key);
 

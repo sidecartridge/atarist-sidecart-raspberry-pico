@@ -27,6 +27,9 @@
 #include "pico/cyw43_arch.h"
 #include "lwip/apps/http_client.h"
 
+#include "sd_card.h"
+#include "f_util.h"
+
 #define MAX_NETWORKS 100
 #define MAX_SSID_LENGTH 34
 #define MAX_BSSID_LENGTH 20
@@ -82,6 +85,7 @@ typedef struct connection_data
     char ssid[MAX_SSID_LENGTH];             // SSID to connect
     char ipv4_address[IPV4_ADDRESS_LENGTH]; // IP address
     char ipv6_address[IPV6_ADDRESS_LENGTH]; // IPv6 address
+    char mac_address[MAX_BSSID_LENGTH];     // MAC address
     uint16_t status;                        // connection status
 } ConnectionData;
 
@@ -93,6 +97,16 @@ typedef struct
     // Ignoring tags as per your request
     int size_kb;
 } RomInfo;
+
+typedef struct
+{
+    char *name;
+    char *status;
+    char *description;
+    char *tags;
+    char *extra;
+    char *url;
+} FloppyImageInfo;
 
 typedef struct
 {
@@ -120,10 +134,13 @@ u_int32_t get_ip_address();
 u_int32_t get_netmask();
 u_int32_t get_gateway();
 char *print_ipv4(uint32_t ip);
+char *print_mac(uint8_t *mac_address);
 void get_connection_data(ConnectionData *connection_data);
 void get_json_files(RomInfo **items, int *itemCount, const char *url);
-int download(const char *url, uint32_t rom_load_offset);
 char *get_latest_release(void);
+int download_rom(const char *url, uint32_t rom_load_offset);
+int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag);
+void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url);
 
 void freeRomItem(RomInfo *item);
 

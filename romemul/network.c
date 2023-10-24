@@ -68,7 +68,7 @@ void network_swap_data(uint16_t *dest_ptr_word, uint16_t total_items)
 void network_swap_connection_data(uint16_t *dest_ptr_word)
 {
     // No need to swap the connection status
-    swap_words(dest_ptr_word, MAX_SSID_LENGTH + IPV4_ADDRESS_LENGTH + IPV6_ADDRESS_LENGTH);
+    swap_words(dest_ptr_word, MAX_SSID_LENGTH + IPV4_ADDRESS_LENGTH + IPV6_ADDRESS_LENGTH + MAX_BSSID_LENGTH);
 }
 
 void network_swap_json_data(uint16_t *dest_ptr_word)
@@ -79,6 +79,12 @@ void network_swap_json_data(uint16_t *dest_ptr_word)
 
 void network_init()
 {
+
+    cyw43_wifi_set_up(&cyw43_state,
+                      CYW43_ITF_STA,
+                      true,
+                      CYW43_COUNTRY_WORLDWIDE);
+
     // Enable the STA mode
     cyw43_arch_enable_sta_mode();
     DPRINTF("STA network mode enabled\n");
@@ -159,7 +165,18 @@ void network_scan()
 
 void network_disconnect()
 {
-    int error = cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
+    // The library seems to have a bug when disconnecting. It doesn't work. So I'm using the ioctl directly
+    int custom_cyw43_wifi_leave(cyw43_t * self, int itf)
+    {
+        // Disassociate with SSID
+        cyw43_wifi_set_up(self,
+                          itf,
+                          false,
+                          CYW43_COUNTRY_WORLDWIDE);
+        return cyw43_ioctl(self, 0x76, 0, NULL, itf);
+    }
+
+    int error = custom_cyw43_wifi_leave(&cyw43_state, CYW43_ITF_STA);
     if (error == 0)
     {
         DPRINTF("Disconnected\n");
@@ -175,7 +192,7 @@ void network_connect(bool force, bool async)
 {
     if (!force)
     {
-        if ((connection_status == CONNECTED_WIFI_IP) || (connection_status == CONNECTED_WIFI))
+        if ((connection_status == CONNECTED_WIFI_IP))
         {
             DPRINTF("Already connected\n");
             return;
@@ -330,6 +347,11 @@ u_int32_t get_ip_address()
     return cyw43_state.netif[0].ip_addr.addr;
 }
 
+u_int8_t *get_mac_address()
+{
+    return cyw43_state.mac;
+}
+
 u_int32_t get_netmask()
 {
     return cyw43_state.netif[0].netmask.addr;
@@ -347,23 +369,43 @@ char *print_ipv4(u_int32_t ip)
     return ip_str;
 }
 
+char *print_mac(uint8_t *mac_address)
+{
+    static char mac_str[18];
+    snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+             mac_address[0],
+             mac_address[1],
+             mac_address[2],
+             mac_address[3],
+             mac_address[4],
+             mac_address[5]);
+    return mac_str;
+}
+
 void get_connection_data(ConnectionData *connection_data)
 {
     ConfigEntry *ssid = find_entry("WIFI_SSID");
     connection_data->status = (u_int16_t)connection_status;
     snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Not connected" + '\0');
     snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Not connected" + '\0');
+    snprintf(connection_data->mac_address, sizeof(connection_data->mac_address), "%s", "Not connected" + '\0');
     switch (connection_status)
     {
     case CONNECTED_WIFI_IP:
         snprintf(connection_data->ssid, sizeof(connection_data->ssid), "%s", ssid->value);
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", print_ipv4(get_ip_address()));
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Not implemented" + '\0');
+        snprintf(connection_data->mac_address, sizeof(connection_data->mac_address), "%s", print_mac(get_mac_address()));
         break;
     case CONNECTED_WIFI:
         snprintf(connection_data->ssid, sizeof(connection_data->ssid), "%s", ssid->value);
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Waiting address" + '\0');
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Waiting address" + '\0');
+        break;
+    case CONNECTING:
+        snprintf(connection_data->ssid, MAX_SSID_LENGTH, "%s", "Initializing" + '\0');
+        snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Initializing" + '\0');
         break;
     case DISCONNECTED:
         snprintf(connection_data->ssid, MAX_SSID_LENGTH, "%s", "Not connected" + '\0');
@@ -722,11 +764,15 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
     {
 #if PICO_CYW43_ARCH_POLL
         cyw43_arch_lwip_begin();
-        network_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
+        cyw43_arch_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
         cyw43_arch_lwip_end();
 #else
-        sleep_ms(100);
+        sleep_ms(1000);
 #endif
     }
 
@@ -769,7 +815,7 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
     }
 }
 
-int download(const char *url, uint32_t rom_load_offset)
+int download_rom(const char *url, uint32_t rom_load_offset)
 {
     const int FLASH_BUFFER_SIZE = 4096;
     uint8_t *flash_buff = malloc(FLASH_BUFFER_SIZE);
@@ -958,6 +1004,10 @@ int download(const char *url, uint32_t rom_load_offset)
         cyw43_arch_poll();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
         cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
 #else
         sleep_ms(1000);
 #endif
@@ -965,5 +1015,338 @@ int download(const char *url, uint32_t rom_load_offset)
 
     free_url_parts(&parts);
     free(flash_buff);
+    return 0;
+}
+
+void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url)
+{
+    char *buff = malloc(16384);
+    uint32_t buff_pos = 0;
+    httpc_state_t *connection;
+    bool complete = false;
+    UrlParts parts;
+    u32_t content_len = 0;
+
+    err_t headers(httpc_state_t * connection, void *arg,
+                  struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
+    {
+        return ERR_OK;
+    }
+
+    void result(void *arg, httpc_result_t httpc_result,
+                u32_t rx_content_len, u32_t srv_res, err_t err)
+
+    {
+        content_len = rx_content_len;
+        complete = true;
+        if (srv_res != 200)
+        {
+            DPRINTF("Floppy images db something went wrong. HTTP error: %d\n", srv_res);
+        }
+        else
+        {
+            DPRINTF("Floppy images db Transfer complete. %d transfered.\n", rx_content_len);
+        }
+    }
+
+    err_t body(void *arg, struct altcp_pcb *conn,
+               struct pbuf *p, err_t err)
+    {
+        // DPRINTF("Body received. ");
+        // DPRINTF("Buffer size:%d\n", p->tot_len);
+        // fflush(stdout);
+        pbuf_copy_partial(p, (buff + buff_pos), p->tot_len, 0);
+        buff_pos += p->tot_len;
+        tcp_recved(conn, p->tot_len);
+        if (p != NULL)
+        {
+            pbuf_free(p);
+        }
+
+        return ERR_OK;
+    }
+
+    DPRINTF("Downloading Floppy images db file from %s\n", url);
+    if (split_url(url, &parts) != 0)
+    {
+        DPRINTF("Failed to split URL\n");
+        return;
+    }
+
+    DPRINTF("Protocol %s\n", parts.protocol);
+    DPRINTF("Domain %s\n", parts.domain);
+    DPRINTF("URI %s\n", parts.uri);
+
+    httpc_connection_t settings;
+    settings.result_fn = result;
+    settings.headers_done_fn = headers;
+    settings.use_proxy = false;
+
+    complete = false;
+    cyw43_arch_lwip_begin();
+    err_t err = httpc_get_file_dns(
+        parts.domain,
+        LWIP_IANA_PORT_HTTP,
+        parts.uri,
+        &settings,
+        body,
+        NULL,
+        NULL);
+    cyw43_arch_lwip_end();
+
+    if (err != ERR_OK)
+    {
+        DPRINTF("HTTP GET failed: %d\n", err);
+        free_url_parts(&parts);
+        return;
+    }
+    while (!complete)
+    {
+#if PICO_CYW43_ARCH_POLL
+        cyw43_arch_lwip_begin();
+        cyw43_arch_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#else
+        sleep_ms(1000);
+#endif
+    }
+
+    free_url_parts(&parts);
+
+    bool inside_quotes = false;
+    char *start = NULL;
+    int items_count = 0;
+
+    // First, count the number of entries
+    int count = 0;
+    const char *p = buff;
+    for (int i = 0; i < content_len; i++)
+    {
+        if (*p == ';')
+            count++;
+        p++;
+    }
+    *itemCount = (count / 5);
+
+    DPRINTF("Found %d entries\n", *itemCount);
+
+    // Allocate memory for the entries
+    *items = malloc(CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES * 2); // The size of the random number
+    if (!*items)
+    {
+        DPRINTF("Memory allocation failed\n");
+        free(buff);
+        return;
+    }
+
+    for (int i = 0; i < *itemCount; i++)
+    {
+        (*items)[i].name = NULL;
+        (*items)[i].status = NULL;
+        (*items)[i].description = NULL;
+        (*items)[i].tags = NULL;
+        (*items)[i].extra = NULL;
+        (*items)[i].url = NULL;
+    }
+
+    FloppyImageInfo *current = &(*items)[0];
+    char *buff_iter = buff;
+    while (*buff_iter)
+    {
+        if (*buff_iter == '"')
+        {
+            inside_quotes = !inside_quotes;
+
+            if (inside_quotes)
+            {
+                start = (char *)(buff_iter + 1); // Start of a new value
+            }
+            else
+            {
+                char *value = strndup(start, buff_iter - start);
+                switch (items_count % 6)
+                {
+                case 0:
+                    current->name = value;
+                    break;
+                case 1:
+                    current->status = value;
+                    break;
+                case 2:
+                    current->description = value;
+                    break;
+                case 3:
+                    current->tags = value;
+                    break;
+                case 4:
+                    current->extra = value;
+                    break;
+                case 5:
+                    current->url = value;
+                    break;
+                }
+
+                items_count++;
+                if (items_count % 6 == 0)
+                {
+                    current++;
+                }
+            }
+        }
+        buff_iter++;
+    }
+    if (buff != NULL)
+    {
+        free(buff);
+    }
+}
+
+int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag)
+{
+    const int BUFFER_SIZE = 16384;
+    uint8_t *buff = malloc(BUFFER_SIZE);
+    uint32_t buff_pos = 0;
+    httpc_state_t *connection;
+    bool complete = false;
+    UrlParts parts;
+
+    FRESULT fr;    // FatFS function common result code
+    FIL dest_file; // File object
+    UINT bw;       // File read/write count
+    FILINFO fno;
+
+    err_t headers(httpc_state_t * connection, void *arg,
+                  struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
+    {
+        return ERR_OK;
+    }
+
+    void result(void *arg, httpc_result_t httpc_result,
+                u32_t rx_content_len, u32_t srv_res, err_t err)
+
+    {
+        complete = true;
+        if (srv_res != 200)
+        {
+            DPRINTF("Floppy image download something went wrong. HTTP error: %d\n", srv_res);
+        }
+        else
+        {
+            DPRINTF("Floppy image transfer complete. %d transfered.\n", rx_content_len);
+            DPRINTF("Pending bytes to write: %d\n", buff_pos);
+        }
+    }
+
+    err_t body(void *arg, struct altcp_pcb *conn,
+               struct pbuf *p, err_t err)
+    {
+
+        pbuf_copy_partial(p, buff, p->tot_len, 0);
+
+        fr = f_write(&dest_file, buff, p->tot_len, &bw); // Write it to the destination file
+        if (fr != FR_OK)
+        {
+            DPRINTF("f_write error: %s (%d)\n", FRESULT_str(fr), fr);
+        }
+        // Write chunk to flash
+        DPRINTF("Writing %d bytes to file: %s...\n", p->tot_len, dest_filename);
+
+        tcp_recved(conn, p->tot_len);
+
+        if (p != NULL)
+        {
+            pbuf_free(p);
+        }
+        return ERR_OK;
+    }
+
+    // Create full paths for source and destination files
+    char dest_path[256];
+    sprintf(dest_path, "%s/%s", folder, dest_filename);
+
+    // Check if the destination file exists
+    fr = f_stat(dest_path, &fno);
+    if (fr == FR_OK && !overwrite_flag)
+    {
+        DPRINTF("Destination file exists and overwrite_flag is false, canceling operation\n");
+        return FR_FILE_EXISTS; // Destination file exists and overwrite_flag is false, cancel the operation
+    }
+
+    // Create and open the destination file
+    fr = f_open(&dest_file, dest_path, FA_CREATE_ALWAYS | FA_WRITE);
+    if (fr != FR_OK)
+    {
+        DPRINTF("f_open error: %s (%d)\n", FRESULT_str(fr), fr);
+        f_close(&dest_file); // Close the source file if it was opened successfully
+        return FR_CANNOT_OPEN_FILE_FOR_WRITE;
+    }
+
+    DPRINTF("Downloading Floppy image from %s\n", url);
+    if (split_url(url, &parts) != 0)
+    {
+        DPRINTF("Failed to split URL\n");
+        return -1;
+    }
+
+    DPRINTF("Protocol %s\n", parts.protocol);
+    DPRINTF("Domain %s\n", parts.domain);
+    DPRINTF("URI %s\n", parts.uri);
+
+    httpc_connection_t settings;
+    memset(&settings, 0, sizeof(settings));
+
+    settings.result_fn = result;
+    settings.headers_done_fn = headers;
+    settings.use_proxy = false;
+
+    complete = false;
+    cyw43_arch_lwip_begin();
+    err_t err = httpc_get_file_dns(
+        parts.domain,
+        LWIP_IANA_PORT_HTTP,
+        parts.uri,
+        &settings,
+        body,
+        NULL,
+        NULL);
+    cyw43_arch_lwip_end();
+
+    if (err != ERR_OK)
+    {
+        DPRINTF("HTTP GET failed: %d\n", err);
+        free_url_parts(&parts);
+        return -1;
+    }
+    else
+    {
+        DPRINTF("HTTP GET sent\n");
+    }
+    while (!complete)
+    {
+        tight_loop_contents();
+#if PICO_CYW43_ARCH_POLL
+        cyw43_arch_lwip_begin();
+        cyw43_arch_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#else
+        sleep_ms(1000);
+#endif
+    }
+
+    // Close open file
+    f_close(&dest_file);
+
+    free_url_parts(&parts);
+    free(buff);
     return 0;
 }

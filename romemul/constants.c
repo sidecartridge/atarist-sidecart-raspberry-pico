@@ -36,6 +36,9 @@ const uint32_t CONFIG_FLASH_OFFSET = FLASH_ROM_LOAD_OFFSET - CONFIG_FLASH_SIZE; 
 const uint32_t CONFIG_VERSION = 0x00000001;                                     // Version of the config. Used to check if the config is compatible with the current code.
 const uint32_t CONFIG_MAGIC = 0x12340000;                                       // Magic number to check if the config exists in FLASH.
 
+// Configurator constants.
+const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES = 4096; // Size of the shared memory between the configurator and the emulator.
+
 // Network constants.
 const uint32_t NETWORK_MAGIC = 0x12340001; // Magic number to check if the network scan data exists in FLASH.
 

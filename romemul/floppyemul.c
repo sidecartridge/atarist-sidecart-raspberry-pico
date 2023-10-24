@@ -44,10 +44,14 @@ static uint16_t BpbData[] = {
     0 /*            16: disk_number                                  */
 };
 
+static uint16_t *payloadPtr = NULL;
+static char *fullpath_a = NULL;
 static uint32_t random_token;
 static bool ping_received = false;
+static bool floppy_read_write = true;
 static bool file_ready_a = false;
 static bool sector_read = false;
+static bool sector_write = false;
 static bool set_bpb = false;
 static bool save_vectors = false;
 static uint16_t logical_sector = 0;
@@ -57,7 +61,7 @@ static uint32_t hdv_rw_payload = 0;
 static uint32_t hdv_mediach_payload = 0;
 static uint32_t XBIOS_trap_payload = 0;
 
-static int create_BPB(FRESULT *fr, FIL *fsrc)
+static int __not_in_flash_func(create_BPB(FRESULT *fr, FIL *fsrc))
 {
     BYTE buffer[512];    /* File copy buffer */
     unsigned int br = 0; /* File read/write count */
@@ -114,7 +118,6 @@ static int create_BPB(FRESULT *fr, FIL *fsrc)
 
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
 {
-    uint16_t *payloadPtr = NULL;
     ConfigEntry *entry = NULL;
     uint16_t value_payload = 0;
     // Handle the protocol
@@ -145,8 +148,13 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         sector_read = true;
         break;
     case FLOPPYEMUL_WRITE_SECTORS:
-        // Write sectors to the floppy emulator
+        // Write sectors from the floppy emulator
         DPRINTF("Command WRITE_SECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        payloadPtr = (uint16_t *)protocol->payload + 2;
+        sector_size = *(uint16_t *)payloadPtr++;
+        logical_sector = *(uint16_t *)payloadPtr++;
+        sector_write = true;
         break;
     case FLOPPYEMUL_SET_BPB:
         // Set the BPB of the floppy
@@ -199,7 +207,7 @@ int copy_floppy_firmware_to_RAM()
     return 0;
 }
 
-int init_floppyemul()
+int init_floppyemul(bool safe_config_reboot)
 {
 
     FRESULT fr; /* FatFs function common result code */
@@ -207,7 +215,7 @@ int init_floppyemul()
     bool microsd_mounted = false;
 
     srand(time(0));
-    DPRINTF("Initializing floppy emulation...\n");
+    printf("Initializing floppy emulation...\n"); // Print always
 
     // Initialize SD card
     if (!sd_init_driver())
@@ -215,39 +223,13 @@ int init_floppyemul()
         DPRINTF("ERROR: Could not initialize SD card\r\n");
         return -1;
     }
-    // Mount drive
-    fr = f_mount(&fs, "0:", 1);
-    microsd_mounted = (fr == FR_OK);
-    if (!microsd_mounted)
-    {
-        DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
-        return -1;
-    }
-    char *dir = find_entry("FLOPPIES_FOLDER")->value;
-    char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
-    char *fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
-    strcpy(fullpath_a, dir);
-    strcat(fullpath_a, "/");
-    strcat(fullpath_a, filename_a);
-    DPRINTF("Emulating floppy image in drive A: %s\n", fullpath_a);
 
     FIL fsrc_a;              /* File objects */
-    BYTE buffer_a[512];      /* File copy buffer */
+    BYTE buffer_a[4096];     /* File copy buffer */
     unsigned int br_a = 0;   /* File read/write count */
     unsigned int size_a = 0; // File size
 
-    /* Open source file on the drive 0 */
-    fr = f_open(&fsrc_a, fullpath_a, FA_READ);
-    if (fr)
-    {
-        DPRINTF("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
-        return -1;
-    }
-    // Get file size
-    size_a = f_size(&fsrc_a);
-    DPRINTF("File size of %s: %i bytes\n", fullpath_a, size_a);
-
-    file_ready_a = true;
+    bool write_config_only_once = true;
 
     DPRINTF("Waiting for commands...\n");
 
@@ -255,6 +237,41 @@ int init_floppyemul()
     {
         *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
         tight_loop_contents();
+
+        if (!file_ready_a)
+        {
+            // Mount drive
+            fr = f_mount(&fs, "0:", 1);
+            microsd_mounted = (fr == FR_OK);
+            if (!microsd_mounted)
+            {
+                DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
+                return -1;
+            }
+            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+            char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
+            fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
+            strcpy(fullpath_a, dir);
+            strcat(fullpath_a, "/");
+            strcat(fullpath_a, filename_a);
+            DPRINTF("Emulating floppy image in drive A: %s\n", fullpath_a);
+
+            floppy_read_write = (strlen(fullpath_a) >= 3 && strcmp(fullpath_a + strlen(fullpath_a) - 3, ".rw") == 0);
+            DPRINTF("Floppy image is %s\n", floppy_read_write ? "read/write" : "read only");
+
+            /* Open source file on the drive 0 */
+            fr = f_open(&fsrc_a, fullpath_a, floppy_read_write ? FA_READ | FA_WRITE : FA_READ);
+            if (fr)
+            {
+                DPRINTF("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
+                return -1;
+            }
+            // Get file size
+            size_a = f_size(&fsrc_a);
+            DPRINTF("File size of %s: %i bytes\n", fullpath_a, size_a);
+
+            file_ready_a = true;
+        }
 
         if (file_ready_a && ping_received)
         {
@@ -302,7 +319,6 @@ int init_floppyemul()
 
             *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
-
         if (file_ready_a && sector_read)
         {
             sector_read = false;
@@ -312,18 +328,19 @@ int init_floppyemul()
             fr = f_lseek(&fsrc_a, logical_sector * sector_size);
             if (fr)
             {
-                DPRINTF("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                printf("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
                 f_close(&fsrc_a);
                 //                                return (int)fr; // Check for error in reading
             }
-            fr = f_read(&fsrc_a, buffer_a, sizeof buffer_a, &br_a); /* Read a chunk of data from the source file */
+            fr = f_read(&fsrc_a, buffer_a, sector_size, &br_a); /* Read a chunk of data from the source file */
             if (fr)
             {
-                DPRINTF("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                printf("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
                 f_close(&fsrc_a);
                 //                                return (int)fr; // Check for error in reading
             }
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+
             // Transform buffer's words from little endian to big endian inline
             volatile uint16_t *target = (volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_IMAGE);
             for (int i = 0; i < br_a; i += 2)
@@ -334,15 +351,53 @@ int init_floppyemul()
             }
             *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
+        if (file_ready_a && sector_write)
+        {
+            sector_write = false;
 
+            // Only write if the floppy image is read/write. It's important because the FatFS seems to ignore the FA_READ flag
+            if (floppy_read_write)
+            {
+                dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+                DPRINTF("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
+                // Transform buffer's words from little endian to big endian inline
+                uint16_t *target_start = payloadPtr;
+                volatile uint16_t *target = (volatile uint16_t *)target_start;
+                for (int i = 0; i < (sector_size / 2); i += 1)
+                {
+                    uint16_t value = *(uint16_t *)(target + i);
+                    value = (value << 8) | (value >> 8);
+                    *(target + i) = value;
+                }
+                /* Set read/write pointer to logical sector position */
+                fr = f_lseek(&fsrc_a, logical_sector * sector_size);
+                if (fr)
+                {
+                    DPRINTF("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                    f_close(&fsrc_a);
+                    //                                return (int)fr; // Check for error in reading
+                }
+                fr = f_write(&fsrc_a, target_start, sector_size, &br_a); /* Write a chunk of data from the source file */
+                if (fr)
+                {
+                    DPRINTF("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                    f_close(&fsrc_a);
+                    //                                return (int)fr; // Check for error in reading
+                }
+                dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+            }
+            else
+            {
+                DPRINTF("ERROR: Trying to write to a read-only floppy image.\r\n");
+            }
+            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+        }
         // If SELECT button is pressed, launch the configurator
         if (gpio_get(5) != 0)
         {
-            DPRINTF("SELECT button pressed. Launch configurator.\n");
-            watchdog_reboot(0, SRAM_END, 10);
-            while (1)
-                ;
-            return 0;
+            select_button_action(safe_config_reboot, write_config_only_once);
+            // Write config only once to avoid hitting the flash too much
+            write_config_only_once = false;
         }
     }
 }

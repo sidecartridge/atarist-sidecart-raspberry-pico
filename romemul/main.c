@@ -10,62 +10,6 @@
 #include "include/romemul.h"
 #include "include/floppyemul.h"
 
-// List of roms to include in the program
-// Keep in mind that actually they don't load in RAM, but in FLASH
-// and then the code has to move them manually to the .rom3 or .rom4 sections
-// #include "stetest.h"
-
-/**
- * @brief   Blinks an LED to represent a given character in Morse code.
- *
- * @param   ch  The character to blink in Morse code.
- *
- * @details This function searches for the provided character in the
- *          `morseAlphabet` structure array to get its Morse code representation.
- *          If found, it then blinks an LED in the pattern of dots and dashes
- *          corresponding to the Morse code of the character. The LED blinks are
- *          separated by time intervals defined by constants such as DOT_DURATION_MS,
- *          DASH_DURATION_MS, SYMBOL_GAP_MS, and CHARACTER_GAP_MS.
- *
- * @return  void
- */
-void blink_morse(char ch)
-{
-    const char *morseCode = NULL;
-
-    // Search for character's Morse code
-    for (int i = 0; morseAlphabet[i].character != '\0'; i++)
-    {
-        if (morseAlphabet[i].character == ch)
-        {
-            morseCode = morseAlphabet[i].morse;
-            break;
-        }
-    }
-
-    // If character not found in Morse alphabet, return
-    if (!morseCode)
-        return;
-
-    // Blink pattern
-    for (int i = 0; morseCode[i] != '\0'; i++)
-    {
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-        if (morseCode[i] == '.')
-        {
-            sleep_ms(DOT_DURATION_MS); // Short blink for dot
-        }
-        else
-        {
-            sleep_ms(DASH_DURATION_MS); // Long blink for dash
-        }
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-        sleep_ms(SYMBOL_GAP_MS); // Gap between symbols
-    }
-
-    sleep_ms(CHARACTER_GAP_MS); // Gap between characters
-}
-
 int main()
 {
     // Set the clock frequency. 20% overclocking
@@ -97,19 +41,58 @@ int main()
     ConfigEntry *default_config_entry = find_entry("BOOT_FEATURE");
     DPRINTF("BOOT_FEATURE: %s\n", default_config_entry->value);
 
+    ConfigEntry *default_config_reboot_mode = find_entry("SAFE_CONFIG_REBOOT");
+    DPRINTF("SAFE_CONFIG_REBOOT: %s\n", default_config_reboot_mode->value);
+
+    bool safe_config_reboot = default_config_reboot_mode->value[0] == 't' || default_config_reboot_mode->value[0] == 'T';
+
+    // No SELECT button pressed or CONFIGURATOR entry found in config. Normal boot
     if ((gpio_get(5) == 0) && (strcmp(default_config_entry->value, "CONFIGURATOR") != 0))
     {
-        DPRINTF("No SELECT button pressed. ");
+        DPRINTF("No SELECT button pressed.\n");
         if (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0)
         {
-            DPRINTF("ROM_EMULATOR entry found in config. Launching.\n");
+            DPRINTF("No SELECT button pressed. ROM_EMULATOR entry found in config. Launching.\n");
+
+            // Check if Delay ROM emulation (ripper style boot) is true
+            ConfigEntry *rom_delay_config_entry = find_entry("DELAY_ROM_EMULATION");
+            DPRINTF("DELAY_ROM_EMULATION: %s\n", rom_delay_config_entry->value);
+            if ((strcmp(rom_delay_config_entry->value, "true") == 0) || (strcmp(rom_delay_config_entry->value, "TRUE") == 0) || (strcmp(rom_delay_config_entry->value, "T") == 0))
+            {
+                printf("Delaying ROM emulation.\n"); // Always print this line
+                // The "D" character stands for "Delay"
+                blink_morse('D');
+
+                // While until the user presses the SELECT button again to launch the ROM emulator
+                while (gpio_get(5) == 0)
+                {
+                    tight_loop_contents();
+                    sleep_ms(1000); // Give me a break... to display the message
+                }
+
+                DPRINTF("SELECT button pressed.\n");
+                // Now wait for the user to release the SELECT button
+                while (gpio_get(5) != 0)
+                {
+                    tight_loop_contents();
+                }
+
+                DPRINTF("SELECT button released. Launching ROM emulator.\n");
+            }
+
             // Canonical way to initialize the ROM emulator:
             // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
             init_romemul(NULL, NULL, true);
 
+            printf("ROM Emulation started.\n"); // Always print this line
+
             // The "E" character stands for "Emulator"
             blink_morse('E');
 
+            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+            cyw43_arch_deinit();
+
+            bool write_config_only_once = true;
             // Loop forever and block until the state machine put data into the FIFO
             while (true)
             {
@@ -117,44 +100,37 @@ int main()
                 sleep_ms(1000); // Give me a break... to display the message
                 if (gpio_get(5) != 0)
                 {
-                    DPRINTF("SELECT button pressed. Launch configurator.\n");
-                    watchdog_reboot(0, SRAM_END, 10);
-                    while (1)
-                        ;
-                    return 0;
+                    select_button_action(safe_config_reboot, write_config_only_once);
+                    // Write config only once to avoid hitting the flash too much
+                    write_config_only_once = false;
                 }
             }
         }
         if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
         {
-            DPRINTF("FLOPPY_EMULATOR entry found in config. Launching.\n");
+            printf("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
             // Copy the ST floppy firmware emulator to RAM
             copy_floppy_firmware_to_RAM();
 
             // Reserve memory for the protocol parser
             init_protocol_parser();
+
             // Hybrid way to initialize the ROM emulator:
             // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
             // and start the state machine
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
             DPRINTF("Ready to accept commands.\n");
 
-            init_floppyemul();
+            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+            cyw43_arch_deinit();
 
-            // Loop forever and block until the state machine put data into the FIFO
-            while (true)
-            {
-                tight_loop_contents();
-                if (gpio_get(5) != 0)
-                {
-                    DPRINTF("SELECT button pressed. Launch configurator.\n");
-                    watchdog_reboot(0, SRAM_END, 10);
-                    while (1)
-                        ;
-                    return 0;
-                }
-            }
+            // The "F" character stands for "Floppy"
+            //            blink_morse('F');
+
+            init_floppyemul(safe_config_reboot);
+
+            // You should never reach this line...
         }
 
         DPRINTF("You should never see this line...\n");
@@ -171,8 +147,6 @@ int main()
             write_all_entries();
         }
 
-        network_init();
-
         // Print the config
         print_config_table();
 
@@ -183,24 +157,26 @@ int main()
         // Copy the firmware to RAM
         copy_firmware_to_RAM();
 
-        // Reserve memory for the protocol parser
-        init_protocol_parser();
-
         // Hybrid way to initialize the ROM emulator:
         // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
         // and start the state machine
         init_romemul(NULL, dma_irq_handler_lookup_callback, false);
 
-        DPRINTF("Ready to accept commands.\n");
+        network_init();
 
-        // The "F" character stands for "Firmware"
-        blink_morse('F');
+        // Reserve memory for the protocol parser
+        init_protocol_parser();
+
+        DPRINTF("Ready to accept commands.\n");
 
         init_firmware();
 
         // Now the user needs to reset or poweroff the board to load the ROMs
         DPRINTF("Rebooting the board.\n");
         sleep_ms(1000); // Give me a break... to display the message
+
+        // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+        cyw43_arch_deinit();
 
         watchdog_reboot(0, SRAM_END, 10);
         while (1)

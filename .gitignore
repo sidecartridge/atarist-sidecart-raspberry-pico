@@ -60,6 +60,7 @@ roms/*.IMG
 roms/*.BIN
 roms/*.STC
 roms/*.ROM
+roms.md
 build/
 dist/
 secrets.sh
