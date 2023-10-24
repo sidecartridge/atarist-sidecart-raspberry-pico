@@ -5,4 +5,5 @@ VERSION := $(shell cat version.txt)
 .PHONY: tag
 tag:
 	git tag v$(VERSION) && git push origin v$(VERSION) && \
-	echo "Tagged: $(VERSION)"
+	echo "Tagged: $(VERSION)" && \
+	python update_version.py
