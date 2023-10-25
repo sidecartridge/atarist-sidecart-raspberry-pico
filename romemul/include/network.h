@@ -38,6 +38,7 @@
 #define NETWORK_POLL_INTERVAL 10 // 5 seconds
 #define NETWORK_CONNECTION_ASYNC true
 #define NETWORK_CONNECTION_TIMEOUT 5000 // 5 seconds
+#define FIRMWARE_RELEASE_VERSION_URL "https://api.github.com/repos/diegoparrilla/atarist-sidecart-raspberry-pico/releases/latest"
 
 typedef enum
 {
@@ -132,13 +133,14 @@ void network_poll();
 u_int32_t get_ip_address();
 u_int32_t get_netmask();
 u_int32_t get_gateway();
+u_int8_t *get_mac_address();
 char *print_ipv4(uint32_t ip);
 char *print_mac(uint8_t *mac_address);
 void get_connection_data(ConnectionData *connection_data);
 void get_json_files(RomInfo **items, int *itemCount, const char *url);
+char *get_latest_release(void);
 int download_rom(const char *url, uint32_t rom_load_offset);
 int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag);
-
 void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url);
 
 void freeRomItem(RomInfo *item);

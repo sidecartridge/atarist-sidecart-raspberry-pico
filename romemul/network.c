@@ -557,6 +557,131 @@ bool check_STEEM_extension(UrlParts parts)
     return steem_extension;
 }
 
+char *download_latest_release(const char *url)
+{
+    char *buff = malloc(4096);
+    uint32_t buff_pos = 0;
+    httpc_state_t *connection;
+    bool complete = false;
+    UrlParts parts;
+
+    err_t headers(httpc_state_t * connection, void *arg,
+                  struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
+    {
+        pbuf_copy_partial(hdr, buff, hdr->tot_len, 0);
+        return ERR_OK;
+    }
+
+    void result(void *arg, httpc_result_t httpc_result,
+                u32_t rx_content_len, u32_t srv_res, err_t err)
+
+    {
+        complete = true;
+        if (srv_res != 200)
+        {
+            DPRINTF("version.txt something went wrong. HTTP error: %d\n", srv_res);
+        }
+        else
+        {
+            DPRINTF("version.txt Transfer complete. %d transfered.\n", rx_content_len);
+        }
+    }
+
+    err_t body(void *arg, struct altcp_pcb *conn,
+               struct pbuf *p, err_t err)
+    {
+        pbuf_copy_partial(p, (buff + buff_pos), p->tot_len, 0);
+        buff_pos += p->tot_len;
+        tcp_recved(conn, p->tot_len);
+        if (p != NULL)
+        {
+            pbuf_free(p);
+        }
+
+        return ERR_OK;
+    }
+
+    DPRINTF("Getting latest release version.txt %s\n", url);
+    if (split_url(url, &parts) != 0)
+    {
+        DPRINTF("Failed to split URL\n");
+        return NULL;
+    }
+
+    DPRINTF("Protocol %s\n", parts.protocol);
+    DPRINTF("Domain %s\n", parts.domain);
+    DPRINTF("URI %s\n", parts.uri);
+
+    httpc_connection_t settings;
+    settings.result_fn = result;
+    settings.headers_done_fn = headers;
+    settings.use_proxy = false;
+
+    complete = false;
+    cyw43_arch_lwip_begin();
+    err_t err = httpc_get_file_dns(
+        parts.domain,
+        LWIP_IANA_PORT_HTTP,
+        parts.uri,
+        &settings,
+        body,
+        NULL,
+        NULL);
+    cyw43_arch_lwip_end();
+
+    if (err != ERR_OK)
+    {
+        DPRINTF("HTTP GET failed: %d\n", err);
+        free_url_parts(&parts);
+        return NULL;
+    }
+    while (!complete)
+    {
+#if PICO_CYW43_ARCH_POLL
+        cyw43_arch_lwip_begin();
+        network_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
+        cyw43_arch_lwip_end();
+#else
+        sleep_ms(100);
+#endif
+    }
+
+    char *newline_pos = strchr(buff, '\n');
+    char *latest_release_version = strndup(buff, newline_pos ? newline_pos - buff : strlen(buff));
+
+    free_url_parts(&parts);
+    free(buff);
+
+    return latest_release_version;
+}
+
+char *get_latest_release(void)
+{
+    ConfigEntry *entry = find_entry("LASTEST_RELEASE_URL");
+
+    if (entry == NULL)
+    {
+        DPRINTF("LASTEST_RELEASE_URL not found in config\n");
+        return NULL;
+    }
+    if (strlen(entry->value) == 0)
+    {
+        DPRINTF("LASTEST_RELEASE_URL is empty\n");
+        return NULL;
+    }
+
+    char *latest_release = download_latest_release(entry->value);
+    char *formatted_release = malloc(strlen(latest_release) + 2);
+
+    if (formatted_release)
+    {
+        sprintf(formatted_release, "v%s", latest_release);
+        free(latest_release);
+    }
+    return formatted_release ? formatted_release : latest_release;
+}
+
 void get_json_files(RomInfo **items, int *itemCount, const char *url)
 {
     char *buff = malloc(32768);

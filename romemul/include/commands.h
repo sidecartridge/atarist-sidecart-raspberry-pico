@@ -30,6 +30,7 @@
 #define QUERY_FLOPPY_DB 18      // Query the floppy database. Need to pass the letter or number to query
 #define DOWNLOAD_FLOPPY 19      // Download a floppy image from the URL
 #define GET_SD_DATA 20          // Get the SD card status, size, free space and folders
+#define GET_LATEST_RELEASE 21   // Get the latest release version of the firmware
 
 // APP_ROMEMUL commands
 // No commands

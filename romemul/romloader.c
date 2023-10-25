@@ -12,6 +12,9 @@
 static uint16_t *payloadPtr = NULL;
 static uint32_t random_token;
 
+// Latest release
+bool latest_release = false;
+
 // Microsd variables
 bool microsd_initialized = false;
 bool microsd_mounted = false;
@@ -801,6 +804,12 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         microsd_status = true;
         break;
+    case GET_LATEST_RELEASE:
+        // Get the latest release from the url given
+        DPRINTF("Command GET_LATEST_RELEASE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        latest_release = true;
+        break;
 
     // ... handle other commands
     default:
@@ -1071,6 +1080,39 @@ int init_firmware()
                 *(uint16_t *)(dest_ptr_word)++ = (value << 8) | (value >> 8);
             }
             free(sd_data);
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
+
+        if (latest_release)
+        {
+            latest_release = false;
+            memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            char *latest_version = get_latest_release();
+            if (latest_version != NULL)
+            {
+                DPRINTF("Current version: %s\n", RELEASE_VERSION);
+                DPRINTF("Latest version: %s\n", latest_version);
+                if (strcmp(RELEASE_VERSION, latest_version) != 0)
+                {
+                    DPRINTF("New version available: %s\n", latest_version);
+                    strcpy((char *)(memory_area + RANDOM_SEED_SIZE), latest_version);
+                    // Convert to motorla endian
+                    uint16_t *dest_ptr_word = (uint16_t *)(memory_area + RANDOM_SEED_SIZE);
+                    for (int j = 0; j < strlen(latest_version); j += 2)
+                    {
+                        uint16_t value = *(uint16_t *)(dest_ptr_word);
+                        *(uint16_t *)(dest_ptr_word)++ = (value << 8) | (value >> 8);
+                    }
+                }
+                else
+                {
+                    DPRINTF("No new version available.\n");
+                }
+            }
+            if (latest_version != NULL)
+            {
+                free(latest_version);
+            }
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
