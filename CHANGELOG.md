@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.0.11 (2023-10-26)- Feature aditions release, Update mandatory
+### Fixed
+- **Issue #42**: Floppy Emulator now supports read/write operations on odd memory addresses.
+- **Issue #41**: Compatibility with Atari ST computers lacking a physical floppy drive.
+- **Issue #28**: Improved Configurator's Wi-Fi reconnection mechanism.
+
+### Changed
+- **Issue #43**: Enhanced clarity in description texts.
+- **Issue #31**: Transitioned from asynchronous to synchronous commands for increased reliability and performance.
+
+### New Features
+- **Issue #44**: Updated Wi-Fi menu requires user to disconnect from the current network before joining a new one.
+- **Issue #40**: New microSD card status indicator, complementing the existing network status bar.
+- **Issue #39**: Boot into 'SIDECART.TOS' post-reset for direct access to the Configurator.
+- **Issue #36**: Display of the WiFi module's MAC address.
+- **Issue #16**: Signal new firmware versions with a blinking exclamation mark.
+- **Issue #12**: Access to a cloud-hosted, continuously updated database of Atari ST floppy images. The database is growing; please report any discrepancies.
+
 ## 0.0.10 (2023-10-13) - Feature aditions release, Update recommended
 ### Fixed
 No fixes in this release
