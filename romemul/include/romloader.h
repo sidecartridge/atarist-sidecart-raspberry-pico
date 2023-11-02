@@ -34,6 +34,7 @@
 #include "commands.h"
 #include "romemul.h"
 #include "network.h"
+#include "imgformats.h"
 
 // Size of the random seed to use in the sync commands
 #define RANDOM_SEED_SIZE 4 // 4 bytes
