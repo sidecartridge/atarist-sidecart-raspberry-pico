@@ -8,6 +8,7 @@
  * @param ... Variadic arguments corresponding to the format specifiers in the fmt parameter.
  */
 #if defined(_DEBUG) && (_DEBUG != 0)
+#include <string.h>
 #define DPRINTF(fmt, ...)                                                                  \
     do                                                                                     \
     {                                                                                      \

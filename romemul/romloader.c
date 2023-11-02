@@ -155,14 +155,14 @@ static void get_sdcard_data(FATFS *fs, SdCardData *sd_data)
     strncpy(sd_data->roms_folder, find_entry("ROMS_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
     sd_data->roms_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
-    // strncpy(sd_data->harddisks_folder, find_entry("HARDDISKS_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
-    // sd_data->harddisks_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
+    strncpy(sd_data->harddisks_folder, "/harddisks", MAX_FOLDER_LENGTH - 1);
+    sd_data->harddisks_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
     if (microsd_mounted)
     {
         sd_data->floppies_folder_status = directory_exists(sd_data->floppies_folder) ? FLOPPIES_FOLDER_OK : FLOPPIES_FOLDER_NOTFOUND;
         sd_data->roms_folder_status = directory_exists(sd_data->roms_folder) ? ROMS_FOLDER_OK : ROMS_FOLDER_NOTFOUND;
-        // sd_data->harddisks_folder_status = directory_exists(sd_data->harddisks_folder) ? HARDDISKS_FOLDER_OK : HARDDISKS_FOLDER_NOTFOUND;
+        sd_data->harddisks_folder_status = directory_exists(sd_data->harddisks_folder) ? HARDDISKS_FOLDER_OK : HARDDISKS_FOLDER_NOTFOUND;
 
         uint32_t total, freeSpace;
         get_card_info(fs, &total, &freeSpace);
@@ -172,31 +172,31 @@ static void get_sdcard_data(FATFS *fs, SdCardData *sd_data)
 
         sd_data->roms_folder_count = calculate_folder_count(sd_data->roms_folder);
         sd_data->floppies_folder_count = calculate_folder_count(sd_data->floppies_folder);
-        // sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);
+        sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);
     }
     else
     {
         sd_data->floppies_folder_status = FLOPPIES_FOLDER_NOTFOUND;
         sd_data->roms_folder_status = ROMS_FOLDER_NOTFOUND;
-        // sd_data->harddisks_folder_status = HARDDISKS_FOLDER_NOTFOUND;
+        sd_data->harddisks_folder_status = HARDDISKS_FOLDER_NOTFOUND;
         sd_data->sd_size = 0;
         sd_data->sd_free_space = 0;
         sd_data->roms_folder_count = 0;
         sd_data->floppies_folder_count = 0;
-        // sd_data->harddisks_folder_count = 0;
+        sd_data->harddisks_folder_count = 0;
     }
     DPRINTF("SD card status: %d\n", sd_data->status);
     DPRINTF("SD card size: %d MB\n", sd_data->sd_size);
     DPRINTF("SD card free space: %d MB\n", sd_data->sd_free_space);
     DPRINTF("Floppies folder: %s\n", sd_data->floppies_folder);
     DPRINTF("Floppies folder status: %d\n", sd_data->floppies_folder_status);
-    DPRINTF("Floppies folder size: %d\n", sd_data->floppies_folder_count);
+    DPRINTF("Floppies folder file count: %d\n", sd_data->floppies_folder_count);
     DPRINTF("ROMs folder: %s\n", sd_data->roms_folder);
     DPRINTF("ROMs folder status: %d\n", sd_data->roms_folder_status);
-    DPRINTF("ROMs folder size: %d\n", sd_data->roms_folder_count);
-    // DPRINTF("Hard disks folder: %s\n", sd_data->harddisks_folder);
-    // DPRINTF("Hard disks folder status: %d\n", sd_data->harddisks_folder_status);
-    // DPRINTF("Hard disks folder size: %d MB\n", sd_data->harddisks_folder_count/ (1024 * 1024));
+    DPRINTF("ROMs folder file count: %d\n", sd_data->roms_folder_count);
+    DPRINTF("Hard disks folder: %s\n", sd_data->harddisks_folder);
+    DPRINTF("Hard disks folder status: %d\n", sd_data->harddisks_folder_status);
+    DPRINTF("Hard disks folder file count: %d\n", sd_data->harddisks_folder_count);
 }
 
 /**
@@ -1322,40 +1322,75 @@ int init_firmware()
     {
         DPRINTF("Floppy file selected: %d\n", floppy_file_selected);
 
-        char *old_floppy = filtered_local_list[floppy_file_selected - 1];
-        DPRINTF("Load file: %s\n", old_floppy);
+        char *old_floppy = NULL;
+        char *dir = find_entry("FLOPPIES_FOLDER")->value;
+        char *filename = filtered_local_list[floppy_file_selected - 1];
+        size_t filename_length = strlen(filename);
+        bool is_msa = filename_length > 4 &&
+                      (strcasecmp(&filename[filename_length - 4], ".MSA") == 0);
 
-        char *new_floppy = NULL;
-        // Check if old_floppy ends with ".rw"
-        bool use_existing_rw = (strlen(old_floppy) > 3 && strcmp(&old_floppy[strlen(old_floppy) - 3], ".rw") == 0);
+        DPRINTF("Floppy folder: %s\n", dir);
+        DPRINTF("Floppy file: %s\n", filename);
+        DPRINTF("Floppy file length: %d\n", filename_length);
+        DPRINTF("Floppy file is MSA: %s\n", is_msa ? "true" : "false");
 
-        if (floppy_read_write && !use_existing_rw)
+        if (is_msa)
         {
-            new_floppy = malloc(strlen(old_floppy) + strlen(".rw") + 1); // Allocate space for the old string, the new suffix, and the null terminator
-            sprintf(new_floppy, "%s.rw", old_floppy);                    // Create the new string with the .rw suffix
-            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+            // Create a filename and change the extension to .ST
+            char *stFilename = malloc(filename_length + 1);
+            strcpy(stFilename, filename);
+            strcpy(&stFilename[filename_length - 4], ".ST");
+            DPRINTF("MSA to ST: %s -> %s\n", filename, stFilename);
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
-            FRESULT result = copy_file(dir, old_floppy, new_floppy, false); // Do not overwrite if exists
+            FRESULT err = MSA_to_ST(dir, filename, stFilename, true);
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+            if (err != FR_OK)
+            {
+                DPRINTF("MSA to ST error: %d\n", err);
+            }
+            else
+            {
+                old_floppy = stFilename;
+            }
         }
         else
         {
-            new_floppy = strdup(old_floppy);
+            old_floppy = filtered_local_list[floppy_file_selected - 1];
         }
-        DPRINTF("Floppy Read/Write: %s\n", floppy_read_write ? "true" : "false");
 
-        put_string("FLOPPY_IMAGE_A", new_floppy);
-        put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
-        write_all_entries();
+        if (old_floppy != NULL)
+        {
+            DPRINTF("Load file: %s\n", old_floppy);
+            char *new_floppy = NULL;
+            // Check if old_floppy ends with ".rw"
+            bool use_existing_rw = (strlen(old_floppy) > 3 && strcmp(&old_floppy[strlen(old_floppy) - 3], ".rw") == 0);
+            if (floppy_read_write && !use_existing_rw)
+            {
+                new_floppy = malloc(strlen(old_floppy) + strlen(".rw") + 1); // Allocate space for the old string, the new suffix, and the null terminator
+                sprintf(new_floppy, "%s.rw", old_floppy);                    // Create the new string with the .rw suffix
+                dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+                FRESULT result = copy_file(dir, old_floppy, new_floppy, false); // Do not overwrite if exists
+                dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+            }
+            else
+            {
+                new_floppy = strdup(old_floppy);
+            }
+            DPRINTF("Floppy Read/Write: %s\n", floppy_read_write ? "true" : "false");
 
-        release_memory_files(file_list, num_files);
-        release_memory_files(filtered_local_list, filtered_num_local_files);
+            put_string("FLOPPY_IMAGE_A", new_floppy);
+            put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
+            write_all_entries();
 
-        free(new_floppy);
-        fflush(stdout);
+            release_memory_files(file_list, num_files);
+            release_memory_files(filtered_local_list, filtered_num_local_files);
 
-        // The "F" character stands for "Floppy"
-        blink_morse('F');
+            free(new_floppy);
+            fflush(stdout);
+
+            // The "F" character stands for "Floppy"
+            blink_morse('F');
+        }
         *((volatile uint32_t *)(memory_area)) = random_token;
     }
 
