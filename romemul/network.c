@@ -44,15 +44,6 @@ void null_words(uint16_t *dest_ptr_word, uint16_t total_words)
     }
 }
 
-static void swap_words(uint16_t *dest_ptr_word, uint16_t total_words)
-{
-    for (int j = 0; j < total_words; j += 2)
-    {
-        uint16_t value = *(uint16_t *)(dest_ptr_word);
-        *(uint16_t *)(dest_ptr_word)++ = (value << 8) | (value >> 8);
-    }
-}
-
 void network_swap_auth_data(uint16_t *dest_ptr_word)
 {
     // +2 is for the auth_mode type

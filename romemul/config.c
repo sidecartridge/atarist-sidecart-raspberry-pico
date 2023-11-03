@@ -386,3 +386,13 @@ void blink_morse(char ch)
     }
     blink_morse_container();
 }
+
+void swap_words(void *dest_ptr_word, uint16_t total_words)
+{
+    for (int j = 0; j < total_words; j += 2)
+    {
+        uint16_t value = *(uint16_t *)(dest_ptr_word);
+        *(uint16_t *)dest_ptr_word = (value << 8) | (value >> 8);
+        dest_ptr_word += 2;
+    }
+}

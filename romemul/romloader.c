@@ -55,6 +55,9 @@ static bool get_json_file = false;
 // ROMs in network variables
 static int rom_network_selected = -1;
 
+// Floppy header informationf for new images
+static FloppyImageHeader floppy_header = {0};
+
 #include "ff.h"
 
 void get_card_info(FATFS *fs_ptr, uint32_t *totalSize_MB, uint32_t *freeSpace_MB)
@@ -810,6 +813,43 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         latest_release = true;
         break;
+    case CREATE_FLOPPY:
+        // Create an empty floppy image based in a template
+        DPRINTF("Command CREATE_FLOPPY (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        floppy_header.template = protocol->payload[4] | (protocol->payload[5] << 8);
+        DPRINTF("Template: %d\n", floppy_header.template);
+        floppy_header.num_tracks = protocol->payload[6] | (protocol->payload[7] << 8);
+        DPRINTF("Num tracks: %d\n", floppy_header.num_tracks);
+        floppy_header.num_sectors = protocol->payload[8] | (protocol->payload[9] << 8);
+        DPRINTF("Num sectors: %d\n", floppy_header.num_sectors);
+        floppy_header.num_sides = protocol->payload[10] | (protocol->payload[11] << 8);
+        DPRINTF("Num sides: %d\n", floppy_header.num_sides);
+        floppy_header.overwrite = protocol->payload[12] | (protocol->payload[13] << 8);
+        DPRINTF("Overwrite: %d\n", floppy_header.overwrite);
+        swap_words(&protocol->payload[sizeof(floppy_header.volume_name)], (sizeof(floppy_header.volume_name) + sizeof(floppy_header.floppy_name)) / 2);
+        // Now read the volume name until a zero is found
+        int i = 0;
+        for (i = 0; i < 14; i++)
+        {
+            floppy_header.volume_name[i] = protocol->payload[14 + i];
+            if (floppy_header.volume_name[i] == 0)
+            {
+                break;
+            }
+        }
+        DPRINTF("Volume name: %s\n", floppy_header.volume_name);
+        // Now read the floppy name in the SidecarT until a zero is found
+        for (i = 0; i < 256; i++)
+        {
+            floppy_header.floppy_name[i] = protocol->payload[28 + i];
+            if (floppy_header.floppy_name[i] == 0)
+            {
+                break;
+            }
+        }
+        DPRINTF("Floppy name: %s\n", floppy_header.floppy_name);
+        break;
 
     // ... handle other commands
     default:
@@ -1271,6 +1311,37 @@ int init_firmware()
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
+        if (floppy_header.template > 0)
+        {
+            // Append to the floppy_header floppy_name the extension .st.rw
+            char *dest_ptr = floppy_header.floppy_name;
+            while (*dest_ptr != 0)
+            {
+                dest_ptr++;
+            }
+            strcpy(dest_ptr, ".st.rw");
+            DPRINTF("Floppy file to create: %s\n", floppy_header.floppy_name);
+            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+            DPRINTF("Floppy folder: %s\n", dir);
+            FRESULT err = create_blank_ST_image(dir,
+                                                floppy_header.floppy_name,
+                                                floppy_header.num_tracks,
+                                                floppy_header.num_sectors,
+                                                floppy_header.num_sides,
+                                                floppy_header.volume_name,
+                                                floppy_header.overwrite);
+            if (err != FR_OK)
+            {
+                DPRINTF("Create blank ST image error: %d\n", err);
+            }
+            else
+            {
+                DPRINTF("Created blank ST image OK\n");
+            }
+            floppy_header.template = 0;
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
+
         // Increase the counter and reset it if it reaches the limit
         network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
 
@@ -1323,8 +1394,10 @@ int init_firmware()
         DPRINTF("Floppy file selected: %d\n", floppy_file_selected);
 
         char *old_floppy = NULL;
+        char *filename = NULL;
         char *dir = find_entry("FLOPPIES_FOLDER")->value;
-        char *filename = filtered_local_list[floppy_file_selected - 1];
+        filename = filtered_local_list[floppy_file_selected - 1];
+
         size_t filename_length = strlen(filename);
         bool is_msa = filename_length > 4 &&
                       (strcasecmp(&filename[filename_length - 4], ".MSA") == 0);
@@ -1355,7 +1428,7 @@ int init_firmware()
         }
         else
         {
-            old_floppy = filtered_local_list[floppy_file_selected - 1];
+            old_floppy = filename;
         }
 
         if (old_floppy != NULL)
