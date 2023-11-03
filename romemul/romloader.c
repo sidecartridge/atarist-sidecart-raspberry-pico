@@ -13,16 +13,16 @@ static uint16_t *payloadPtr = NULL;
 static uint32_t random_token;
 
 // Latest release
-bool latest_release = false;
+static bool latest_release = false;
 
 // Microsd variables
-bool microsd_initialized = false;
-bool microsd_mounted = false;
-bool microsd_status = false;
+static bool microsd_initialized = false;
+static bool microsd_mounted = false;
+static bool microsd_status = false;
 
 // Filtered files list variables
-int filtered_num_local_files = 0;
-char **filtered_local_list = NULL;
+static int filtered_num_local_files = 0;
+static char **filtered_local_list = NULL;
 
 // ROMs in sd card variables
 static int list_roms = false;
@@ -58,510 +58,19 @@ static int rom_network_selected = -1;
 // Floppy header informationf for new images
 static FloppyImageHeader floppy_header = {0};
 
-#include "ff.h"
-
-void get_card_info(FATFS *fs_ptr, uint32_t *totalSize_MB, uint32_t *freeSpace_MB)
-{
-    DWORD fre_clust;
-
-    // Set initial values to zero as a precaution
-    *totalSize_MB = 0;
-    *freeSpace_MB = 0;
-
-    // Get volume information and free clusters of drive
-    if (f_getfree("", &fre_clust, &fs_ptr) != FR_OK)
-    {
-        return; // Error handling: Set values to zero if getfree fails
-    }
-
-    // Calculate total sectors in the SD card
-    uint64_t total_sectors = (fs_ptr->n_fatent - 2) * fs_ptr->csize;
-
-    // Convert total sectors to bytes and then to megabytes
-    *totalSize_MB = (total_sectors * 512) / 1048576;
-
-    // Convert free clusters to sectors and then to bytes
-    uint64_t free_space_bytes = (uint64_t)fre_clust * fs_ptr->csize * 512;
-
-    // Convert bytes to megabytes
-    *freeSpace_MB = free_space_bytes / 1048576;
-}
-
-static uint32_t calculate_folder_count(const char *path)
-{
-    FRESULT res;
-    DIR dir;
-    FILINFO fno;
-    uint32_t totalSize = 0;
-    char newPath[256]; // Buffer to hold sub-directory paths
-
-    res = f_opendir(&dir, path); // Open the directory
-    if (res != FR_OK)
-    {
-        return 0; // Error, return 0
-    }
-
-    while (1)
-    {
-        res = f_readdir(&dir, &fno); // Read a directory item
-        if (res != FR_OK || fno.fname[0] == 0)
-        {
-            break; // Error or end of dir, exit
-        }
-
-        if (fno.fattrib & AM_DIR)
-        { // It's a directory
-            sprintf(newPath, "%s/%s", path, fno.fname);
-            totalSize += calculate_folder_count(newPath); // Recursive call
-        }
-        else
-        { // It's a file
-            totalSize += 1;
-        }
-    }
-
-    f_closedir(&dir);
-    return totalSize;
-}
-
-/**
- * @brief Checks if a directory exists in the filesystem.
- *
- * This function uses the FatFS library's f_stat() method to determine if
- * a specified directory exists on the filesystem. It returns 1 if the directory
- * exists and 0 otherwise.
- *
- * @param dir A pointer to a string containing the path of the directory to check.
- * @return int Returns 1 if the directory exists, 0 otherwise.
- */
-static int directory_exists(const char *dir)
-{
-    FILINFO fno;
-    FRESULT res = f_stat(dir, &fno);
-
-    // Check if the result is OK and if the attribute indicates it's a directory
-    if (res == FR_OK && (fno.fattrib & AM_DIR))
-    {
-        return 1; // Directory exists
-    }
-
-    return 0; // Directory does not exist
-}
-
-static void get_sdcard_data(FATFS *fs, SdCardData *sd_data)
-{
-
-    sd_data->status = microsd_mounted ? SD_CARD_MOUNTED : SD_CARD_NOT_MOUNTED; // SD card status
-    strncpy(sd_data->floppies_folder, find_entry("FLOPPIES_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
-    sd_data->floppies_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
-
-    strncpy(sd_data->roms_folder, find_entry("ROMS_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
-    sd_data->roms_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
-
-    strncpy(sd_data->harddisks_folder, "/harddisks", MAX_FOLDER_LENGTH - 1);
-    sd_data->harddisks_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
-
-    if (microsd_mounted)
-    {
-        sd_data->floppies_folder_status = directory_exists(sd_data->floppies_folder) ? FLOPPIES_FOLDER_OK : FLOPPIES_FOLDER_NOTFOUND;
-        sd_data->roms_folder_status = directory_exists(sd_data->roms_folder) ? ROMS_FOLDER_OK : ROMS_FOLDER_NOTFOUND;
-        sd_data->harddisks_folder_status = directory_exists(sd_data->harddisks_folder) ? HARDDISKS_FOLDER_OK : HARDDISKS_FOLDER_NOTFOUND;
-
-        uint32_t total, freeSpace;
-        get_card_info(fs, &total, &freeSpace);
-
-        sd_data->sd_size = total;
-        sd_data->sd_free_space = freeSpace;
-
-        sd_data->roms_folder_count = calculate_folder_count(sd_data->roms_folder);
-        sd_data->floppies_folder_count = calculate_folder_count(sd_data->floppies_folder);
-        sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);
-    }
-    else
-    {
-        sd_data->floppies_folder_status = FLOPPIES_FOLDER_NOTFOUND;
-        sd_data->roms_folder_status = ROMS_FOLDER_NOTFOUND;
-        sd_data->harddisks_folder_status = HARDDISKS_FOLDER_NOTFOUND;
-        sd_data->sd_size = 0;
-        sd_data->sd_free_space = 0;
-        sd_data->roms_folder_count = 0;
-        sd_data->floppies_folder_count = 0;
-        sd_data->harddisks_folder_count = 0;
-    }
-    DPRINTF("SD card status: %d\n", sd_data->status);
-    DPRINTF("SD card size: %d MB\n", sd_data->sd_size);
-    DPRINTF("SD card free space: %d MB\n", sd_data->sd_free_space);
-    DPRINTF("Floppies folder: %s\n", sd_data->floppies_folder);
-    DPRINTF("Floppies folder status: %d\n", sd_data->floppies_folder_status);
-    DPRINTF("Floppies folder file count: %d\n", sd_data->floppies_folder_count);
-    DPRINTF("ROMs folder: %s\n", sd_data->roms_folder);
-    DPRINTF("ROMs folder status: %d\n", sd_data->roms_folder_status);
-    DPRINTF("ROMs folder file count: %d\n", sd_data->roms_folder_count);
-    DPRINTF("Hard disks folder: %s\n", sd_data->harddisks_folder);
-    DPRINTF("Hard disks folder status: %d\n", sd_data->harddisks_folder_status);
-    DPRINTF("Hard disks folder file count: %d\n", sd_data->harddisks_folder_count);
-}
-
-/**
- * @brief Copies a file within the same folder to a new file with a specified name.
- *
- * This function reads a specified file from a specified folder, and creates a new file
- * with a specified name in the same folder, copying the contents of the original file
- * to the new file. If a file with the specified new name already exists, the behavior
- * depends on the value of the overwrite_flag argument: if true, the existing file is
- * overwritten; if false, the function returns an error code and the operation is canceled.
- *
- * @param folder The path of the folder containing the source file, as a null-terminated string.
- * @param src_filename The name of the source file, as a null-terminated string.
- * @param dest_filename The name for the new file, as a null-terminated string.
- * @param overwrite_flag A flag indicating whether to overwrite the destination file
- *        if it already exists: true to overwrite, false to cancel the operation.
- *
- * @return A result code of type FRESULT, indicating the result of the operation:
- *         - FR_OK on success.
- *         - FR_FILE_EXISTS if the destination file exists and overwrite_flag is false.
- *         - Other FatFS error codes for other error conditions.
- *
- * @note This function uses the FatFS library to perform file operations, and is designed
- *       to work in environments where FatFS is available. It requires the ff.h header file.
- *
- * Usage:
- * @code
- * FRESULT result = copy_file("/folder", "source.txt", "destination.txt", true);  // Overwrite if destination.txt exists
- * @endcode
- */
-static FRESULT copy_file(const char *folder, const char *src_filename, const char *dest_filename, bool overwrite_flag)
-{
-    FRESULT fr;   // FatFS function common result code
-    FIL src_file; // File objects
-    FIL dest_file;
-    UINT br, bw;       // File read/write count
-    BYTE buffer[4096]; // File copy buffer
-
-    char src_path[256];
-    char dest_path[256];
-
-    // Create full paths for source and destination files
-    sprintf(src_path, "%s/%s", folder, src_filename);
-    sprintf(dest_path, "%s/%s", folder, dest_filename);
-
-    DPRINTF("Copying file '%s' to '%s'. Overwrite? %s\n", src_path, dest_path, overwrite_flag ? "YES" : "NO");
-
-    // Check if the destination file already exists
-    FILINFO fno;
-    fr = f_stat(dest_path, &fno);
-    if (fr == FR_OK && !overwrite_flag)
-    {
-        DPRINTF("Destination file exists and overwrite_flag is false, canceling operation\n");
-        return FR_FILE_EXISTS; // Destination file exists and overwrite_flag is false, cancel the operation
-    }
-
-    // Open the source file
-    fr = f_open(&src_file, src_path, FA_READ);
-    if (fr != FR_OK)
-    {
-        DPRINTF("f_open error: %s (%d)\n", FRESULT_str(fr), fr);
-        return fr;
-    }
-
-    // Create and open the destination file
-    fr = f_open(&dest_file, dest_path, FA_CREATE_ALWAYS | FA_WRITE);
-    if (fr != FR_OK)
-    {
-        DPRINTF("f_open error: %s (%d)\n", FRESULT_str(fr), fr);
-        f_close(&src_file); // Close the source file if it was opened successfully
-        return fr;
-    }
-
-    // Copy the file
-    do
-    {
-        fr = f_read(&src_file, buffer, sizeof buffer, &br); // Read a chunk of source file
-        if (fr != FR_OK)
-            break;                                 // Break on error
-        fr = f_write(&dest_file, buffer, br, &bw); // Write it to the destination file
-    } while (fr == FR_OK && br == sizeof buffer);
-
-    // Close files
-    f_close(&src_file);
-    f_close(&dest_file);
-
-    DPRINTF("File copied\n");
-    return fr; // Return the result
-}
-
-static void release_memory_files(char **files, int num_files)
-{
-    for (int i = 0; i < num_files; i++)
-    {
-        free(files[i]); // Free each string
-    }
-    free(files); // Free the list itself
-}
-
-static char **show_dir_files(const char *dir, int *num_files)
-{
-    char cwdbuf[FF_LFN_BUF] = {0};
-    FRESULT fr;
-    char const *p_dir;
-    char **filenames = NULL;
-    *num_files = 0; // Initialize the count of files to 0
-
-    if (dir[0])
-    {
-        p_dir = dir;
-    }
-    else
-    {
-        fr = f_getcwd(cwdbuf, sizeof cwdbuf);
-        if (FR_OK != fr)
-        {
-            DPRINTF("f_getcwd error: %s (%d)\n", FRESULT_str(fr), fr);
-            return NULL;
-        }
-        p_dir = cwdbuf;
-    }
-
-    DIR dj;
-    FILINFO fno;
-    memset(&dj, 0, sizeof dj);
-    memset(&fno, 0, sizeof fno);
-
-    fr = f_findfirst(&dj, &fno, p_dir, "*");
-    if (FR_OK != fr)
-    {
-        DPRINTF("f_findfirst error: %s (%d)\n", FRESULT_str(fr), fr);
-        return NULL;
-    }
-
-    while (fr == FR_OK && fno.fname[0] && fno.fname[0])
-    {
-        // Allocate space for a new pointer in the filenames array
-        filenames = realloc(filenames, sizeof(char *) * (*num_files + 1));
-        if (!filenames)
-        {
-            DPRINTF("Memory allocation failed\n");
-            return NULL;
-        }
-        filenames[*num_files] = strdup(fno.fname); // Store the filename
-        (*num_files)++;
-
-        fr = f_findnext(&dj, &fno); // Search for next item
-    }
-
-    f_closedir(&dj);
-
-    return filenames;
-}
-
-static int load(char *path, char *filename, uint32_t rom_load_offset)
-{
-    FIL fsrc;                                           /* File objects */
-    BYTE buffer[CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES]; /* File copy buffer */
-    FRESULT fr;                                         /* FatFs function common result code */
-    unsigned int br = 0;                                /* File read/write count */
-    unsigned int size = 0;                              // File size
-    uint32_t dest_address = rom_load_offset;            // Initialize pointer to the ROM address
-
-    char fullpath[512]; // Assuming 512 bytes as the max path+filename length. Adjust if necessary.
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);
-
-    DPRINTF("Loading file '%s'  ", fullpath);
-
-    /* Open source file on the drive 0 */
-    fr = f_open(&fsrc, fullpath, FA_READ);
-    if (fr)
-        return (int)fr;
-
-    // Get file size
-    size = f_size(&fsrc);
-    DPRINTF("File size: %i bytes\n", size);
-
-    // If the size of the image is not 65536 or 131072 bytes, check if the file
-    // is 4 bytes larger and the first 4 bytes are 0x0000. If so, skip them
-    if ((size == ROM_SIZE_BYTES + 4) || (size == ROM_SIZE_BYTES * 2 + 4))
-    {
-        // Read the first 4 bytes
-        fr = f_read(&fsrc, buffer, 4, &br);
-        if (fr)
-        {
-            f_close(&fsrc);
-            return (int)fr; // Check for error in reading
-        }
-
-        // Check if the first 4 bytes are 0x0000
-        if (buffer[0] == 0x00 && buffer[1] == 0x00 && buffer[2] == 0x00 && buffer[3] == 0x00)
-        {
-            DPRINTF("Skipping first 4 bytes. Looks like a STEEM cartridge image.\n");
-        }
-        else
-        {
-            // Rollback the file pointer to the previous 4 bytes read
-            f_lseek(&fsrc, -4);
-        }
-    }
-    /* Copy source to destination */
-    size = 0;
-    for (;;)
-    {
-        fr = f_read(&fsrc, buffer, sizeof buffer, &br); /* Read a chunk of data from the source file */
-        if (fr)
-        {
-            f_close(&fsrc);
-            return (int)fr; // Check for error in reading
-        }
-        if (br == 0)
-            break; // EOF
-
-        // Transform buffer's words from little endian to big endian inline
-        for (int i = 0; i < br; i += 2)
-        {
-            uint16_t value = *(uint16_t *)(buffer + i);
-            value = (value << 8) | (value >> 8);
-            *(uint16_t *)(buffer + i) = value;
-        }
-
-        // Transfer buffer to FLASH
-        // WARNING! TRANSFER THE INFORMATION IN THE BUFFER AS LITTLE ENDIAN!!!!
-        uint32_t ints = save_and_disable_interrupts();
-        flash_range_program(dest_address, buffer, br);
-        restore_interrupts(ints);
-
-        dest_address += br; // Increment the pointer to the ROM address
-        size += br;
-
-        DPRINTF(".");
-    }
-
-    // Close open file
-    f_close(&fsrc);
-
-    DPRINTF(" %i bytes loaded\n", size);
-    DPRINTF("File loaded at offset 0x%x\n", rom_load_offset);
-    DPRINTF("Dest ROM address end is 0x%x\n", dest_address - 1);
-    return (int)fr;
-}
-
-static char **filter(char **file_list, int file_count, int *num_files)
-{
-    int validCount = 0;
-
-    // Count valid filenames
-    for (int i = 0; i < file_count; i++)
-    {
-        if (file_list[i][0] != '.')
-        {
-            validCount++;
-        }
-    }
-
-    // Allocate memory for the new array
-    char **filtered_list = (char **)malloc(validCount * sizeof(char *));
-    if (filtered_list == NULL)
-    {
-        perror("Failed to allocate memory");
-        exit(1);
-    }
-
-    int index = 0;
-    for (int i = 0; i < file_count; i++)
-    {
-        if (file_list[i][0] != '.')
-        {
-            filtered_list[index++] = strdup(file_list[i]);
-            if (filtered_list[index - 1] == NULL)
-            {
-                perror("Failed to duplicate string");
-                exit(1);
-            }
-        }
-    }
-    *num_files = validCount;
-    return filtered_list;
-}
-
-// Comparison function for qsort.
+// Custom case-insensitive comparison function
 static int compare_strings(const void *a, const void *b)
 {
-    return strcmp(*(const char **)a, *(const char **)b);
-}
+    const char *str1 = *(const char **)a;
+    const char *str2 = *(const char **)b;
 
-static int get_number_within_range(int num_files)
-{
-    char input[3];
-    int number;
-
-    while (1)
+    while (*str1 && *str2 && tolower((unsigned char)*str1) == tolower((unsigned char)*str2))
     {
-        // Prompt the user
-        DPRINTF("Enter the ROM to load (1 to %d): ", num_files);
-
-        // Get the input as a string (this is to handle empty input)
-        if (fgets(input, sizeof(input), stdin) == NULL || strlen(input) <= 1)
-        {
-            // If input is empty or just a newline character, return
-            return -1; // Use -1 or another value to indicate that no valid number was received
-        }
-
-        // Convert the string input to an integer
-        if (sscanf(input, "%d", &number) == 1)
-        {
-            if (number >= 1 && number <= num_files)
-            {
-                // If the number is within the desired range, return the number
-                return number;
-            }
-        }
-
-        // If out of range or not a valid number, print an error message
-        DPRINTF("Invalid input! Please enter a number between 1 and %d.\n", num_files);
-    }
-}
-
-static void store_file_list(char **file_list, int num_files, uint8_t *memory_location)
-{
-    uint8_t *dest_ptr = memory_location;
-
-    int total_size = 0;
-    // Iterate through each file in the file_list
-    for (int i = 0; i < num_files; i++)
-    {
-        if ((total_size + strlen(file_list[i]) + 5) > CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES)
-        {
-            DPRINTF("ERROR: Not enough memory to store the file list.\n");
-            break;
-        }
-        char *current_file = file_list[i];
-        total_size += strlen(current_file) + 1; // +1 for null terminator
-
-        // Copy each character of the current file name into the memory location
-        while (*current_file)
-        {
-            *dest_ptr++ = *current_file++;
-        }
-
-        // Place a zero after each file name
-        *dest_ptr++ = 0x00;
+        str1++;
+        str2++;
     }
 
-    // Ensure even address for the following data
-    if ((uintptr_t)dest_ptr & 1)
-    {
-        *dest_ptr++ = 0x00;
-    }
-    // Add an additional 0x00 byte to mark the end of the list
-    *dest_ptr++ = 0x00;
-    *dest_ptr++ = 0x00;
-    *dest_ptr++ = 0xFF;
-    *dest_ptr++ = 0xFF;
-
-    // Transform buffer's words from little endian to big endian inline
-    uint16_t *dest_ptr_word = (uint16_t *)memory_location;
-    for (int i = 0; i < total_size / 2; i++)
-    {
-        uint16_t value = *(uint16_t *)(dest_ptr_word);
-        *(uint16_t *)(dest_ptr_word)++ = (value << 8) | (value >> 8);
-    }
+    return tolower((unsigned char)*str1) - tolower((unsigned char)*str2);
 }
 
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
@@ -827,7 +336,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         DPRINTF("Num sides: %d\n", floppy_header.num_sides);
         floppy_header.overwrite = protocol->payload[12] | (protocol->payload[13] << 8);
         DPRINTF("Overwrite: %d\n", floppy_header.overwrite);
-        swap_words(&protocol->payload[sizeof(floppy_header.volume_name)], (sizeof(floppy_header.volume_name) + sizeof(floppy_header.floppy_name)) / 2);
+        swap_words(&protocol->payload[sizeof(floppy_header.volume_name)], (sizeof(floppy_header.volume_name) + sizeof(floppy_header.floppy_name)));
         // Now read the volume name until a zero is found
         int i = 0;
         for (i = 0; i < 14; i++)
@@ -1102,7 +611,7 @@ int init_firmware()
         {
             microsd_status = false;
             SdCardData *sd_data = malloc(sizeof(SdCardData));
-            get_sdcard_data(&fs, sd_data);
+            get_sdcard_data(&fs, sd_data, microsd_mounted);
 
             // Swap the bytes to motorola endian format
             sd_data->roms_folder_count = (sd_data->roms_folder_count >> 16) | (sd_data->roms_folder_count << 16);
@@ -1208,7 +717,9 @@ int init_firmware()
             file_list = show_dir_files(dir, &num_files);
 
             // Remove hidden files from the list
-            filtered_local_list = filter(file_list, num_files, &filtered_num_local_files);
+            const char *allowed_extensions[] = {"img", "bin", "stc", "rom"};
+
+            filtered_local_list = filter(file_list, num_files, &filtered_num_local_files, allowed_extensions, 4);
             // Sort remaining valid filenames lexicographically
             qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
             // Store the list in the ROM memory space
@@ -1232,7 +743,8 @@ int init_firmware()
             file_list = show_dir_files(dir, &num_files);
 
             // Remove hidden files from the list
-            filtered_local_list = filter(file_list, num_files, &filtered_num_local_files);
+            const char *allowed_extensions[] = {"st", "msa", "rw"};
+            filtered_local_list = filter(file_list, num_files, &filtered_num_local_files, allowed_extensions, 3);
             // Sort remaining valid filenames lexicographically
             qsort(filtered_local_list, filtered_num_local_files, sizeof(char *), compare_strings);
             // Store the list in the ROM memory space
@@ -1358,7 +870,7 @@ int init_firmware()
         uint32_t ints = save_and_disable_interrupts();
         flash_range_erase(FLASH_ROM_LOAD_OFFSET, ROM_SIZE_BYTES * 2); // Two banks of 64K
         restore_interrupts(ints);
-        int res = load(find_entry("ROMS_FOLDER")->value, filtered_local_list[rom_file_selected - 1], FLASH_ROM_LOAD_OFFSET);
+        int res = load_rom_from_fs(find_entry("ROMS_FOLDER")->value, filtered_local_list[rom_file_selected - 1], FLASH_ROM_LOAD_OFFSET);
 
         if (res != FR_OK)
             DPRINTF("f_open error: %s (%d)\n", FRESULT_str(res), res);

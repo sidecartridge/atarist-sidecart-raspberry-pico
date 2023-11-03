@@ -72,7 +72,7 @@ int put_integer(const char key[MAX_KEY_LENGTH], int value);
 void select_button_action(bool safe_config_reboot, bool write_config_only_once);
 void blink_morse(char ch);
 
-void swap_words(void *dest_ptr_word, uint16_t total_words);
+void swap_words(void *dest_ptr_word, uint16_t size_in_bytes);
 
 // int remove_entry(const char *key);
 

@@ -387,12 +387,23 @@ void blink_morse(char ch)
     blink_morse_container();
 }
 
-void swap_words(void *dest_ptr_word, uint16_t total_words)
+/**
+ * Swaps the bytes in each word (16-bit) of a given block of memory.
+ * This function is used for changing the endianness of data
+ *
+ * @param dest_ptr_word A pointer to the memory block where words will be swapped.
+ * @param size_in_bytes The total size of the memory block in bytes.
+ *
+ * Note: The function assumes that 'size_in_bytes' is an even number, as it processes
+ *       16-bit words. If 'size_in_bytes' is odd, the last byte will not be processed.
+ */
+void swap_words(void *dest_ptr_word, uint16_t size_in_bytes)
 {
-    for (int j = 0; j < total_words; j += 2)
+    uint16_t *word_ptr = (uint16_t *)dest_ptr_word;
+    uint16_t total_words = size_in_bytes / 2;
+    for (uint16_t j = 0; j < total_words; ++j)
     {
-        uint16_t value = *(uint16_t *)(dest_ptr_word);
-        *(uint16_t *)dest_ptr_word = (value << 8) | (value >> 8);
-        dest_ptr_word += 2;
+        uint16_t value = word_ptr[j];              // Read the current word once
+        word_ptr[j] = (value << 8) | (value >> 8); // Swap the bytes and write back
     }
 }

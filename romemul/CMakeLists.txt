@@ -46,7 +46,7 @@ target_sources(${PROJECT_NAME} PRIVATE romloader.c)
 target_sources(${PROJECT_NAME} PRIVATE tprotocol.c)
 target_sources(${PROJECT_NAME} PRIVATE config.c)
 target_sources(${PROJECT_NAME} PRIVATE network.c)
-target_sources(${PROJECT_NAME} PRIVATE imgformats.c)
+target_sources(${PROJECT_NAME} PRIVATE filesys.c)
 target_sources(${PROJECT_NAME} PRIVATE cJSON/cJSON.c)
 
 # Tell CMake where to find other source code
