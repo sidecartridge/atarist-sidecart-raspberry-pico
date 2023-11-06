@@ -36,14 +36,6 @@ ConnectionStatus get_previous_connection_status()
     return previous_connection_status;
 }
 
-void null_words(uint16_t *dest_ptr_word, uint16_t total_words)
-{
-    for (int j = 0; j < total_words; j += 2)
-    {
-        *(uint16_t *)(dest_ptr_word)++ = 0;
-    }
-}
-
 void network_swap_auth_data(uint16_t *dest_ptr_word)
 {
     // +2 is for the auth_mode type

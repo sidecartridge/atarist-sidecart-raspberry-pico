@@ -73,6 +73,7 @@ void select_button_action(bool safe_config_reboot, bool write_config_only_once);
 void blink_morse(char ch);
 
 void swap_words(void *dest_ptr_word, uint16_t size_in_bytes);
+void null_words(void *dest_ptr_word, uint16_t size_in_bytes);
 
 // int remove_entry(const char *key);
 

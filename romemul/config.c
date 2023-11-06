@@ -407,3 +407,13 @@ void swap_words(void *dest_ptr_word, uint16_t size_in_bytes)
         word_ptr[j] = (value << 8) | (value >> 8); // Swap the bytes and write back
     }
 }
+
+void null_words(void *dest_ptr_word, uint16_t size_in_bytes)
+{
+    uint16_t *word_ptr = (uint16_t *)dest_ptr_word;
+    uint16_t total_words = size_in_bytes / 2;
+    for (uint16_t j = 0; j < total_words; ++j)
+    {
+        word_ptr[j] = 0;
+    }
+}

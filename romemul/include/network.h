@@ -123,7 +123,6 @@ void network_swap_auth_data(uint16_t *dest_ptr_word);
 void network_swap_data(uint16_t *dest_ptr_word, uint16_t total_items);
 void network_swap_connection_data(uint16_t *dest_ptr_word);
 void network_swap_json_data(uint16_t *dest_ptr_word);
-void null_words(uint16_t *dest_ptr_word, uint16_t total_words);
 
 void network_init();
 void network_scan();

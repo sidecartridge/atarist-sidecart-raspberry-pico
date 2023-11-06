@@ -67,7 +67,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 
 # Debug outputs
 pico_enable_stdio_usb(${PROJECT_NAME} 0)
-pico_enable_stdio_uart(${PROJECT_NAME} 1)
+pico_enable_stdio_uart(${PROJECT_NAME} _DEBUG)
 
 # Link custom memmap with reserved memory for ROMs
 set_target_properties(${PROJECT_NAME} PROPERTIES
@@ -113,4 +113,4 @@ add_definitions(-DRELEASE_DATE="${RELEASE_DATE}")
 add_definitions(-D_DEBUG=${_DEBUG})
 
 # Optimization Flags
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Os")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -ffunction-sections -fdata-sections")

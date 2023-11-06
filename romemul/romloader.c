@@ -102,7 +102,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             DPRINTF("SD card not mounted. Cannot load ROM.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         break;
     case LIST_ROMS:
@@ -112,7 +112,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         if (!microsd_mounted)
         {
             DPRINTF("SD card not mounted. Cannot list ROMs.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         else
         {
@@ -240,7 +240,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             DPRINTF("SD card not mounted. Cannot load ROM.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         break;
     case LOAD_FLOPPY_RW:
@@ -257,7 +257,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             DPRINTF("SD card not mounted. Cannot load ROM.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         break;
     case LIST_FLOPPIES:
@@ -267,7 +267,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         if (!microsd_mounted)
         {
             DPRINTF("SD card not mounted. Cannot list Floppies.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         else
         {
@@ -305,7 +305,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             DPRINTF("SD card not mounted. Cannot save the image to download.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES / 2);
+            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
             floppy_image_selected_status = 1; // Error: SD card not mounted
             floppy_image_selected = 0;
         }
