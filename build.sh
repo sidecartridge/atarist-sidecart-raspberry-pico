@@ -9,8 +9,18 @@ export FATFS_SDK_PATH=$PWD/fatfs-sdk
 export PICO_SDK_PATH=$PWD/pico-sdk
 export PICO_EXTRAS_PATH=$PWD/pico-extras
 
+# Check if the third parameter is provided
+export RELEASE_TYPE=${3:-""}
+
+# Determine the file to use based on RELEASE_TYPE
+if [ -z "$RELEASE_TYPE" ]; then
+    VERSION_FILE="version.txt"
+else
+    VERSION_FILE="version-beta.txt"
+fi
+
 # Read the release version from the version.txt file
-export RELEASE_VERSION=$(cat version.txt | tr -d '\r\n ')
+export RELEASE_VERSION=$(cat "$VERSION_FILE" | tr -d '\r\n ')
 echo "Release version: $RELEASE_VERSION"
 
 # Get the release date and time from the current date

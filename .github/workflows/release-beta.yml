@@ -37,7 +37,7 @@ jobs:
       run: ./build.sh pico_w release
 
     - name: Run - Build PICO_W debug version
-      run: ./build.sh pico_w debug
+      run: ./build.sh pico_w debug beta
 
     - name: Get version from version.txt
       id: get_version
@@ -58,3 +58,5 @@ jobs:
         file_glob: true
         overwrite: true
         make_latest: false
+        prerelease: true
+

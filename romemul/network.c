@@ -659,7 +659,7 @@ char *get_latest_release(void)
 
     if (formatted_release)
     {
-        sprintf(formatted_release, "v%s", latest_release);
+        sprintf(formatted_release, "%s", latest_release);
         free(latest_release);
     }
     return formatted_release ? formatted_release : latest_release;

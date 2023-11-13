@@ -87,7 +87,7 @@ set(_DEBUG $ENV{DEBUG_MODE})
 # If the environment variables are not set, use default values
 if(NOT RELEASE_VERSION)
     # Read content of version.txt
-    file(READ "${CMAKE_SOURCE_DIR}/../version.txt" RELEASE_VERSION)
+    file(READ "${CMAKE_SOURCE_DIR}/../version-beta.txt" RELEASE_VERSION)
     
     # Remove newline character if present
     string(STRIP "${RELEASE_VERSION}" RELEASE_VERSION)
@@ -108,7 +108,7 @@ if (NOT _DEBUG)
 endif()
 
 # Pass these values to the C compiler
-add_definitions(-DRELEASE_VERSION="v${RELEASE_VERSION}")
+add_definitions(-DRELEASE_VERSION="${RELEASE_VERSION}")
 add_definitions(-DRELEASE_DATE="${RELEASE_DATE}")
 
 # Pass the _DEBUG flag to the C compiler
