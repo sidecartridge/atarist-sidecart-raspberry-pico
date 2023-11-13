@@ -22,7 +22,7 @@
 #include <hardware/watchdog.h>
 #include "pico/cyw43_arch.h"
 
-#define MAX_ENTRIES 15
+#define MAX_ENTRIES 19
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
@@ -74,6 +74,9 @@ void blink_morse(char ch);
 
 void swap_words(void *dest_ptr_word, uint16_t size_in_bytes);
 void null_words(void *dest_ptr_word, uint16_t size_in_bytes);
+
+int copy_firmware_to_RAM(uint16_t *emulROM, int emulROM_length);
+int erase_firmware_from_RAM();
 
 // int remove_entry(const char *key);
 

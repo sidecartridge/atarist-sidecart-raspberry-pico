@@ -43,9 +43,6 @@
 // Delete flash
 int delete_FLASH(void);
 
-// Copy embedded firmware to RAM
-int copy_firmware_to_RAM();
-
 // Interrupt handler callback for DMA completion
 void __not_in_flash_func(dma_irq_handler_lookup_callback)(void);
 

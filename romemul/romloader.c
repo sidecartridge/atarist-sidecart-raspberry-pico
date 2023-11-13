@@ -58,6 +58,9 @@ static int rom_network_selected = -1;
 // Floppy header informationf for new images
 static FloppyImageHeader floppy_header = {0};
 
+// RTC boot variables
+static bool rtc_boot = false;
+
 // Custom case-insensitive comparison function
 static int compare_strings(const void *a, const void *b)
 {
@@ -359,6 +362,12 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         }
         DPRINTF("Floppy name: %s\n", floppy_header.floppy_name);
         break;
+    case BOOT_RTC:
+        // Boot RTC emulator
+        DPRINTF("Command BOOT_RTC (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        rtc_boot = true; // now in the active loop should stop and boot the RTC emulator
+        break;
 
     // ... handle other commands
     default:
@@ -381,21 +390,6 @@ void __not_in_flash_func(dma_irq_handler_lookup_callback)(void)
     {
         parse_protocol((uint16_t)(addr & 0xFFFF), handle_protocol_command);
     }
-}
-
-int copy_firmware_to_RAM()
-{
-    // Need to initialize the ROM4 section with the firmware data
-    extern uint16_t __rom_in_ram_start__;
-    uint16_t *rom4_dest = &__rom_in_ram_start__;
-    uint16_t *rom4_src = (uint16_t *)firmwareROM;
-    for (int i = 0; i < firmwareROM_length; i++)
-    {
-        uint16_t value = *rom4_src++;
-        *rom4_dest++ = value;
-    }
-    DPRINTF("Firmware copied to RAM.\n");
-    return 0;
 }
 
 int delete_FLASH(void)
@@ -478,7 +472,7 @@ int init_firmware()
     blink_morse('C');
 
     u_int16_t network_poll_counter = 0;
-    while ((rom_file_selected < 0) && (rom_network_selected < 0) && (floppy_file_selected < 0) && (floppy_image_selected < 0) && (reset_default == false))
+    while ((rom_file_selected < 0) && (rom_network_selected < 0) && (floppy_file_selected < 0) && (floppy_image_selected < 0) && (!reset_default) && (!rtc_boot))
     {
         tight_loop_contents();
 
@@ -1052,6 +1046,13 @@ int init_firmware()
         *((volatile uint16_t *)(memory_area + 4)) = floppy_image_selected_status;
 
         DPRINTF("Random token: %x\n", random_token);
+        *((volatile uint32_t *)(memory_area)) = random_token;
+    }
+    if (rtc_boot)
+    {
+        DPRINTF("Boot the RTC emulator.\n");
+        put_string("BOOT_FEATURE", "RTC_EMULATOR");
+        write_all_entries();
         *((volatile uint32_t *)(memory_area)) = random_token;
     }
     if (reset_default)

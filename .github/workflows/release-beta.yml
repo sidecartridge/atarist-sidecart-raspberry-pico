@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - 'beta*'
 
 jobs:
   build:
@@ -52,5 +52,4 @@ jobs:
         release_name: ${{ env.RELEASE_VERSION }}
         file_glob: true
         overwrite: true
-        make_latest: true
-  
+        make_latest: false
