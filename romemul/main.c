@@ -9,6 +9,7 @@
 #include "include/romloader.h"
 #include "include/romemul.h"
 #include "include/floppyemul.h"
+#include "include/rtcemul.h"
 
 int main()
 {
@@ -106,13 +107,14 @@ int main()
                 }
             }
         }
+
         if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
         {
             printf("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
             // Copy the ST floppy firmware emulator to RAM
-            copy_floppy_firmware_to_RAM();
-
+            // Copy the firmware to RAM
+            copy_firmware_to_RAM((uint16_t *)floppyemulROM, floppyemulROM_length);
             // Reserve memory for the protocol parser
             init_protocol_parser();
 
@@ -129,6 +131,41 @@ int main()
             //            blink_morse('F');
 
             init_floppyemul(safe_config_reboot);
+
+            // You should never reach this line...
+        }
+
+        if (strcmp(default_config_entry->value, "RTC_EMULATOR") == 0)
+        {
+            printf("RTC_EMULATOR entry found in config. Launching.\n");
+
+            char *rtc_type_str = find_entry("RTC_TYPE")->value;
+            if (strcmp(rtc_type_str, "SIDECART") == 0)
+            {
+                // Copy the ST RTC firmware emulator to RAM
+                copy_firmware_to_RAM((uint16_t *)rtcemulROM, rtcemulROM_length);
+            }
+            else
+            {
+                erase_firmware_from_RAM();
+            }
+
+            // Reserve memory for the protocol parser
+            init_protocol_parser();
+
+            // Hybrid way to initialize the ROM emulator:
+            // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+            // and start the state machine
+            init_romemul(NULL, rtcemul_dma_irq_handler_lookup_callback, false);
+
+            network_init();
+
+            DPRINTF("Ready to accept commands.\n");
+
+            // The "T" character stands for "TIME"
+            blink_morse('T');
+
+            init_rtcemul(safe_config_reboot);
 
             // You should never reach this line...
         }
@@ -155,7 +192,7 @@ int main()
         //        delete_FLASH();
 
         // Copy the firmware to RAM
-        copy_firmware_to_RAM();
+        copy_firmware_to_RAM((uint16_t *)firmwareROM, firmwareROM_length);
 
         // Hybrid way to initialize the ROM emulator:
         // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM

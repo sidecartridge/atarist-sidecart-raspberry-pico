@@ -7,6 +7,7 @@
 #define APP_CONFIGURATOR 0x00 // The configurator app
 #define APP_ROMEMUL 0x01      // The ROM emulator app. Should not have any command
 #define APP_FLOPPYEMUL 0x02   // The floppy emulator app
+#define APP_RTCEMUL 0x03      // The RTC emulator app
 
 // APP_CONFIGURATOR commands
 #define DOWNLOAD_ROM 0          // Download a ROM from the URL
@@ -32,15 +33,21 @@
 #define GET_SD_DATA 20          // Get the SD card status, size, free space and folders
 #define GET_LATEST_RELEASE 21   // Get the latest release version of the firmware
 #define CREATE_FLOPPY 22        // Create a floppy image based in a template
+#define BOOT_RTC 23             // Boot the RTC emulator
 
 // APP_ROMEMUL commands
 // No commands
 
 // APP_FLOPPYEMUL commands
-#define FLOPPYEMUL_SAVE_VECTORS (APP_FLOPPYEMUL << 8 | 0)  // Set the vectors of the floppy emulator
+#define FLOPPYEMUL_SAVE_VECTORS (APP_FLOPPYEMUL << 8 | 0)  // Save the vectors of the floppy emulator
 #define FLOPPYEMUL_SET_BPB (APP_FLOPPYEMUL << 8 | 1)       // Set the BPB of the floppy emulator
 #define FLOPPYEMUL_READ_SECTORS (APP_FLOPPYEMUL << 8 | 2)  // Read sectors from the floppy emulator
 #define FLOPPYEMUL_WRITE_SECTORS (APP_FLOPPYEMUL << 8 | 3) // Write sectors to the floppy emulator
 #define FLOPPYEMUL_PING (APP_FLOPPYEMUL << 8 | 4)          // Ping the floppy emulator
+
+// APP_RTCEMUL commands
+#define RTCEMUL_TEST_NTP (APP_RTCEMUL << 8 | 0)     // Test if the network is ready to use NTP
+#define RTCEMUL_READ_TIME (APP_RTCEMUL << 8 | 1)    // Read the time from the internal RTC
+#define RTCEMUL_SAVE_VECTORS (APP_RTCEMUL << 8 | 2) // Save the vectors of the RTC emulator
 
 #endif // COMMANDS_H_

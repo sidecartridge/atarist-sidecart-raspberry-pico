@@ -13,6 +13,10 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"LASTEST_RELEASE_URL", TYPE_STRING, "http://atarist.sidecart.xyz/version.txt"},
     {"ROMS_FOLDER", TYPE_STRING, "/roms"},
     {"ROMS_YAML_URL", TYPE_STRING, "http://roms.sidecart.xyz/roms.json"},
+    {"RTC_NTP_SERVER_HOST", TYPE_STRING, "pool.ntp.org"},
+    {"RTC_NTP_SERVER_PORT", TYPE_INT, "123"},
+    {"RTC_TYPE", TYPE_STRING, "SIDECART"},
+    {"RTC_UTC_OFFSET", TYPE_STRING, "+1"},
     {"SAFE_CONFIG_REBOOT", TYPE_BOOL, "true"},
     {"WIFI_SCAN_SECONDS", TYPE_INT, "15"},
     {"WIFI_PASSWORD", TYPE_STRING, ""},
@@ -416,4 +420,32 @@ void null_words(void *dest_ptr_word, uint16_t size_in_bytes)
     {
         word_ptr[j] = 0;
     }
+}
+
+int copy_firmware_to_RAM(uint16_t *emulROM, int emulROM_length)
+{
+    // Need to initialize the ROM4 section with the firmware data
+    extern uint16_t __rom_in_ram_start__;
+    uint16_t *rom4_dest = &__rom_in_ram_start__;
+    volatile uint16_t *rom4_src = emulROM;
+    for (int i = 0; i < emulROM_length; i++)
+    {
+        uint16_t value = *rom4_src++;
+        *rom4_dest++ = value;
+    }
+    DPRINTF("Emulation firmware copied to RAM.\n");
+    return 0;
+}
+
+int erase_firmware_from_RAM()
+{
+    // Need to initialize the ROM4 section with the firmware data
+    extern uint16_t __rom_in_ram_start__;
+    volatile uint32_t *rom4_dest = (uint32_t *)&__rom_in_ram_start__;
+    for (int i = 0; i < ROM_SIZE_LONGWORDS * ROM_BANKS; i++)
+    {
+        *rom4_dest++ = 0x0;
+    }
+    DPRINTF("RAM for the firmware zeroed.\n");
+    return 0;
 }

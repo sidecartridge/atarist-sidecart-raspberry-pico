@@ -494,5 +494,25 @@
             "ripper"
         ],
         "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecart.xyz/Shackled.bin",
+        "name": "Shackled",
+        "description": "Shackled is an Atari's Gauntlet-like run and gun video game developed by Data East and released in 1986 for arcades.",
+        "tags": [
+            "arcade",
+            "action"
+        ],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecart.xyz/1st%20address%20v1.01-D.bin",
+        "name": "1st address v1.01-D",
+        "description": "1st address is a file management assistant.",
+        "tags": [
+            "tools",
+            "office"
+        ],
+        "size_kb": 16
     }
 ]
