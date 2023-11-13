@@ -10,7 +10,7 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"FLOPPY_IMAGE_A", TYPE_STRING, ""},
     {"FLOPPY_IMAGE_B", TYPE_STRING, ""},
     {"HOSTNAME", TYPE_STRING, "sidecart"},
-    {"LASTEST_RELEASE_URL", TYPE_STRING, "http://atarist.sidecart.xyz/version.txt"},
+    {"LASTEST_RELEASE_URL", TYPE_STRING, LATEST_RELEASE_URL},
     {"ROMS_FOLDER", TYPE_STRING, "/roms"},
     {"ROMS_YAML_URL", TYPE_STRING, "http://roms.sidecart.xyz/roms.json"},
     {"RTC_NTP_SERVER_HOST", TYPE_STRING, "pool.ntp.org"},

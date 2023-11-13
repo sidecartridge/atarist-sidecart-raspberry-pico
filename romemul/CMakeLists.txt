@@ -80,14 +80,25 @@ set_target_properties(${PROJECT_NAME} PROPERTIES
 pico_set_binary_type(${PROJECT_NAME} romemul)
 
 # Fetch the values from the environment variables
+set(RELEASE_TYPE $ENV{RELEASE_TYPE})
 set(RELEASE_VERSION $ENV{RELEASE_VERSION})
 set(RELEASE_DATE $ENV{RELEASE_DATE})
 set(_DEBUG $ENV{DEBUG_MODE})
 
 # If the environment variables are not set, use default values
 if(NOT RELEASE_VERSION)
-    # Read content of version.txt
-    file(READ "${CMAKE_SOURCE_DIR}/../version-beta.txt" RELEASE_VERSION)
+
+    # Check if RELEASE_TYPE is set and not empty, otherwise use default "FINAL"
+    if(NOT RELEASE_TYPE OR RELEASE_TYPE STREQUAL "")
+        set(RELEASE_TYPE "final")
+    endif()
+
+    # Determine the file name based on RELEASE_TYPE
+    if(RELEASE_TYPE STREQUAL "final")
+        set(VERSION_FILE_NAME "version.txt")
+    else()
+        set(VERSION_FILE_NAME "version-${RELEASE_TYPE}.txt")
+    endif()
     
     # Remove newline character if present
     string(STRIP "${RELEASE_VERSION}" RELEASE_VERSION)
@@ -98,6 +109,15 @@ if(NOT RELEASE_VERSION)
     endif()
 endif()
 
+if(NOT RELEASE_TYPE OR RELEASE_TYPE STREQUAL "" OR RELEASE_TYPE STREQUAL "final")
+        set(LATEST_RELEASE_URL "http://atarist.sidecart.xyz/version.txt")
+endif()
+
+if(RELEASE_TYPE STREQUAL "beta")
+        set(LATEST_RELEASE_URL "http://atarist.sidecart.xyz/beta.txt")
+endif()
+
+
 if(NOT RELEASE_DATE)
         string(TIMESTAMP CURRENT_DATE_TIME "%Y-%m-%d %H:%M:%S")
         set(RELEASE_DATE ${CURRENT_DATE_TIME})
@@ -107,9 +127,18 @@ if (NOT _DEBUG)
         set(_DEBUG 0)
 endif()
 
+# Print the variables on screen
+message("RELEASE_TYPE: " ${RELEASE_TYPE})
+message("RELEASE_VERSION: " ${RELEASE_VERSION})
+message("RELEASE_DATE: " ${RELEASE_DATE})
+message("DEBUG_MODE: " ${_DEBUG})
+message("LATEST_RELEASE_URL: " ${LATEST_RELEASE_URL})
+
 # Pass these values to the C compiler
+add_definitions(-DRELEASE_TYPE="${RELEASE_TYPE}")
 add_definitions(-DRELEASE_VERSION="${RELEASE_VERSION}")
 add_definitions(-DRELEASE_DATE="${RELEASE_DATE}")
+add_definitions(-DLATEST_RELEASE_URL="${LATEST_RELEASE_URL}")
 
 # Pass the _DEBUG flag to the C compiler
 add_definitions(-D_DEBUG=${_DEBUG})

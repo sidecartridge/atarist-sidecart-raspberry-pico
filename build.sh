@@ -11,12 +11,13 @@ export PICO_EXTRAS_PATH=$PWD/pico-extras
 
 # Check if the third parameter is provided
 export RELEASE_TYPE=${3:-""}
+echo "Release type: $RELEASE_TYPE"
 
 # Determine the file to use based on RELEASE_TYPE
-if [ -z "$RELEASE_TYPE" ]; then
+if [ -z "$RELEASE_TYPE" ] || [ "$RELEASE_TYPE" = "final" ]; then
     VERSION_FILE="version.txt"
 else
-    VERSION_FILE="version-beta.txt"
+    VERSION_FILE="version-$RELEASE_TYPE.txt"
 fi
 
 # Read the release version from the version.txt file
