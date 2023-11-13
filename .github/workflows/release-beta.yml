@@ -34,7 +34,7 @@ jobs:
       run: sed -i 's/-it//' /usr/local/bin/stcmd
 
     - name: Run - Build PICO_W release version
-      run: ./build.sh pico_w release
+      run: ./build.sh pico_w release beta
 
     - name: Run - Build PICO_W debug version
       run: ./build.sh pico_w debug beta
