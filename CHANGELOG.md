@@ -1,5 +1,20 @@
 # Changelog
 
+## BETA 0.0.12 (2023-11-13)- Feature aditions release
+### Fixed
+- **Issue #46**: Change the keyboard GEMDOS calls to BIOS calls bug enhancement to avoid buffering issues.
+- **Issue #55**: Bus error on boot of SIDECART.TOS application in low memory computers fixed in all computers and TOS versions.
+
+### Changed
+- **Issue #57**: Faster text display. Listings now display faster.
+
+### New Features
+- **Issue #10**: Real Time Clock support using the RP2040 RTC and NTP.
+- **Issue #56**: Dallas 1216 RTC support and emulation.
+- **Issue #48**: Create an Empty Floppy Disk in Read/Write Floppy Emulation mode.
+- **Issue #49**: Support for .MSA floppy images. Now the Floppy Emulator supports .ST and .MSA floppy images.  
+- **Issue #58**: Implement BETA Releases Before FINAL Release Launch. 
+
 ## 0.0.11 (2023-10-26)- Feature aditions release, Update mandatory
 ### Fixed
 - **Issue #42**: Floppy Emulator now supports read/write operations on odd memory addresses.

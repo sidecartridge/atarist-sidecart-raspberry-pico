@@ -41,7 +41,12 @@ jobs:
 
     - name: Get version from version.txt
       id: get_version
-      run: echo "RELEASE_VERSION=$(cat version.txt)" >> $GITHUB_ENV
+      run: echo "RELEASE_VERSION=$(cat version-beta.txt)" >> $GITHUB_ENV
+
+    - name: Rename as BETA version
+      run: |
+        mv dist/sidecart-pico_w.uf2 dist/sidecart-pico_w-BETA.uf2
+        mv dist/sidecart-pico_w-debug.uf2 dist/sidecart-pico_w-debug-BETA.uf2
 
     - name: Upload the binaries to release
       uses: svenstaro/upload-release-action@v2
