@@ -282,7 +282,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         DPRINTF("Command QUERY_FLOPPY_DB (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         payloadPtr = (uint16_t *)protocol->payload + 2;
-        query_floppy_letter = (char)(*(payloadPtr)&0xFF);
+        query_floppy_letter = (char)(*(payloadPtr) & 0xFF);
 
         // Convert to lowercase if it's an uppercase letter
         if (query_floppy_letter >= 'A' && query_floppy_letter <= 'Z')
