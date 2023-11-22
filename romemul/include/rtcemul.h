@@ -31,12 +31,17 @@
 #include "lwip/pbuf.h"
 #include "lwip/udp.h"
 
+#include "sd_card.h"
+#include "f_util.h"
+#include "ff.h"
+
 #include "../../build/romemul.pio.h"
 
 #include "tprotocol.h"
 #include "commands.h"
 #include "config.h"
 #include "network.h"
+#include "filesys.h"
 
 #define RTCEMUL_RANDOM_TOKEN 0x7000
 #define RTCEMUL_RANDOM_TOKEN_SEED (RTCEMUL_RANDOM_TOKEN + 4) // random_token + 4 bytes

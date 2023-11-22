@@ -46,6 +46,7 @@ static RomInfo *network_files;
 static int filtered_num_network_files = 0;
 
 WifiNetworkAuthInfo *wifi_auth = NULL; // IF NULL, do not connect to any network
+static char *wifi_password_file_content = NULL;
 static bool persist_config = false;
 static bool reset_default = false;
 static bool scan_network = false;
@@ -465,8 +466,21 @@ int init_firmware()
         DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
     }
 
+    if (microsd_mounted)
+    {
+        FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
+        if (err == FR_OK)
+        {
+            DPRINTF("Wifi password file found. Content: %s\n", wifi_password_file_content);
+        }
+        else
+        {
+            DPRINTF("Wifi password file not found.\n");
+        }
+    }
+
     // Start the network.
-    network_connect(false, NETWORK_CONNECTION_ASYNC);
+    network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
 
     // The "C" character stands for "Configurator"
     blink_morse('C');
@@ -510,7 +524,7 @@ int init_firmware()
             put_integer("WIFI_AUTH", wifi_auth->auth_mode);
             write_all_entries();
 
-            network_connect(true, NETWORK_CONNECTION_ASYNC);
+            network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
             free(wifi_auth);
             wifi_auth = NULL;
         }
@@ -573,7 +587,7 @@ int init_firmware()
                         write_all_entries();
 
                         // Start the network.
-                        network_connect(false, NETWORK_CONNECTION_ASYNC);
+                        network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
                     }
                     else if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
                     {
@@ -587,7 +601,7 @@ int init_firmware()
 
                         network_scan();
                         // Start the network.
-                        network_connect(true, NETWORK_CONNECTION_ASYNC);
+                        network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
                     }
                 }
             }
