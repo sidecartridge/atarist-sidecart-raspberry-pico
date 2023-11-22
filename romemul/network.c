@@ -170,7 +170,7 @@ void network_disconnect()
     connection_status = DISCONNECTED;
 }
 
-void network_connect(bool force, bool async)
+void network_connect(bool force, bool async, char **pass)
 {
     if (!force)
     {
@@ -188,18 +188,26 @@ void network_connect(bool force, bool async)
         connection_status = DISCONNECTED;
         return;
     }
-    ConfigEntry *password = find_entry("WIFI_PASSWORD");
     ConfigEntry *auth_mode = find_entry("WIFI_AUTH");
     connection_status = CONNECTING;
     char *password_value = NULL;
-    if (strlen(password->value) > 0)
+    if (*pass == NULL)
     {
-        password_value = password->value;
+        ConfigEntry *password = find_entry("WIFI_PASSWORD");
+        if (strlen(password->value) > 0)
+        {
+            password_value = strdup(password->value);
+        }
+        else
+        {
+            DPRINTF("No password found in config. Trying to connect without password\n");
+        }
     }
     else
     {
-        DPRINTF("No password found in config. Trying to connect without password\n");
+        password_value = strdup(*pass);
     }
+    DPRINTF("The password is: %s\n", password_value);
     uint32_t auth_value = get_auth_pico_code(atoi(auth_mode->value));
     DPRINTF("Connecting to SSID=%s, password=%s, auth=%08x\n", ssid->value, password_value, auth_value);
     int error_code = 0;
@@ -262,7 +270,12 @@ void network_connect(bool force, bool async)
             DPRINTF("Connected to SSID=%s\n", ssid->value);
         }
     }
+    if (password_value != NULL)
+    {
+        free(password_value);
+    }
 }
+
 ConnectionStatus get_network_connection_status()
 {
     ConnectionStatus old_previous_connection_status = previous_connection_status;

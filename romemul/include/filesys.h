@@ -21,7 +21,7 @@
 
 #define MAX_FOLDER_LENGTH 128 // Max length of the folder names
 
-#define bswap_16(x) (((x) >> 8) | (((x)&0xFF) << 8))
+#define bswap_16(x) (((x) >> 8) | (((x) & 0xFF) << 8))
 
 typedef enum
 {
@@ -85,5 +85,6 @@ void release_memory_files(char **files, int num_files);
 int load_rom_from_fs(char *path, char *filename, uint32_t rom_load_offset);
 char **filter(char **file_list, int file_count, int *num_files, const char **allowed_extensions, size_t num_extensions);
 void store_file_list(char **file_list, int num_files, uint8_t *memory_location);
+FRESULT read_and_trim_file(const char *path, char **content);
 
 #endif // FILESYS_H

@@ -1275,3 +1275,81 @@ void store_file_list(char **file_list, int num_files, uint8_t *memory_location)
     // Transform buffer's words from little endian to big endian inline
     swap_words(memory_location, total_size);
 }
+
+FRESULT read_and_trim_file(const char *path, char **content)
+{
+    FIL fil;              // File object
+    FRESULT fr;           // FatFs return code
+    UINT br;              // Read count
+    char tempBuffer[512]; // Temporary buffer for reading file
+
+    DPRINTF("Reading file: %s\n", path);
+    // Check if the file exists
+    fr = f_stat(path, NULL);
+    if (fr != FR_OK)
+    {
+        DPRINTF("File does not exist or another error occur: %s\n", path);
+        return fr; // File does not exist or another error occurred
+    }
+
+    DPRINTF("File exists: %s. Opening.\n", path);
+    // Open the file
+    fr = f_open(&fil, path, FA_READ);
+    if (fr != FR_OK)
+    {
+        DPRINTF("Error opening file: %s\n", path);
+        return fr; // Error opening file
+    }
+
+    long length = f_size(&fil);
+    DPRINTF("File size: %ld\n", length);
+
+    *content = malloc(length + 1);
+
+    // Allocate or reallocate memory for content
+    if (*content == NULL)
+    {
+        DPRINTF("Unable to allocate memory\n");
+        f_close(&fil);
+        return FR_INT_ERR; // Allocation error
+    }
+
+    DPRINTF("Reading file content\n");
+    **content = '\0'; // Set first character to null
+
+    // Read file content
+    while (f_read(&fil, tempBuffer, sizeof(tempBuffer) - 1, &br) == FR_OK && br > 0)
+    {
+        tempBuffer[br] = '\0'; // Null-terminate the read string
+        // Process and trim the buffer content here...
+        // For simplicity, this code only trims spaces, CR, and LF from the start and end.
+        char *start = tempBuffer;
+        char *end = start + strlen(tempBuffer) - 1;
+
+        // Trim leading spaces, CR, and LF
+        while (*start && (isspace((unsigned char)*start) || *start == '\r' || *start == '\n'))
+            start++;
+
+        // Trim trailing spaces, CR, and LF
+        while (end > start && (isspace((unsigned char)*end) || *end == '\r' || *end == '\n'))
+            end--;
+        *(end + 1) = '\0'; // Set new null terminator
+
+        // Append trimmed content to *content
+        size_t currentLength = strlen(*content);
+        size_t newLength = currentLength + strlen(start) + 1;
+        *content = realloc(*content, newLength);
+        if (*content == NULL)
+        {
+            f_close(&fil);
+            DPRINTF("Error allocating memory\n");
+            return FR_INT_ERR; // Allocation error
+        }
+        strcat(*content, start);
+    }
+
+    // Close the file
+    f_close(&fil);
+    DPRINTF("File content: '%s'\n", *content);
+    return FR_OK;
+}

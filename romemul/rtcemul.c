@@ -31,6 +31,13 @@ static int ntp_server_port = NTP_DEFAULT_PORT;
 // Dallas RTC variables
 static DallasClock dallasClock = {0};
 
+// Microsd variables
+static bool microsd_initialized = false;
+static bool microsd_mounted = false;
+
+// Local wifi password in the local file
+static char *wifi_password_file_content = NULL;
+
 static uint16_t rtc_get_raw_time()
 {
     // Ensure the values fit into the designated bit sizes
@@ -407,6 +414,8 @@ void __not_in_flash_func(rtcemul_dma_irq_handler_lookup_callback)(void)
 
 int init_rtcemul(bool safe_config_reboot)
 {
+    FRESULT fr;
+    FATFS fs;
 
     srand(time(0));
     printf("Initializing RTC emulation...\n"); // Print always
@@ -445,8 +454,39 @@ int init_rtcemul(bool safe_config_reboot)
 
     DPRINTF("\n");
 
+    // Initialize SD card
+    microsd_initialized = sd_init_driver();
+    if (!microsd_initialized)
+    {
+        DPRINTF("ERROR: Could not initialize SD card\r\n");
+    }
+
+    if (microsd_initialized)
+    {
+        // Mount drive
+        fr = f_mount(&fs, "0:", 1);
+        microsd_mounted = (fr == FR_OK);
+        if (!microsd_mounted)
+        {
+            DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
+        }
+    }
+
+    if (microsd_mounted)
+    {
+        FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
+        if (err == FR_OK)
+        {
+            DPRINTF("Wifi password file found. Content: %s\n", wifi_password_file_content);
+        }
+        else
+        {
+            DPRINTF("Wifi password file not found.\n");
+        }
+    }
+
     // Start the network.
-    network_connect(false, NETWORK_CONNECTION_ASYNC);
+    network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
 
     // Start the internal RTC
     rtc_init();
@@ -554,7 +594,7 @@ int init_rtcemul(bool safe_config_reboot)
                         cyw43_arch_init();
                         network_init();
                         // Start the network.
-                        network_connect(true, NETWORK_CONNECTION_ASYNC);
+                        network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
                     }
                 }
             }

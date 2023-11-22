@@ -126,7 +126,7 @@ void network_swap_json_data(uint16_t *dest_ptr_word);
 
 void network_init();
 void network_scan();
-void network_connect(bool force, bool async);
+void network_connect(bool force, bool async, char **pass);
 void network_disconnect();
 void network_poll();
 u_int32_t get_ip_address();
