@@ -47,4 +47,5 @@ MorseCode morseAlphabet[] = {
 };
 
 // Config files constants
-const char WIFI_PASS_FILE_NAME[] = "/.wifipass"; // File name for the wifi password
+const char WIFI_PASS_FILE_NAME[] = "/.wifipass";        // File name for the wifi password
+const char ROM_RESCUE_MODE_FILE_NAME[] = "/.romrescue"; // File name for the rom rescue mode

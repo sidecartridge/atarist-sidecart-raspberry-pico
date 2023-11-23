@@ -55,6 +55,7 @@ static bool get_json_file = false;
 
 // ROMs in network variables
 static int rom_network_selected = -1;
+static char *rom_rescue_mode_file_content = NULL;
 
 // Floppy header informationf for new images
 static FloppyImageHeader floppy_header = {0};
@@ -480,6 +481,19 @@ int init_firmware()
         }
     }
 
+    if (microsd_mounted)
+    {
+        FRESULT err = read_and_trim_file(ROM_RESCUE_MODE_FILE_NAME, &rom_rescue_mode_file_content);
+        if (err == FR_OK)
+        {
+            DPRINTF("ROM rescue mode file found. Content: %s\n", rom_rescue_mode_file_content);
+        }
+        else
+        {
+            DPRINTF("ROM rescue mode file not found.\n");
+        }
+    }
+
     // Start the network.
     network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
 
@@ -488,7 +502,12 @@ int init_firmware()
 
     u_int32_t network_poll_counter = 0;
     u_int32_t storage_poll_counter = 0;
-    while ((rom_file_selected < 0) && (rom_network_selected < 0) && (floppy_file_selected < 0) && (floppy_image_selected < 0) && (!reset_default) && (!rtc_boot))
+    while ((rom_file_selected < 0) &&
+           (rom_network_selected < 0) &&
+           (floppy_file_selected < 0) &&
+           (floppy_image_selected < 0) &&
+           (!reset_default) && (!rtc_boot) &&
+           (rom_rescue_mode_file_content == NULL))
     {
         tight_loop_contents();
 
@@ -892,6 +911,24 @@ int init_firmware()
         put_string("BOOT_FEATURE", "ROM_EMULATOR");
         write_all_entries();
         *((volatile uint32_t *)(memory_area)) = random_token;
+    }
+
+    if (rom_rescue_mode_file_content != NULL)
+    {
+        DPRINTF("ROM rescue mode file content: %s\n", rom_rescue_mode_file_content);
+
+        // Erase the content before loading the new file. It seems that
+        // overwriting it's not enough
+        uint32_t ints = save_and_disable_interrupts();
+        flash_range_erase(FLASH_ROM_LOAD_OFFSET, ROM_SIZE_BYTES * 2); // Two banks of 64K
+        restore_interrupts(ints);
+        int res = load_rom_from_fs(find_entry("ROMS_FOLDER")->value, rom_rescue_mode_file_content, FLASH_ROM_LOAD_OFFSET);
+
+        if (res != FR_OK)
+            DPRINTF("f_open error: %s (%d)\n", FRESULT_str(res), res);
+
+        put_string("BOOT_FEATURE", "ROM_EMULATOR");
+        write_all_entries();
     }
 
     if (rom_network_selected > 0)
