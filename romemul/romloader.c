@@ -455,6 +455,7 @@ int init_firmware()
 
     u_int16_t wifi_scan_poll_counter = 0;
     u_int64_t wifi_scan_poll_counter_mcs = 0; // Force the first scan to be done in the loop
+    SdCardData *sd_data = malloc(sizeof(SdCardData));
 
     ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
     if (default_config_entry != NULL)
@@ -485,7 +486,8 @@ int init_firmware()
     // The "C" character stands for "Configurator"
     blink_morse('C');
 
-    u_int16_t network_poll_counter = 0;
+    u_int32_t network_poll_counter = 0;
+    u_int32_t storage_poll_counter = 0;
     while ((rom_file_selected < 0) && (rom_network_selected < 0) && (floppy_file_selected < 0) && (floppy_image_selected < 0) && (!reset_default) && (!rtc_boot))
     {
         tight_loop_contents();
@@ -493,14 +495,12 @@ int init_firmware()
 #if PICO_CYW43_ARCH_POLL
         cyw43_arch_lwip_begin();
         network_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1000));
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
         cyw43_arch_lwip_end();
 #elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
         cyw43_arch_lwip_begin();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
         cyw43_arch_lwip_end();
-#else
-        sleep_ms(1000);
 #endif
         if ((time_us_64() - wifi_scan_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
         {
@@ -606,6 +606,16 @@ int init_firmware()
                 }
             }
         }
+        if (storage_poll_counter == 0)
+        {
+            get_sdcard_data(&fs, sd_data, microsd_mounted);
+            // Swap the bytes to motorola endian format
+            sd_data->roms_folder_count = (sd_data->roms_folder_count >> 16) | (sd_data->roms_folder_count << 16);
+            sd_data->floppies_folder_count = (sd_data->floppies_folder_count >> 16) | (sd_data->floppies_folder_count << 16);
+            sd_data->harddisks_folder_count = (sd_data->harddisks_folder_count >> 16) | (sd_data->harddisks_folder_count << 16);
+            sd_data->sd_free_space = (sd_data->sd_free_space >> 16) | (sd_data->sd_free_space << 16);
+            sd_data->sd_size = (sd_data->sd_size >> 16) | (sd_data->sd_size << 16);
+        }
 
         if (persist_config)
         {
@@ -618,25 +628,10 @@ int init_firmware()
         if (microsd_status)
         {
             microsd_status = false;
-            SdCardData *sd_data = malloc(sizeof(SdCardData));
-            get_sdcard_data(&fs, sd_data, microsd_mounted);
-
-            // Swap the bytes to motorola endian format
-            sd_data->roms_folder_count = (sd_data->roms_folder_count >> 16) | (sd_data->roms_folder_count << 16);
-            sd_data->floppies_folder_count = (sd_data->floppies_folder_count >> 16) | (sd_data->floppies_folder_count << 16);
-            sd_data->harddisks_folder_count = (sd_data->harddisks_folder_count >> 16) | (sd_data->harddisks_folder_count << 16);
-            sd_data->sd_free_space = (sd_data->sd_free_space >> 16) | (sd_data->sd_free_space << 16);
-            sd_data->sd_size = (sd_data->sd_size >> 16) | (sd_data->sd_size << 16);
             memcpy(memory_area + RANDOM_SEED_SIZE, sd_data, sizeof(SdCardData));
 
-            // More endian conversions
-            uint16_t *dest_ptr_word = (uint16_t *)(memory_area + RANDOM_SEED_SIZE);
-            for (int j = 0; j < (MAX_FOLDER_LENGTH * 3); j += 2)
-            {
-                uint16_t value = *(uint16_t *)(dest_ptr_word);
-                *(uint16_t *)(dest_ptr_word)++ = (value << 8) | (value >> 8);
-            }
-            free(sd_data);
+            swap_words(memory_area + RANDOM_SEED_SIZE, MAX_FOLDER_LENGTH * 3);
+
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
@@ -871,6 +866,7 @@ int init_firmware()
 
         // Increase the counter and reset it if it reaches the limit
         network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
+        storage_poll_counter >= STORAGE_POLL_INTERVAL ? storage_poll_counter = 0 : storage_poll_counter++;
 
         // Store the seed of the random number generator in the ROM memory space
         *((volatile uint32_t *)(memory_area - RANDOM_SEED_SIZE)) = rand() % 0xFFFFFFFF;
@@ -1084,4 +1080,7 @@ int init_firmware()
     }
     // Release memory from the protocol
     terminate_protocol_parser();
+
+    // Release memory from the SD card data
+    free(sd_data);
 }

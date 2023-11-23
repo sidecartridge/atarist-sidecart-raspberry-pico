@@ -21,6 +21,8 @@
 
 #define MAX_FOLDER_LENGTH 128 // Max length of the folder names
 
+#define STORAGE_POLL_INTERVAL 30000
+
 #define bswap_16(x) (((x) >> 8) | (((x) & 0xFF) << 8))
 
 typedef enum
