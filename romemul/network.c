@@ -1018,7 +1018,8 @@ int download_rom(const char *url, uint32_t rom_load_offset)
 
 void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url)
 {
-    char *buff = malloc(16384);
+    size_t BUFFER_SIZE = 32768;
+    char *buff = malloc(BUFFER_SIZE);
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
     bool complete = false;
@@ -1026,7 +1027,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     u32_t content_len = 0;
 
     err_t headers(httpc_state_t * connection, void *arg,
-                  struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
+                  struct pbuf *hdr, u16_t hdr_len, u32_t rx_content_len)
     {
         return ERR_OK;
     }
@@ -1096,6 +1097,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     {
         DPRINTF("HTTP GET failed: %d\n", err);
         free_url_parts(&parts);
+        free(buff);
         return;
     }
     while (!complete)
@@ -1133,27 +1135,26 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
 
     DPRINTF("Found %d entries\n", *itemCount);
 
-    // Allocate memory for the entries
-    *items = malloc(CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES * 2); // The size of the random number
+    if (*itemCount == 0)
+    {
+        // If no entries found, short circuit and return
+        free(buff);
+        return;
+    }
+
+    FloppyImageInfo *current = NULL;
+
+    // Allocate memory for the first FloppyImageInfo structure
+    *items = malloc(sizeof(FloppyImageInfo));
     if (!*items)
     {
         DPRINTF("Memory allocation failed\n");
         free(buff);
         return;
     }
-
-    for (int i = 0; i < *itemCount; i++)
-    {
-        (*items)[i].name = NULL;
-        (*items)[i].status = NULL;
-        (*items)[i].description = NULL;
-        (*items)[i].tags = NULL;
-        (*items)[i].extra = NULL;
-        (*items)[i].url = NULL;
-    }
-
-    FloppyImageInfo *current = &(*items)[0];
     char *buff_iter = buff;
+    current = *items; // Set current to the first allocated FloppyImageInfo structure
+
     while (*buff_iter)
     {
         if (*buff_iter == '"')
@@ -1162,7 +1163,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
 
             if (inside_quotes)
             {
-                start = (char *)(buff_iter + 1); // Start of a new value
+                start = buff_iter + 1; // Start of a new value
             }
             else
             {
@@ -1190,9 +1191,20 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
                 }
 
                 items_count++;
-                if (items_count % 6 == 0)
+                if (items_count % 6 == 0 && *(buff_iter + 1) != '\0')
                 {
-                    current++;
+                    // Allocate memory for the next FloppyImageInfo structure
+                    FloppyImageInfo *next = malloc(sizeof(FloppyImageInfo));
+                    if (!next)
+                    {
+                        DPRINTF("Memory allocation failed\n");
+                        return;
+                    }
+                    // Initialize the newly allocated structure
+                    *next = (FloppyImageInfo){0};
+
+                    current->next = next; // Link the current structure to the next one
+                    current = next;       // Move the current pointer to the next structure
                 }
             }
         }

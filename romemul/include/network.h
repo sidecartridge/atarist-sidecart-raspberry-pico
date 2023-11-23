@@ -106,6 +106,7 @@ typedef struct
     char *tags;
     char *extra;
     char *url;
+    void *next;
 } FloppyImageInfo;
 
 typedef struct

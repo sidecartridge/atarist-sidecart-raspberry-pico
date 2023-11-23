@@ -767,20 +767,23 @@ int init_firmware()
             query_floppy_db = false;
 
             // Free dynamically allocated memory first
-            if (floppy_images_files != NULL)
+            while (floppy_images_files != NULL)
             {
-                for (int i = 0; i < filtered_num_floppy_images_files; i++)
-                {
-                    free(floppy_images_files[i].name);
-                    free(floppy_images_files[i].status);
-                    free(floppy_images_files[i].description);
-                    free(floppy_images_files[i].tags);
-                    free(floppy_images_files[i].extra);
-                    free(floppy_images_files[i].url);
-                }
+                FloppyImageInfo *current = floppy_images_files;
+                floppy_images_files = floppy_images_files->next; // Move to the next item before freeing the current one
 
-                free(floppy_images_files);
+                // Free each dynamically allocated string in the structure
+                free(current->name);
+                free(current->status);
+                free(current->description);
+                free(current->tags);
+                free(current->extra);
+                free(current->url);
+
+                // Free the current structure
+                free(current);
             }
+            floppy_images_files = NULL;
 
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
 
@@ -807,24 +810,28 @@ int init_firmware()
             //             floppy_images_files[i].tags, floppy_images_files[i].extra, floppy_images_files[i].url);
             // }
 
-            // Iterate over the RomInfo items and populate the names array
-            char *dest_ptr = (char *)(memory_area + 4); // Bypass random token
-            for (int i = 0; i < filtered_num_floppy_images_files; i++)
+            memset(memory_area + 4, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - 4); // Clean the memory area except the random token
+            if (filtered_num_floppy_images_files > 0)
             {
-                // Copy the string from network_files[i].name to dest_ptr
-                sprintf(dest_ptr, "%s", floppy_images_files[i].name);
-                dest_ptr += strlen(dest_ptr) + 1;
-            }
-            // If dest_ptr is odd, add a 0x00 byte to align the next string
-            if ((uintptr_t)dest_ptr & 1)
-            {
-                *dest_ptr++ = 0x00;
-            } // Add an additional 0x00 word to mark the end of the list
-            *dest_ptr++ = 0x00;
-            *dest_ptr++ = 0x00;
+                // Iterate over the RomInfo items and populate the names array
+                char *dest_ptr = (char *)(memory_area + 4); // Bypass random token
+                // Get the first element, if any
+                FloppyImageInfo *floppy_images_file = floppy_images_files;
+                while (floppy_images_file->next != NULL)
+                {
+                    // Copy the string from network_files[i].name to dest_ptr
+                    sprintf(dest_ptr, "%s\0", floppy_images_file->name);
+                    dest_ptr += strlen(floppy_images_file->name) + 1;
+                    floppy_images_file = floppy_images_file->next;
+                }
 
-            // Swap the words to motorola endian format: BIG ENDIAN
-            network_swap_json_data((__uint16_t *)(memory_area + 4));
+                // Swap the words to motorola endian format: BIG ENDIAN
+                swap_words((__uint16_t *)(memory_area + 4), CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - 4);
+            }
+            else
+            {
+                DPRINTF("No floppy images found for letter %c\n", query_floppy_letter);
+            }
 
             DPRINTF("Random token: %x\n", random_token);
 
