@@ -53,6 +53,7 @@ extern const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES;
 
 // Configuration files constants.
 extern const char WIFI_PASS_FILE_NAME[];
+extern const char ROM_RESCUE_MODE_FILE_NAME[];
 
 // Morse code
 #define DOT_DURATION_MS 150
