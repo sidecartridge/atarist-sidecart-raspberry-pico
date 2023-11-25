@@ -513,23 +513,22 @@ int init_rtcemul(bool safe_config_reboot)
     DPRINTF("UTC offset: %ld\n", utc_offset_seconds);
 
     DPRINTF("Waiting for commands...\n");
+    uint32_t memory_shared_address = ROM3_START_ADDRESS;
 
     while (!rtc_error)
     {
-        *((volatile uint32_t *)(ROM4_START_ADDRESS + RTCEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
+        *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
         tight_loop_contents();
 
 #if PICO_CYW43_ARCH_POLL
         cyw43_arch_lwip_begin();
         network_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1000));
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
         cyw43_arch_lwip_end();
 #elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
         cyw43_arch_lwip_begin();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
         cyw43_arch_lwip_end();
-#else
-        sleep_ms(1000);
 #endif
 
         if (net_time.ntp_server_found)
@@ -605,10 +604,10 @@ int init_rtcemul(bool safe_config_reboot)
             save_vectors = false;
             // Save the vectors needed for the RTC emulation
             DPRINTF("Saving vectors\n");
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + RTCEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + RTCEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
+            *((volatile uint16_t *)(memory_shared_address + RTCEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
+            *((volatile uint16_t *)(memory_shared_address + RTCEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
             // DPRINTF("random token: %x\n", random_token);
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + RTCEMUL_RANDOM_TOKEN)) = random_token;
+            *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
         }
 
         if (test_ntp_received)
@@ -616,14 +615,14 @@ int init_rtcemul(bool safe_config_reboot)
             test_ntp_received = false;
             if (rtc_time.year != 0)
             {
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + RTCEMUL_NTP_SUCCESS)) = 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + RTCEMUL_NTP_SUCCESS)) = 0xFFFF;
             }
             else
             {
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + RTCEMUL_NTP_SUCCESS)) = 0x0;
+                *((volatile uint16_t *)(memory_shared_address + RTCEMUL_NTP_SUCCESS)) = 0x0;
             }
-            DPRINTF("NTP test received. Answering with: %d\n", *((volatile uint16_t *)(ROM4_START_ADDRESS + RTCEMUL_NTP_SUCCESS)));
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + RTCEMUL_RANDOM_TOKEN)) = random_token;
+            DPRINTF("NTP test received. Answering with: %d\n", *((volatile uint16_t *)(memory_shared_address + RTCEMUL_NTP_SUCCESS)));
+            *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
         }
 
         if (read_time_received)
@@ -631,7 +630,7 @@ int init_rtcemul(bool safe_config_reboot)
             read_time_received = false;
 
             rtc_get_datetime(&rtc_time);
-            uint8_t *rtc_time_ptr = (uint8_t *)(ROM4_START_ADDRESS + RTCEMUL_DATETIME);
+            uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + RTCEMUL_DATETIME);
             // Change order for the endianess
             rtc_time_ptr[1] = 0x1b;
             rtc_time_ptr[0] = add_bcd(to_bcd((rtc_time.year % 100)), to_bcd((2000 - 1980) + (80 - 30)));
@@ -642,7 +641,7 @@ int init_rtcemul(bool safe_config_reboot)
             rtc_time_ptr[7] = to_bcd(rtc_time.sec);
             rtc_time_ptr[6] = 0x0;
 
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + RTCEMUL_RANDOM_TOKEN)) = random_token;
+            *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
         }
 
         // If SELECT button is pressed, launch the configurator
@@ -654,7 +653,7 @@ int init_rtcemul(bool safe_config_reboot)
         }
 
         // Increase the counter and reset it if it reaches the limit
-        network_poll_counter >= NETWORK_POLL_INTERVAL * 20 ? network_poll_counter = 0 : network_poll_counter++;
+        network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
     }
 
     // If we are here, something went wrong. Flash 'E' in morse code until pressed SELECT or RESET.

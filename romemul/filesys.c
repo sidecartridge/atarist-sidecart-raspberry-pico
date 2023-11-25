@@ -1030,12 +1030,13 @@ void release_memory_files(char **files, int num_files)
  */
 int load_rom_from_fs(char *path, char *filename, uint32_t rom_load_offset)
 {
-    FIL fsrc;                                           /* File objects */
-    BYTE buffer[CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES]; /* File copy buffer */
-    FRESULT fr;                                         /* FatFs function common result code */
-    unsigned int br = 0;                                /* File read/write count */
-    unsigned int size = 0;                              // File size
-    uint32_t dest_address = rom_load_offset;            // Initialize pointer to the ROM address
+    int BUFFER_SIZE = 4096;
+    FIL fsrc;                                /* File objects */
+    BYTE buffer[BUFFER_SIZE];                /* File copy buffer */
+    FRESULT fr;                              /* FatFs function common result code */
+    unsigned int br = 0;                     /* File read/write count */
+    unsigned int size = 0;                   // File size
+    uint32_t dest_address = rom_load_offset; // Initialize pointer to the ROM address
 
     char fullpath[512]; // Assuming 512 bytes as the max path+filename length. Adjust if necessary.
     snprintf(fullpath, sizeof(fullpath), "%s/%s", path, filename);

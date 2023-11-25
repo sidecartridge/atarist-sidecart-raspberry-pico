@@ -232,10 +232,11 @@ int init_floppyemul(bool safe_config_reboot)
     bool write_config_only_once = true;
 
     DPRINTF("Waiting for commands...\n");
+    uint32_t memory_shared_address = ROM3_START_ADDRESS; // Start of the shared memory buffer
 
     while (true)
     {
-        *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
+        *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
         tight_loop_contents();
 
         if (!file_ready_a)
@@ -276,7 +277,7 @@ int init_floppyemul(bool safe_config_reboot)
         if (file_ready_a && ping_received)
         {
             ping_received = false;
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+            *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
         if (file_ready_a && set_bpb)
         {
@@ -290,9 +291,9 @@ int init_floppyemul(bool safe_config_reboot)
             }
             for (int i = 0; i < sizeof(BpbData) / sizeof(uint16_t); i++)
             {
-                *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_BPB_DATA + i * 2)) = BpbData[i];
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_BPB_DATA + i * 2)) = BpbData[i];
             }
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+            *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
 
         if (file_ready_a && save_vectors)
@@ -305,19 +306,19 @@ int init_floppyemul(bool safe_config_reboot)
             // DPRINTF("hdv_rw_payload: %x\n", hdv_rw_payload);
             // DPRINTF("hdv_mediach_payload: %x\n", hdv_mediach_payload);
             // DPRINTF("random token: %x\n", random_token);
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
 
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
 
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
 
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
-            *((volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
 
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+            *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
         if (file_ready_a && sector_read)
         {
@@ -342,14 +343,14 @@ int init_floppyemul(bool safe_config_reboot)
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
 
             // Transform buffer's words from little endian to big endian inline
-            volatile uint16_t *target = (volatile uint16_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_IMAGE);
+            volatile uint16_t *target = (volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_IMAGE);
             for (int i = 0; i < br_a; i += 2)
             {
                 uint16_t value = *(uint16_t *)(buffer_a + i);
                 value = (value << 8) | (value >> 8);
                 *(target++) = value;
             }
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+            *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
         if (file_ready_a && sector_write)
         {
@@ -390,7 +391,7 @@ int init_floppyemul(bool safe_config_reboot)
             {
                 DPRINTF("ERROR: Trying to write to a read-only floppy image.\r\n");
             }
-            *((volatile uint32_t *)(ROM4_START_ADDRESS + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+            *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
         // If SELECT button is pressed, launch the configurator
         if (gpio_get(5) != 0)

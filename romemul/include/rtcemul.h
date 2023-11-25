@@ -43,7 +43,7 @@
 #include "network.h"
 #include "filesys.h"
 
-#define RTCEMUL_RANDOM_TOKEN 0x7000
+#define RTCEMUL_RANDOM_TOKEN 0x0                             // Offset from 0x0000 of the shared memory buffer
 #define RTCEMUL_RANDOM_TOKEN_SEED (RTCEMUL_RANDOM_TOKEN + 4) // random_token + 4 bytes
 #define RTCEMUL_NTP_SUCCESS (RTCEMUL_RANDOM_TOKEN_SEED + 4)  // random_token_seed + 4 bytes
 #define RTCEMUL_DATETIME (RTCEMUL_NTP_SUCCESS + 2)           // ntp_success + 2 bytes

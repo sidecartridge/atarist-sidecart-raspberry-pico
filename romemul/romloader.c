@@ -82,7 +82,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
 {
     ConfigEntry *entry = NULL;
     uint16_t value_payload = 0;
-    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS);
     // Handle the protocol
     switch (protocol->command_id)
     {
@@ -447,7 +447,7 @@ int init_firmware()
     // x=PEEK(&HFB0002) 'Size of the payload (always even numbers)
     // x=PEEK(&HFB0001) 'Payload (two bytes per word)
 
-    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS - CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+    uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS);
 
     // Here comes the tricky part. We have to put in the higher section of the ROM4 memory the content
     // of the file list available in the SD card.
@@ -657,7 +657,7 @@ int init_firmware()
         if (latest_release)
         {
             latest_release = false;
-            memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
             char *latest_version = get_latest_release();
             if (latest_version != NULL)
             {
@@ -668,12 +668,7 @@ int init_firmware()
                     DPRINTF("New version available: %s\n", latest_version);
                     strcpy((char *)(memory_area + RANDOM_SEED_SIZE), latest_version);
                     // Convert to motorla endian
-                    uint16_t *dest_ptr_word = (uint16_t *)(memory_area + RANDOM_SEED_SIZE);
-                    for (int j = 0; j < strlen(latest_version); j += 2)
-                    {
-                        uint16_t value = *(uint16_t *)(dest_ptr_word);
-                        *(uint16_t *)(dest_ptr_word)++ = (value << 8) | (value >> 8);
-                    }
+                    swap_words(memory_area + RANDOM_SEED_SIZE, strlen(latest_version));
                 }
                 else
                 {
@@ -693,7 +688,7 @@ int init_firmware()
             get_json_file = false;
 
             // Clean memory space
-            memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
 
             // Get the URL from the configuration
             char *url = find_entry("ROMS_YAML_URL")->value;
@@ -801,9 +796,6 @@ int init_firmware()
 
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
 
-            // Clean memory space
-            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
-
             // Get the URL from the configuration
             char *base_url = find_entry("FLOPPY_DB_URL")->value;
 
@@ -824,14 +816,14 @@ int init_firmware()
             //             floppy_images_files[i].tags, floppy_images_files[i].extra, floppy_images_files[i].url);
             // }
 
-            memset(memory_area + 4, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - 4); // Clean the memory area except the random token
+            memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE); // Clean the memory area except the random token
             if (filtered_num_floppy_images_files > 0)
             {
                 // Iterate over the RomInfo items and populate the names array
                 char *dest_ptr = (char *)(memory_area + 4); // Bypass random token
                 // Get the first element, if any
                 FloppyImageInfo *floppy_images_file = floppy_images_files;
-                while (floppy_images_file->next != NULL)
+                for (int i = 0; i < filtered_num_floppy_images_files; i++)
                 {
                     // Copy the string from network_files[i].name to dest_ptr
                     sprintf(dest_ptr, "%s\0", floppy_images_file->name);
@@ -840,7 +832,7 @@ int init_firmware()
                 }
 
                 // Swap the words to motorola endian format: BIG ENDIAN
-                swap_words((__uint16_t *)(memory_area + 4), CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - 4);
+                swap_words((__uint16_t *)(memory_area + RANDOM_SEED_SIZE), CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
             }
             else
             {
@@ -1040,9 +1032,12 @@ int init_firmware()
             }
             return path; // Return the original path if '/' wasn't found
         }
-
         DPRINTF("Floppy image selected to download: %d\n", floppy_image_selected);
-        FloppyImageInfo remote = floppy_images_files[floppy_image_selected - 1];
+        FloppyImageInfo remote = *floppy_images_files;
+        for (int i = 0; i < floppy_image_selected - 1; i++)
+        {
+            remote = *(FloppyImageInfo *)remote.next;
+        }
         char *remote_name = remote.name;
         char *remote_uri = remote.url;
 

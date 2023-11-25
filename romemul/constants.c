@@ -37,7 +37,7 @@ const uint32_t CONFIG_VERSION = 0x00000001;                                     
 const uint32_t CONFIG_MAGIC = 0x12340000;                                       // Magic number to check if the config exists in FLASH.
 
 // Configurator constants.
-const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES = 4096; // Size of the shared memory between the configurator and the emulator.
+const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES = (64 * 1024); // Size of the offset in the shared memory to store the config.
 
 // Network constants.
 const uint32_t NETWORK_MAGIC = 0x12340001; // Magic number to check if the network scan data exists in FLASH.
