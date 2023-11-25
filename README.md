@@ -30,14 +30,14 @@ SidecarT is a state-of-the-art cartridge ROM emulator crafted for the Atari ST, 
 
 The rest of the document is intended for developers willing to customize on their own the software and also the hardware of the SidecarT board. If you are not interested in that, you can download the latest binary release from the [Releases page](https://github.com/diegoparrilla/atarist-sidecart-raspberry-pico/releases). The latest stable release is always recommended.
 
-If you need help or have any questions, please visit the website of the project [SidecarT](https://sidecart.xyz).
+If you need help or have any questions, please visit the website of the project [SidecarT](https://sidecartridge.com).
 
 
 ## Requirements
 
 ### If you only want to use SidecarT
 
-- A SidecarT board. You can build your own or purchase one from the [SidecarT website](https://sidecart.xyz).
+- A SidecarT board. You can build your own or purchase one from the [SidecarT website](https://sidecartridge.com).
 
 - A Raspberry Pi Pico W with Headers.
 
@@ -161,7 +161,7 @@ A special note about the `firmware.c` file. This file is an array generated with
 
 For releases, head over to the [Releases page](https://github.com/diegoparrilla/atarist-sidecart-raspberry-pico/releases). The latest release is always recommended.
 
-For a quick tutorial about how to flash the firmware in the Raspberry Pi Pico, please read the [Quickstart](https://sidecart.xyz/quickstart).
+For a quick tutorial about how to flash the firmware in the Raspberry Pi Pico, please read the [Quickstart](https://sidecartridge.com/quickstart).
 
 ## Changelog
 
@@ -169,7 +169,7 @@ The full changelog is available in the [CHANGELOG.md](CHANGELOG.md) file.
 
 ## Resources 
 
-- [Sidecart ROM Emulator website](https://sidecart.xyz)
+- [Sidecart ROM Emulator website](https://sidecartridge.com)
 - [Sidecart Atari ST Firmware](https://github.com/diegoparrilla/atarist-sidecart-firmware).
 - [Sidecart Atari ST Test ROM](https://github.com/diegoparrilla/atarist-sidecart-test-rom).
 
