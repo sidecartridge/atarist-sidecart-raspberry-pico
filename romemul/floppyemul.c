@@ -164,11 +164,8 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         break;
     case FLOPPYEMUL_PING:
         DPRINTF("Command PING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        if (file_ready_a)
-        {
-            random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        }
-        ping_received = file_ready_a;
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        ping_received = true;
         break; // ... handle other commands
     default:
         DPRINTF("Unknown command: %d\n", protocol->command_id);
@@ -212,17 +209,9 @@ int init_floppyemul(bool safe_config_reboot)
 
     FRESULT fr; /* FatFs function common result code */
     FATFS fs;
-    bool microsd_mounted = false;
 
     srand(time(0));
     printf("Initializing floppy emulation...\n"); // Print always
-
-    // Initialize SD card
-    if (!sd_init_driver())
-    {
-        DPRINTF("ERROR: Could not initialize SD card\r\n");
-        return -1;
-    }
 
     FIL fsrc_a;              /* File objects */
     BYTE buffer_a[4096];     /* File copy buffer */
@@ -239,44 +228,50 @@ int init_floppyemul(bool safe_config_reboot)
         *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
         tight_loop_contents();
 
-        if (!file_ready_a)
-        {
-            // Mount drive
-            fr = f_mount(&fs, "0:", 1);
-            microsd_mounted = (fr == FR_OK);
-            if (!microsd_mounted)
-            {
-                DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
-                return -1;
-            }
-            char *dir = find_entry("FLOPPIES_FOLDER")->value;
-            char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
-            fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
-            strcpy(fullpath_a, dir);
-            strcat(fullpath_a, "/");
-            strcat(fullpath_a, filename_a);
-            DPRINTF("Emulating floppy image in drive A: %s\n", fullpath_a);
-
-            floppy_read_write = (strlen(fullpath_a) >= 3 && strcmp(fullpath_a + strlen(fullpath_a) - 3, ".rw") == 0);
-            DPRINTF("Floppy image is %s\n", floppy_read_write ? "read/write" : "read only");
-
-            /* Open source file on the drive 0 */
-            fr = f_open(&fsrc_a, fullpath_a, floppy_read_write ? FA_READ | FA_WRITE : FA_READ);
-            if (fr)
-            {
-                DPRINTF("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
-                return -1;
-            }
-            // Get file size
-            size_a = f_size(&fsrc_a);
-            DPRINTF("File size of %s: %i bytes\n", fullpath_a, size_a);
-
-            file_ready_a = true;
-        }
-
-        if (file_ready_a && ping_received)
+        if (ping_received)
         {
             ping_received = false;
+            if (!file_ready_a)
+            {
+                // Initialize SD card
+                if (!sd_init_driver())
+                {
+                    DPRINTF("ERROR: Could not initialize SD card\r\n");
+                    return -1;
+                }
+
+                // Mount drive
+                fr = f_mount(&fs, "0:", 1);
+                bool microsd_mounted = (fr == FR_OK);
+                if (!microsd_mounted)
+                {
+                    DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
+                    return -1;
+                }
+                char *dir = find_entry("FLOPPIES_FOLDER")->value;
+                char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
+                fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
+                strcpy(fullpath_a, dir);
+                strcat(fullpath_a, "/");
+                strcat(fullpath_a, filename_a);
+                DPRINTF("Emulating floppy image in drive A: %s\n", fullpath_a);
+
+                floppy_read_write = (strlen(fullpath_a) >= 3 && strcmp(fullpath_a + strlen(fullpath_a) - 3, ".rw") == 0);
+                DPRINTF("Floppy image is %s\n", floppy_read_write ? "read/write" : "read only");
+
+                /* Open source file on the drive 0 */
+                fr = f_open(&fsrc_a, fullpath_a, floppy_read_write ? FA_READ | FA_WRITE : FA_READ);
+                if (fr)
+                {
+                    DPRINTF("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
+                    return -1;
+                }
+                // Get file size
+                size_a = f_size(&fsrc_a);
+                DPRINTF("File size of %s: %i bytes\n", fullpath_a, size_a);
+
+                file_ready_a = true;
+            }
             *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
         if (file_ready_a && set_bpb)
