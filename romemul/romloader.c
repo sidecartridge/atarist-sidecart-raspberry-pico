@@ -12,6 +12,9 @@
 static uint16_t *payloadPtr = NULL;
 static uint32_t random_token;
 
+// Clean start command
+static bool clean_start = false;
+
 // Latest release
 static bool latest_release = false;
 
@@ -370,6 +373,11 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         rtc_boot = true; // now in the active loop should stop and boot the RTC emulator
         break;
+    case CLEAN_START:
+        // Start the configurator when the app starts
+        DPRINTF("Command CLEAN_START (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        clean_start = true;
+        break;
 
     // ... handle other commands
     default:
@@ -406,16 +414,47 @@ int delete_FLASH(void)
 
 int init_firmware()
 {
+    // Hybrid way to initialize the ROM emulator:
+    // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+    // and start the state machine
+    init_romemul(NULL, dma_irq_handler_lookup_callback, false);
+
+    // Copy the firmware to RAM
+    copy_firmware_to_RAM((uint16_t *)firmwareROM, firmwareROM_length);
+
+    // Reserve memory for the protocol parser
+    init_protocol_parser();
+
+    DPRINTF("Ready to accept commands.\n");
+
+    DPRINTF("\033[2J\033[H"); // Clear Screen
+    DPRINTF("\n> ");
+    printf("Initializing Configurator...\n"); // Always this print message to the console
+    stdio_flush();
+
+    bool show_blink_code = true;
+    while (!clean_start)
+    {
+        // Wait until the clean start command is received
+        tight_loop_contents();
+        if (show_blink_code)
+        {
+            show_blink_code = false;
+            // The "C" character stands for "Configurator"
+            blink_morse('C');
+        }
+        sleep_ms(100);
+    }
+
+    // Print the config
+    print_config_table();
 
     FRESULT fr;
     FATFS fs;
     int num_files = 0;
     char **file_list = NULL;
 
-    DPRINTF("\033[2J\033[H"); // Clear Screen
-    DPRINTF("\n> ");
-    printf("Initializing Configurator...\n"); // Always this print message to the console
-    stdio_flush();
+    network_init();
 
     // Initialize SD card
     microsd_initialized = sd_init_driver();
@@ -496,9 +535,6 @@ int init_firmware()
 
     // Start the network.
     network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
-
-    // The "C" character stands for "Configurator"
-    blink_morse('C');
 
     u_int32_t network_poll_counter = 0;
     u_int32_t storage_poll_counter = 0;
@@ -1012,9 +1048,6 @@ int init_firmware()
 
             free(new_floppy);
             fflush(stdout);
-
-            // The "F" character stands for "Floppy"
-            blink_morse('F');
         }
         *((volatile uint32_t *)(memory_area)) = random_token;
     }
@@ -1081,8 +1114,6 @@ int init_firmware()
                 put_string("FLOPPY_IMAGE_A", dest_filename);
                 put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
                 write_all_entries();
-                // The "F" character stands for "Floppy"
-                blink_morse('F');
             }
         }
         else

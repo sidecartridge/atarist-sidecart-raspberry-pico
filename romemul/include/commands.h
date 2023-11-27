@@ -34,6 +34,7 @@
 #define GET_LATEST_RELEASE 21   // Get the latest release version of the firmware
 #define CREATE_FLOPPY 22        // Create a floppy image based in a template
 #define BOOT_RTC 23             // Boot the RTC emulator
+#define CLEAN_START 24          // Start the configurator when the app starts
 
 // APP_ROMEMUL commands
 // No commands

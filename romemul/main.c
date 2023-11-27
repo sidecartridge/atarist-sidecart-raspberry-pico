@@ -124,11 +124,8 @@ int main()
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
             DPRINTF("Ready to accept commands.\n");
 
-            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
-            cyw43_arch_deinit();
-
             // The "F" character stands for "Floppy"
-            //            blink_morse('F');
+            blink_morse('F');
 
             init_floppyemul(safe_config_reboot);
 
@@ -183,28 +180,6 @@ int main()
             put_string("BOOT_FEATURE", "CONFIGURATOR");
             write_all_entries();
         }
-
-        // Print the config
-        print_config_table();
-
-        // Should not write if not necessary
-        // Delete FLASH ROMs
-        //        delete_FLASH();
-
-        // Copy the firmware to RAM
-        copy_firmware_to_RAM((uint16_t *)firmwareROM, firmwareROM_length);
-
-        // Hybrid way to initialize the ROM emulator:
-        // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
-        // and start the state machine
-        init_romemul(NULL, dma_irq_handler_lookup_callback, false);
-
-        network_init();
-
-        // Reserve memory for the protocol parser
-        init_protocol_parser();
-
-        DPRINTF("Ready to accept commands.\n");
 
         init_firmware();
 
