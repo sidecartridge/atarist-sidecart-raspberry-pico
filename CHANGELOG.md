@@ -1,5 +1,19 @@
 # Changelog
 
+## BETA 0.0.13 (2023-11-30)- Bugs and stabilization release
+### Fixed
+- **Issue 23**: The number of elements in the lists  now can be up to 32KBytes.
+- **Issue 61**: Added delays and extra checks when changing functions after reset/reboot.
+- **Issue 62**: Memory handling of the TOS process improved. Enhanced memory management.
+- **Issue 66**: Documentation of the Atari ST floppy database updated to fix a placeholder field not documented.
+
+### Changed
+Overal stability of the system improved, also key handling and memory management.
+
+### New Features
+- **Issue 45**: Start in 'Rescue mode', booting a selected ROM image file after power on/reset.
+- **Issue 60**: Configure the password for the WiFi in a configuration file of the SD card.
+
 ## BETA 0.0.12 (2023-11-13)- Feature aditions release
 ### Fixed
 - **Issue #46**: Change the keyboard GEMDOS calls to BIOS calls bug enhancement to avoid buffering issues.
