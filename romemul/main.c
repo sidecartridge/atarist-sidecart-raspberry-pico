@@ -10,6 +10,7 @@
 #include "include/romemul.h"
 #include "include/floppyemul.h"
 #include "include/rtcemul.h"
+#include "include/gemdrvemul.h"
 
 int main()
 {
@@ -163,6 +164,31 @@ int main()
             blink_morse('T');
 
             init_rtcemul(safe_config_reboot);
+
+            // You should never reach this line...
+        }
+
+        if (strcmp(default_config_entry->value, "GEMDRIVE_EMULATOR") == 0)
+        {
+            printf("GEMDRIVE_EMULATOR entry found in config. Launching.\n");
+
+            // Copy the GEMDRIVE firmware emulator to RAM
+            copy_firmware_to_RAM((uint16_t *)gemdrvemulROM, gemdrvemulROM_length);
+
+            // Reserve memory for the protocol parser
+            init_protocol_parser();
+
+            // Hybrid way to initialize the ROM emulator:
+            // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+            // and start the state machine
+            init_romemul(NULL, gemdrvemul_dma_irq_handler_lookup_callback, false);
+
+            DPRINTF("Ready to accept commands.\n");
+
+            // The "H" character stands for "HARDISK"
+            blink_morse('H');
+
+            init_gemdrvemul(safe_config_reboot);
 
             // You should never reach this line...
         }

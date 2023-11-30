@@ -9,6 +9,7 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"FLOPPY_DB_URL", TYPE_STRING, "http://ataristdb.sidecart.xyz"},
     {"FLOPPY_IMAGE_A", TYPE_STRING, ""},
     {"FLOPPY_IMAGE_B", TYPE_STRING, ""},
+    {"GEMDRIVE_FOLDERS", TYPE_STRING, "/hd"},
     {"HOSTNAME", TYPE_STRING, "sidecart"},
     {"LASTEST_RELEASE_URL", TYPE_STRING, LATEST_RELEASE_URL},
     {"ROMS_FOLDER", TYPE_STRING, "/roms"},

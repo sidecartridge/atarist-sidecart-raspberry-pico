@@ -8,6 +8,7 @@
 #define APP_ROMEMUL 0x01      // The ROM emulator app. Should not have any command
 #define APP_FLOPPYEMUL 0x02   // The floppy emulator app
 #define APP_RTCEMUL 0x03      // The RTC emulator app
+#define APP_GEMDRVEMUL 0x04   // The GEMDRIVE app.
 
 // APP_CONFIGURATOR commands
 #define DOWNLOAD_ROM 0          // Download a ROM from the URL
@@ -50,5 +51,9 @@
 #define RTCEMUL_TEST_NTP (APP_RTCEMUL << 8 | 0)     // Test if the network is ready to use NTP
 #define RTCEMUL_READ_TIME (APP_RTCEMUL << 8 | 1)    // Read the time from the internal RTC
 #define RTCEMUL_SAVE_VECTORS (APP_RTCEMUL << 8 | 2) // Save the vectors of the RTC emulator
+
+// APP_GEMDRVEMUL commands
+#define GEMDRVEMUL_PING (APP_GEMDRVEMUL << 8 | 0)         // Ping the GEMDRIVE emulator
+#define GEMDRVEMUL_SAVE_VECTORS (APP_GEMDRVEMUL << 8 | 1) // Save the vectors of the GEMDRIVE emulator
 
 #endif // COMMANDS_H_
