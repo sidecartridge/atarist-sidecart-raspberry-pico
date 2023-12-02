@@ -53,7 +53,8 @@
 #define RTCEMUL_SAVE_VECTORS (APP_RTCEMUL << 8 | 2) // Save the vectors of the RTC emulator
 
 // APP_GEMDRVEMUL commands
-#define GEMDRVEMUL_PING (APP_GEMDRVEMUL << 8 | 0)         // Ping the GEMDRIVE emulator
-#define GEMDRVEMUL_SAVE_VECTORS (APP_GEMDRVEMUL << 8 | 1) // Save the vectors of the GEMDRIVE emulator
+#define GEMDRVEMUL_PING (APP_GEMDRVEMUL << 8 | 0)             // Ping the GEMDRIVE emulator
+#define GEMDRVEMUL_SAVE_VECTORS (APP_GEMDRVEMUL << 8 | 1)     // Save the vectors of the GEMDRIVE emulator
+#define GEMDRVEMUL_SHOW_VECTOR_CALL (APP_GEMDRVEMUL << 8 | 2) // Show the vector call of the GEMDRIVE emulator
 
 #endif // COMMANDS_H_

@@ -36,7 +36,7 @@
 #define GEMDRVEMUL_RANDOM_TOKEN (0x0)                              // Offset from 0x0000
 #define GEMDRVEMUL_RANDOM_TOKEN_SEED (GEMDRVEMUL_RANDOM_TOKEN + 4) // random_token + 4 bytes
 #define GEMDRVEMUL_PING_SUCCESS (GEMDRVEMUL_RANDOM_TOKEN_SEED + 4) // random_token_seed + 4 bytes
-#define GEMDRVEMUL_OLD_XBIOS_TRAP (GEMDRVEMUL_PING_SUCCESS + 2)    // ping_success + 2 bytes
+#define GEMDRVEMUL_OLD_GEMDOS_TRAP (GEMDRVEMUL_PING_SUCCESS + 2)   // ping_success + 2 bytes
 
 typedef void (*IRQInterceptionCallback)();
 

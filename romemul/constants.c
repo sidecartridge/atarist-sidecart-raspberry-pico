@@ -36,6 +36,10 @@ const uint32_t CONFIG_FLASH_OFFSET = FLASH_ROM_LOAD_OFFSET - CONFIG_FLASH_SIZE; 
 const uint32_t CONFIG_VERSION = 0x00000001;                                     // Version of the config. Used to check if the config is compatible with the current code.
 const uint32_t CONFIG_MAGIC = 0x12340000;                                       // Magic number to check if the config exists in FLASH.
 
+// Atari ST constants.
+const uint32_t ATARI_ROM4_START_ADDRESS = 0xFA0000; // Start address of the Atari ST ROM4
+const uint32_t ATARI_ROM3_START_ADDRESS = 0xFB0000; // Start address of the Atari ST ROM3
+
 // Configurator constants.
 const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES = (64 * 1024); // Size of the offset in the shared memory to store the config.
 

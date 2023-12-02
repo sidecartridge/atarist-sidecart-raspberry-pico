@@ -48,6 +48,10 @@ extern const uint32_t CONFIG_VERSION;
 extern const uint32_t CONFIG_MAGIC;
 extern const uint32_t NETWORK_MAGIC;
 
+// Atari ST constants.
+extern const uint32_t ATARI_ROM4_START_ADDRESS;
+extern const uint32_t ATARI_ROM3_START_ADDRESS;
+
 // Configurator constants.
 extern const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES;
 

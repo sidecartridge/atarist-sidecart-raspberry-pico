@@ -15,7 +15,9 @@ static bool ping_received = false;
 static bool hd_folder_ready = false;
 
 // Save XBIOS vector variables
-static uint32_t XBIOS_trap_payload;
+static uint32_t gemdos_trap_address_old;
+static uint32_t gemdos_trap_address_xbra;
+static uint16_t trap_call = 0xFFFF;
 static bool save_vectors = false;
 
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
@@ -29,7 +31,9 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         // Save the vectors needed for the floppy emulation
         DPRINTF("Command SAVE_VECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         payloadPtr = (uint16_t *)protocol->payload + 2;
-        XBIOS_trap_payload = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
+        gemdos_trap_address_old = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
+        payloadPtr += 2;
+        gemdos_trap_address_xbra = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         save_vectors = true;
         break;
@@ -38,6 +42,12 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         ping_received = true;
         break; // ... handle other commands
+    case GEMDRVEMUL_SHOW_VECTOR_CALL:
+        DPRINTF("Command SHOW_VECTOR_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        payloadPtr = (uint16_t *)protocol->payload + 2;
+        trap_call = (uint16_t)payloadPtr[0];
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        break;
     default:
         DPRINTF("Unknown command: %d\n", protocol->command_id);
     }
@@ -88,6 +98,7 @@ int init_gemdrvemul(bool safe_config_reboot)
 
     DPRINTF("Waiting for commands...\n");
     uint32_t memory_shared_address = ROM3_START_ADDRESS; // Start of the shared memory buffer
+    uint32_t memory_firmware_code = ROM4_START_ADDRESS;  // Start of the firmware code
 
     while (true)
     {
@@ -132,10 +143,18 @@ int init_gemdrvemul(bool safe_config_reboot)
             save_vectors = false;
             // Save the vectors needed for the floppy emulation
             DPRINTF("Saving vectors\n");
-            // DPRINTF("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
+            DPRINTF("gemdos_trap_addres_xbra: %x\n", gemdos_trap_address_xbra);
+            DPRINTF("gemdos_trap_address_old: %x\n", gemdos_trap_address_old);
             // DPRINTF("random token: %x\n", random_token);
-            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
+            // Self modifying code to create the old and venerable XBRA structure
+            *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS)) = gemdos_trap_address_old & 0xFFFF;
+            *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS + 2)) = gemdos_trap_address_old >> 16;
+            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+        }
+        if (trap_call != 0xFFFF)
+        {
+            DPRINTF("TRAP CALL: %x\n", trap_call);
+            trap_call = 0xFFFF;
             *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
         }
         // If SELECT button is pressed, launch the configurator
