@@ -69,10 +69,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         pico_lwip_http
         )
 
-# Debug outputs
-pico_enable_stdio_usb(${PROJECT_NAME} 0)
-pico_enable_stdio_uart(${PROJECT_NAME} _DEBUG)
-
 # Link custom memmap with reserved memory for ROMs
 set_target_properties(${PROJECT_NAME} PROPERTIES
         PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_romemul.ld
@@ -127,6 +123,16 @@ endif()
 
 if (NOT _DEBUG)
         set(_DEBUG 1)
+endif()
+
+
+# Debug outputs
+pico_enable_stdio_usb(${PROJECT_NAME} 0)
+# Workaround to disable USB output in release builds
+if(${_DEBUG} STREQUAL "0")
+    pico_enable_stdio_uart(${PROJECT_NAME} 0)
+else()
+    pico_enable_stdio_uart(${PROJECT_NAME} 1)
 endif()
 
 # Print the variables on screen

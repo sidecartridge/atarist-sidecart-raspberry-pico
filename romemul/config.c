@@ -445,3 +445,19 @@ int erase_firmware_from_RAM()
     DPRINTF("RAM for the firmware zeroed.\n");
     return 0;
 }
+
+void blink_error()
+{
+    // If we are here, something went wrong. Flash 'E' in morse code until pressed SELECT or RESET.
+    while (1)
+    {
+        blink_morse('E');
+        sleep_ms(1000);
+        // If SELECT button is pressed, launch the configurator
+        if (gpio_get(5) != 0)
+        {
+            // Ignore safe reboot here
+            select_button_action(false, true);
+        }
+    }
+}
