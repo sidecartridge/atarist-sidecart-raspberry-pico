@@ -17,7 +17,7 @@ static TPParseStep nextTPstep = HEADER_DETECTION;
 static TransmissionProtocol transmission;
 
 // Placeholder functions for each step
-static void __not_in_flash_func(detect_header)(uint16_t data)
+inline static void __not_in_flash_func(detect_header)(uint16_t data)
 {
     if (data == PROTOCOL_HEADER)
     {
@@ -25,24 +25,17 @@ static void __not_in_flash_func(detect_header)(uint16_t data)
     }
 }
 
-static void __not_in_flash_func(read_command)(uint16_t data)
+inline static void __not_in_flash_func(read_command)(uint16_t data)
 {
     transmission.command_id = data;
     nextTPstep = PAYLOAD_SIZE_READ;
 }
 
-static void __not_in_flash_func(read_payload_size)(uint16_t data)
+inline static void __not_in_flash_func(read_payload_size)(uint16_t data)
 {
     if (data > 0)
     {
         transmission.payload_size = data; // Store incoming data as payload size
-        // transmission.payload = malloc(transmission.payload_size * sizeof(unsigned char)); // Allocate memory for the payload
-        // if (!transmission.payload)
-        // { // Ensure memory was allocated successfully
-        //     DPRINTF("Error: Could not allocate memory for payload!\n");
-        //     exit(1); // Exit or handle the error appropriately
-        // }
-        //
         transmission.bytes_read = 0;
         nextTPstep = PAYLOAD_READ_START;
     }
@@ -53,7 +46,7 @@ static void __not_in_flash_func(read_payload_size)(uint16_t data)
     }
 }
 
-static void __not_in_flash_func(read_payload)(uint16_t data)
+inline static void __not_in_flash_func(read_payload)(uint16_t data)
 {
     *((uint16_t *)&transmission.payload[transmission.bytes_read]) = data;
     transmission.bytes_read += 2;
@@ -87,6 +80,7 @@ void terminate_protocol_parser()
 
 void __not_in_flash_func(process_command)(ProtocolCallback callback)
 {
+#if defined(_DEBUG) && (_DEBUG != 0) && defined(SHOW_COMMANDS) && (SHOW_COMMANDS != 0)
     DPRINTF("COMMAND: %d / PAYLOAD SIZE: %d / PAYLOAD: ", transmission.command_id, transmission.payload_size);
     for (int i = 0; i < transmission.payload_size; i += 2)
     {
@@ -94,7 +88,7 @@ void __not_in_flash_func(process_command)(ProtocolCallback callback)
         DPRINTFRAW("0x%04X ", value);
     }
     DPRINTFRAW("\n");
-
+#endif
     // Here should pass the transmission message to a function that will handle the different commands
     // I think a good aproach would be to have a callback to custom functions that will handle the different commands
 
@@ -112,11 +106,10 @@ void __not_in_flash_func(process_command)(ProtocolCallback callback)
 
 void __not_in_flash_func(parse_protocol)(uint16_t data, ProtocolCallback callback)
 {
-    uint64_t new_header_found = time_us_64();
+    uint64_t new_header_found = (((uint64_t)timer_hw->timerawh) << 32u | timer_hw->timerawl);
     if (new_header_found - last_header_found > PROTOCOL_READ_RESTART_MICROSECONDS)
     {
         nextTPstep = HEADER_DETECTION;
-        //        DPRINTF("Restarting protocol read. Lapse. %i\n", new_header_found - last_header_found);
     }
     switch (nextTPstep)
     {

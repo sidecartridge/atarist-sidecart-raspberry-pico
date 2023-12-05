@@ -78,6 +78,8 @@ void null_words(void *dest_ptr_word, uint16_t size_in_bytes);
 int copy_firmware_to_RAM(uint16_t *emulROM, int emulROM_length);
 int erase_firmware_from_RAM();
 
+void blink_error();
+
 // int remove_entry(const char *key);
 
 #endif // CONFIG_H
