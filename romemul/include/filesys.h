@@ -88,5 +88,8 @@ int load_rom_from_fs(char *path, char *filename, uint32_t rom_load_offset);
 char **filter(char **file_list, int file_count, int *num_files, const char **allowed_extensions, size_t num_extensions);
 void store_file_list(char **file_list, int num_files, uint8_t *memory_location);
 FRESULT read_and_trim_file(const char *path, char **content);
+void split_fullpath(const char *fullPath, char *drive, char *folders, char *filePattern);
+void back_2_forwardslash(char *path);
+void shorten_fname(const char *originalName, char shortenedName[12]);
 
 #endif // FILESYS_H

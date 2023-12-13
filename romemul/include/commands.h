@@ -56,5 +56,14 @@
 #define GEMDRVEMUL_PING (APP_GEMDRVEMUL << 8 | 0)             // Ping the GEMDRIVE emulator
 #define GEMDRVEMUL_SAVE_VECTORS (APP_GEMDRVEMUL << 8 | 1)     // Save the vectors of the GEMDRIVE emulator
 #define GEMDRVEMUL_SHOW_VECTOR_CALL (APP_GEMDRVEMUL << 8 | 2) // Show the vector call of the GEMDRIVE emulator
+#define GEMDRVEMUL_REENTRY_LOCK (APP_GEMDRVEMUL << 8 | 3)     // Lock the reentry of the GEMDRIVE emulator
+#define GEMDRVEMUL_REENTRY_UNLOCK (APP_GEMDRVEMUL << 8 | 4)   // Unlock the reentry of the GEMDRIVE emulator
+#define GEMDRVEMUL_DGETDRV_CALL (APP_GEMDRVEMUL << 8 | 0x19)     // Show the Dgetdrv call
+#define GEMDRVEMUL_FSETDTA_CALL (APP_GEMDRVEMUL << 8 | 0x1A)     // Show the Fsetdta call
+#define GEMDRVEMUL_FSFIRST_CALL (APP_GEMDRVEMUL << 8 | 0x4E)     // Show the Fsfirst call
+#define GEMDRVEMUL_FSNEXT_CALL (APP_GEMDRVEMUL << 8 | 0x4F)      // Show the Fsnext call
+#define GEMDRVEMUL_FOPEN_CALL (APP_GEMDRVEMUL << 8 | 0x3D)       // Show the Fopen call
+#define GEMDRVEMUL_DGETPATH_CALL (APP_GEMDRVEMUL << 8 | 0x47)   // Show the Dgetpath call
+#define GEMDRVEMUL_DSETPATH_CALL (APP_GEMDRVEMUL << 8 | 0x3B)   // Show the Dgetpath call
 
 #endif // COMMANDS_H_

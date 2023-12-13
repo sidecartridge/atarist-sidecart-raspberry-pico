@@ -76,3 +76,5 @@ typedef struct
 } MorseCode;
 
 extern MorseCode morseAlphabet[]; // This is a declaration, not a definition.
+
+extern const char *GEMDOS_CALLS[];
