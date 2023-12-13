@@ -1354,3 +1354,159 @@ FRESULT read_and_trim_file(const char *path, char **content)
     DPRINTF("File content: '%s'\n", *content);
     return FR_OK;
 }
+/**
+ * @brief Splits a full path into its drive letter, folder path, and file pattern components.
+ *
+ * This function takes a full path that includes a drive letter, a path of folders, and a file pattern,
+ * and splits it into three separate components. The drive letter is identified by the colon following it,
+ * the folder path is the part of the path before the file pattern, and the file pattern is the last segment
+ * of the path. The function handles various cases, including paths without a drive letter or folder path.
+ *
+ * @param fullPath A string representing the full path to split. It should include the drive letter, folder path,
+ *                 and file pattern. Example: "C:\\Users\\Public\\Documents\\*.txt".
+ * @param drive A pointer to a character array where the extracted drive letter will be stored.
+ * @param folders A pointer to a character array where the extracted folder path will be stored.
+ * @param filePattern A pointer to a character array where the extracted file pattern will be stored.
+ *
+ * Example usage:
+ *     char drive[10], folders[256], filePattern[100];
+ *     split_fullpath("C:\\Users\\Public\\Documents\\*.txt", drive, folders, filePattern);
+ *     // `drive`, `folders`, and `filePattern` now contain the respective components of the path.
+ */
+void split_fullpath(const char *fullPath, char *drive, char *folders, char *filePattern)
+{
+    const char *driveEnd;
+    const char *pathEnd;
+
+    // Initialize the output strings
+    drive[0] = '\0';
+    folders[0] = '\0';
+    filePattern[0] = '\0';
+
+    // Find the position of the first ':' to identify the drive
+    driveEnd = strchr(fullPath, ':');
+    if (driveEnd != NULL)
+    {
+        strncpy(drive, fullPath, driveEnd - fullPath + 1);
+        drive[driveEnd - fullPath + 1] = '\0'; // Null-terminate the drive string
+        fullPath = driveEnd + 1;               // Adjust fullPath to point after the drive letter
+    }
+
+    // Find the last '\\' to separate folders and file pattern
+    pathEnd = strrchr(fullPath, '\\');
+    if (pathEnd != NULL)
+    {
+        strncpy(folders, fullPath, pathEnd - fullPath + 1);
+        folders[pathEnd - fullPath + 1] = '\0'; // Null-terminate the folders string
+        strcpy(filePattern, pathEnd + 1);       // Copy the file pattern
+    }
+    else
+    {
+        // If there's no '\\', then the entire path is considered the file pattern
+        strcpy(filePattern, fullPath);
+    }
+}
+
+/**
+ * @brief Converts all backslash characters to forward slashes in a given string.
+ *
+ * This function iterates through the characters of the provided string and replaces
+ * each backslash ('\\') character with a forward slash ('/'). This is typically used
+ * to convert file paths from Windows-style to Unix-style. The function operates in place,
+ * modifying the original string. It is safe to use with strings that do not contain
+ * backslashes, as the function will simply leave them unchanged.
+ *
+ * @param path A pointer to a character array (string) that will be modified in place.
+ *             The array should be null-terminated.
+ *
+ * Example usage:
+ *     char path[] = "C:\\Users\\Public\\Documents\\file.txt";
+ *     back_2_forwardslash(path);
+ *     // `path` is now "C:/Users/Public/Documents/file.txt"
+ */
+void back_2_forwardslash(char *path)
+{
+    if (path == NULL)
+        return;
+
+    for (int i = 0; path[i] != '\0'; i++)
+    {
+        if (path[i] == '\\')
+        {
+            path[i] = '/';
+        }
+    }
+}
+
+/**
+ * @brief Shortens a long file name to a DOS 8.3 filename format in uppercase and stores it in a provided array.
+ *
+ * This function takes a long file name, shortens it to the first seven characters, appends a '~' symbol,
+ * and then appends the original file's extension (assumed to be 3 characters long including the dot).
+ * The shortened file name is converted to uppercase and stored in a provided char array of size 12.
+ * The function is designed to handle file names in the format commonly used in Windows file systems.
+ *
+ * @param originalName A pointer to a constant character array containing the original long file name.
+ *                     The name should include the extension and must be null-terminated.
+ * @param shortenedName A pointer to a character array of size 12 where the shortened file name will be stored.
+ *                      This array will be modified by the function to contain the new file name.
+ *
+ * Example usage:
+ *     char shortenedFileName[12];
+ *     shorten_fname("longfilename.txt", shortenedFileName);
+ *     printf("Shortened File Name: %s\n", shortenedFileName);
+ */
+void shorten_fname(const char *originalName, char shortenedName[14])
+{
+    char namePart[9]; // 8 chars for name + null terminator
+    char extPart[5];  // dot + 3 chars for extension + null terminator
+    const char *dot;
+
+    DPRINTF("Original file name: %s\n", originalName);
+    // Initialize the shortenedName array
+    memset(shortenedName, 0, 14);
+
+    // Find the dot for the extension
+    dot = strrchr(originalName, '.');
+    if (dot && strlen(dot) <= 4)
+    {                             // Check if extension is 3 chars + dot
+        strncpy(extPart, dot, 4); // Copy extension
+        extPart[4] = '\0';        // Null-terminate
+
+        int nameLength = dot - originalName; // Calculate the length of the name part
+        if (nameLength > 8)
+        {
+            // If name part is longer than 8 characters, shorten it
+            strncpy(namePart, originalName, 7); // Copy first 7 characters of the name
+            namePart[7] = '~';                  // Add '~'
+            namePart[8] = '\0';                 // Null-terminate
+        }
+        else
+        {
+            // If name part is 8 characters or less, copy it as is
+            strncpy(namePart, originalName, nameLength);
+            namePart[nameLength] = '\0'; // Null-terminate
+        }
+
+        // Convert name part to uppercase
+        for (int i = 0; namePart[i] != '\0'; i++)
+        {
+            namePart[i] = toupper((unsigned char)namePart[i]);
+        }
+        // Convert extension part to uppercase
+        for (int i = 0; extPart[i] != '\0'; i++)
+        {
+            extPart[i] = toupper((unsigned char)extPart[i]);
+        }
+
+        // Format shortened file name
+        snprintf(shortenedName, 14, "%s%s", namePart, extPart);
+    }
+    else
+    {
+        // If no dot is found, copy the original name as is
+        strncpy(shortenedName, originalName, 8);
+        shortenedName[8] = '\0'; // Null-terminate
+    }
+    DPRINTF("Shortened file name: %s\n", shortenedName);
+}
