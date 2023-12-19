@@ -15,10 +15,6 @@ const uint WRITE_DATA_PIN_COUNT = READ_ADDR_PIN_COUNT;         // Number of GPIO
 const uint WRITE_SIGNAL_GPIO_BASE = READ_SIGNAL_GPIO_BASE + 1; // GPIO signal for WRITE
 const uint WRITE_SIGNAL_PIN_COUNT = 1;
 
-// Frequency constants.
-const float SAMPLE_DIV_FREQ = 1.f;                     // Sample frequency division factor.
-const uint32_t RP2040_CLOCK_FREQ_KHZ = 125000 + 25000; // Clock frequency in KHz (150MHz).
-
 // FLASH and RAM sections constants.
 const uint8_t ROM_BANKS = 2;                                                    // Number of ROM banks to emulate
 const uint32_t FLASH_ROM_LOAD_OFFSET = 0xE0000;                                 // Offset start in FLASH reserved for ROMs. Survives a reset or poweroff.

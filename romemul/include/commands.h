@@ -46,6 +46,7 @@
 #define FLOPPYEMUL_READ_SECTORS (APP_FLOPPYEMUL << 8 | 2)  // Read sectors from the floppy emulator
 #define FLOPPYEMUL_WRITE_SECTORS (APP_FLOPPYEMUL << 8 | 3) // Write sectors to the floppy emulator
 #define FLOPPYEMUL_PING (APP_FLOPPYEMUL << 8 | 4)          // Ping the floppy emulator
+#define FLOPPYEMUL_SAVE_HARDWARE (APP_FLOPPYEMUL << 8 | 5) // Save the hardware of the floppy emulator
 
 // APP_RTCEMUL commands
 #define RTCEMUL_TEST_NTP (APP_RTCEMUL << 8 | 0)     // Test if the network is ready to use NTP

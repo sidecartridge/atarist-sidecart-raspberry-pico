@@ -60,6 +60,15 @@ static uint32_t hdv_bpb_payload = 0;
 static uint32_t hdv_rw_payload = 0;
 static uint32_t hdv_mediach_payload = 0;
 static uint32_t XBIOS_trap_payload = 0;
+static bool hdv_bpb_payload_set = false;
+static bool hdv_rw_payload_set = false;
+static bool hdv_mediach_payload_set = false;
+static bool XBIOS_trap_payload_set = false;
+
+static uint32_t hardware_type = 0;
+static uint32_t hardware_type_start_function = 0;
+static uint32_t hardware_type_end_function = 0;
+static bool hardware_type_set = false;
 
 static int __not_in_flash_func(create_BPB(FRESULT *fr, FIL *fsrc))
 {
@@ -167,6 +176,17 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         ping_received = true;
         break; // ... handle other commands
+    case FLOPPYEMUL_SAVE_HARDWARE:
+        DPRINTF("Command SAVE_HARDWARE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        payloadPtr = (uint16_t *)protocol->payload + 2;
+        hardware_type = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+        payloadPtr += 2;
+        hardware_type_start_function = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+        payloadPtr += 2;
+        hardware_type_end_function = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+        hardware_type_set = true;
+        break;
     default:
         DPRINTF("Unknown command: %d\n", protocol->command_id);
     }
@@ -193,7 +213,7 @@ int init_floppyemul(bool safe_config_reboot)
 
     FRESULT fr; /* FatFs function common result code */
     FATFS fs;
-    int SZ_TBL = 512;        /* Number of table entries */
+    int SZ_TBL = 1024;       /* Number of table entries */
     DWORD clmt[SZ_TBL];      /* Linked list of cluster status */
     FIL fsrc_a;              /* File objects */
     unsigned int br_a = 0;   /* File read/write count */
@@ -203,6 +223,7 @@ int init_floppyemul(bool safe_config_reboot)
 
     DPRINTF("Waiting for commands...\n");
     uint32_t memory_shared_address = ROM3_START_ADDRESS; // Start of the shared memory buffer
+    uint32_t memory_code_address = ROM4_START_ADDRESS;   // Start of the code memory
 
     bool error = false;
     bool show_blink = true;
@@ -288,6 +309,12 @@ int init_floppyemul(bool safe_config_reboot)
                     error = true;
                 }
                 DPRINTF("File size of %s: %i bytes\n", fullpath_a, size_a);
+
+                // Reset the vectors if they are not set
+                hdv_bpb_payload_set = (XBIOS_trap_payload & 0xFF == 0xFA);
+                hdv_rw_payload_set = (hdv_bpb_payload & 0xFF == 0xFA);
+                hdv_mediach_payload_set = (hdv_rw_payload & 0xFF == 0xFA);
+                XBIOS_trap_payload_set = (hdv_mediach_payload & 0xFF == 0xFA);
                 file_ready_a = true;
             }
             *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
@@ -314,25 +341,84 @@ int init_floppyemul(bool safe_config_reboot)
             save_vectors = false;
             // Save the vectors needed for the floppy emulation
             DPRINTF("Saving vectors\n");
-            // DPRINTF("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
-            // DPRINTF("hdv_bpb_payload: %x\n", hdv_bpb_payload);
-            // DPRINTF("hdv_rw_payload: %x\n", hdv_rw_payload);
-            // DPRINTF("hdv_mediach_payload: %x\n", hdv_mediach_payload);
             // DPRINTF("random token: %x\n", random_token);
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
+            if (!XBIOS_trap_payload_set)
+            {
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
+                XBIOS_trap_payload_set = true;
+            }
+            else
+            {
+                DPRINTF("XBIOS_trap_payload previously set.\n");
+            }
+            DPRINTF("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
 
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
+            if (!hdv_bpb_payload_set)
+            {
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
+                hdv_bpb_payload_set = true;
+            }
+            else
+            {
+                DPRINTF("hdv_bpb_payload previously set.\n");
+            }
+            DPRINTF("hdv_bpb_payload: %x\n", hdv_bpb_payload);
 
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
+            if (!hdv_rw_payload_set)
+            {
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
+                hdv_rw_payload_set = true;
+            }
+            else
+            {
+                DPRINTF("hdv_rw_payload previously set.\n");
+            }
+            DPRINTF("hdv_rw_payload: %x\n", hdv_rw_payload);
 
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
+            if (!hdv_mediach_payload_set)
+            {
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
+                hdv_mediach_payload_set = true;
+            }
+            else
+            {
+                DPRINTF("hdv_mediach_payload previously set.\n");
+            }
+            DPRINTF("hdv_mediach_payload: %x\n", hdv_mediach_payload);
+            *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+        }
+        if (file_ready_a && hardware_type_set)
+        {
+            hardware_type_set = false;
+            DPRINTF("Setting hardware type: %x\n", hardware_type);
+            DPRINTF("Setting hardware type start function: %x\n", hardware_type_start_function & 0xFFFF);
+            DPRINTF("Setting hardware type end function: %x\n", hardware_type_end_function & 0xFFFF);
+
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_HARDWARE_TYPE + 2)) = hardware_type & 0xFFFF;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_HARDWARE_TYPE)) = hardware_type >> 16;
+            // Self-modifying code to change the speed of the cpu and cache or not. Not strictly needed, but can avoid bus errors
+            // Check if the hardware type is 0x00010010 (Atari MegaSTe)
+            if (hardware_type != 0x00010010)
+            {
+                // 16 bytes
+                for (int i = 0; i < 8; i++)
+                {
+                    *((volatile uint16_t *)(memory_code_address + (hardware_type_start_function & 0xFFFF) + i * 2)) = 0x4E71; // NOP
+                }
+                // 4 bytes
+                for (int i = 0; i < 2; i++)
+                {
+                    *((volatile uint16_t *)(memory_code_address + (hardware_type_end_function & 0xFFFF) + i * 2)) = 0x4E71; // NOP
+                }
+            }
 
             *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
+
         if (file_ready_a && sector_read)
         {
             sector_read = false;

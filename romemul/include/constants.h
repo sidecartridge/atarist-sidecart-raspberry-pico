@@ -30,6 +30,38 @@ extern const uint WRITE_SIGNAL_PIN_COUNT;
 extern const float SAMPLE_DIV_FREQ;
 extern const uint32_t RP2040_CLOCK_FREQ_KHZ;
 
+// Frequency constants.
+#define SAMPLE_DIV_FREQ (1.f)                  // Sample frequency division factor.
+#define RP2040_CLOCK_FREQ_KHZ (125000 + 35000) // Clock frequency in KHz (160MHz).
+
+// Voltage constants.
+#define RP2040_VOLTAGE VREG_VOLTAGE_1_10 // Voltage in 1.10 Volts.
+#define VOLTAGE_VALUES   \
+    (const char *[])     \
+    {                    \
+        "NOT VALID",     \
+            "NOT VALID", \
+            "NOT VALID", \
+            "NOT VALID", \
+            "NOT VALID", \
+            "NOT VALID", \
+            "0.85v",     \
+            "0.90v",     \
+            "0.95v",     \
+            "1.00v",     \
+            "1.05v",     \
+            "1.10v",     \
+            "1.15v",     \
+            "1.20v",     \
+            "1.25v",     \
+            "1.30v",     \
+            "NOT VALID", \
+            "NOT VALID", \
+            "NOT VALID", \
+            "NOT VALID", \
+            "NOT VALID"  \
+    }
+
 // FLASH and RAM sections constants.
 extern const uint8_t ROM_BANKS;
 extern const uint32_t FLASH_ROM_LOAD_OFFSET;

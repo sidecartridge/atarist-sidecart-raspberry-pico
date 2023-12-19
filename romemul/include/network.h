@@ -95,6 +95,7 @@ typedef struct
     char *name;
     char *description;
     // Ignoring tags as per your request
+    char *tags;
     int size_kb;
 } RomInfo;
 
