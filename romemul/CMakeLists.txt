@@ -106,11 +106,11 @@ if(NOT RELEASE_VERSION)
 endif()
 
 if(NOT RELEASE_TYPE OR RELEASE_TYPE STREQUAL "" OR RELEASE_TYPE STREQUAL "final")
-        set(LATEST_RELEASE_URL "http://atarist.sidecart.xyz/version.txt")
+        set(LATEST_RELEASE_URL "http://atarist.sidecartridge.com/version.txt")
 endif()
 
 if(RELEASE_TYPE STREQUAL "beta")
-        set(LATEST_RELEASE_URL "http://atarist.sidecart.xyz/beta.txt")
+        set(LATEST_RELEASE_URL "http://atarist.sidecartridge.com/beta.txt")
 endif()
 
 
