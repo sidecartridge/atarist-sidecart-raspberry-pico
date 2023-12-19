@@ -127,4 +127,4 @@ if __name__ == "__main__":
 
     # If the --s3-upload flag is set, upload the files to S3.
     if args.s3_upload:
-        upload_to_s3(args.path, "roms.sidecart.xyz")
+        upload_to_s3(args.path, "roms.sidecartridge.com")
