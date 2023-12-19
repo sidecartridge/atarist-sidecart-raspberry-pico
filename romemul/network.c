@@ -426,6 +426,7 @@ RomInfo parseRomItem(cJSON *json_item)
     cJSON *url = cJSON_GetObjectItemCaseSensitive(json_item, "url");
     cJSON *name = cJSON_GetObjectItemCaseSensitive(json_item, "name");
     cJSON *description = cJSON_GetObjectItemCaseSensitive(json_item, "description");
+    cJSON *tags = cJSON_GetObjectItemCaseSensitive(json_item, "tags");
     cJSON *size_kb = cJSON_GetObjectItemCaseSensitive(json_item, "size_kb");
 
     if (cJSON_IsString(url) && url->valuestring)
@@ -439,6 +440,29 @@ RomInfo parseRomItem(cJSON *json_item)
     if (cJSON_IsString(description) && description->valuestring)
     {
         item.description = strdup(description->valuestring);
+    }
+    // The tags is an array, read the array content and concatenate it in a single string
+    if (cJSON_IsArray(tags))
+    {
+        int tags_count = cJSON_GetArraySize(tags);
+        char *tags_str = malloc(256);
+        for (int i = 0; i < tags_count; i++)
+        {
+            cJSON *tag = cJSON_GetArrayItem(tags, i);
+            if (cJSON_IsString(tag) && tag->valuestring)
+            {
+                if (i == 0)
+                {
+                    strcpy(tags_str, tag->valuestring);
+                }
+                else
+                {
+                    strcat(tags_str, ", ");
+                    strcat(tags_str, tag->valuestring);
+                }
+            }
+        }
+        item.tags = tags_str;
     }
     if (cJSON_IsNumber(size_kb))
     {
