@@ -49,6 +49,30 @@ static void load_default_entries()
     }
 }
 
+static void replace_bad_domain_entries()
+{
+    for (size_t i = 0; i < MAX_ENTRIES; i++)
+    {
+
+        if (strcmp(configData.entries[i].value, "http://ataristdb.sidecart.xyz") == 0)
+        {
+            strcpy(configData.entries[i].value, "http://ataristdb.sidecartridge.com");
+        }
+        if (strcmp(configData.entries[i].value, "http://roms.sidecart.xyz/roms.json") == 0)
+        {
+            strcpy(configData.entries[i].value, "http://roms.sidecartridge.com/roms.json");
+        }
+        if (strcmp(configData.entries[i].value, "http://atarist.sidecart.xyz/beta.txt") == 0)
+        {
+            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/beta.txtx");
+        }
+        if (strcmp(configData.entries[i].value, "http://atarist.sidecart.xyz/version.txt") == 0)
+        {
+            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/version.txtx");
+        }
+    }
+}
+
 void load_all_entries()
 {
     uint8_t *currentAddress = (uint8_t *)(CONFIG_FLASH_OFFSET + XIP_BASE);
@@ -86,12 +110,12 @@ void load_all_entries()
         ConfigEntry *existingEntry = find_entry(entry.key);
         if (existingEntry)
         {
-            // Overwrite the default value
             *existingEntry = entry;
         }
         // No else part here since we know every memory entry has a default
         count++;
     }
+    replace_bad_domain_entries();
 }
 
 ConfigEntry *find_entry(const char key[MAX_KEY_LENGTH])
@@ -421,13 +445,14 @@ int copy_firmware_to_RAM(uint16_t *emulROM, int emulROM_length)
 {
     // Need to initialize the ROM4 section with the firmware data
     extern uint16_t __rom_in_ram_start__;
-    uint16_t *rom4_dest = &__rom_in_ram_start__;
-    volatile uint16_t *rom4_src = emulROM;
-    for (int i = 0; i < emulROM_length; i++)
-    {
-        uint16_t value = *rom4_src++;
-        *rom4_dest++ = value;
-    }
+    // uint16_t *rom4_dest = &__rom_in_ram_start__;
+    // volatile uint16_t *rom4_src = emulROM;
+    // for (int i = 0; i < emulROM_length; i++)
+    // {
+    //     uint16_t value = *rom4_src++;
+    //     *rom4_dest++ = value;
+    // }
+    memcpy(&__rom_in_ram_start__, emulROM, emulROM_length * sizeof(uint16_t));
     DPRINTF("Emulation firmware copied to RAM.\n");
     return 0;
 }
