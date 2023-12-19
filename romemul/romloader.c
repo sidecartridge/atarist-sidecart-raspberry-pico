@@ -862,8 +862,16 @@ int init_firmware()
                 for (int i = 0; i < filtered_num_floppy_images_files; i++)
                 {
                     // Copy the string from network_files[i].name to dest_ptr
-                    sprintf(dest_ptr, "%s\0", floppy_images_file->name);
-                    dest_ptr += strlen(floppy_images_file->name) + 1;
+                    // Ensure the name is padded with spaces up to position 60
+                    char padded_name[61]; // 60 characters for padding + 1 for null terminator
+                    snprintf(padded_name, sizeof(padded_name), "%-60s", floppy_images_file->name);
+
+                    char padded_extra[21]; // 20 characters for padding + 1 for null terminator
+                    snprintf(padded_extra, sizeof(padded_extra), "%-20s", floppy_images_file->extra);
+
+                    // Display padded content
+                    sprintf(dest_ptr, "%s%s\0", padded_name, padded_extra);
+                    dest_ptr += strlen(dest_ptr) + 1;
                     floppy_images_file = floppy_images_file->next;
                 }
 
