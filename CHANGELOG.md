@@ -1,5 +1,19 @@
 # Changelog
 
+## BETA 0.0.14 (2023-12-19)- Mega STE support and floppy stability release
+### Fixed
+- **Issue #71**: New reload floppy image after reset now keeps opened descriptors.
+- **Issue #72**: Enhanced Reliability of Floppy Image Read/Write Routines.
+
+### Changed
+- **Issue #73**: Domain Change from sidecart.xyz to sidecartridge.com enhancement.
+
+### New Features
+- **Issue #69**: Support for MegaSTE 16Mhz and Cache enhancement.
+- **Issue #70**: Toggle Hooked XBIOS Calls in Floppy Emulation Mode enhancement.
+- **Issue #74**: Display context information from remote ROM and floppy catalogs enhancement.
+- **Issue #75**: New crackers crews collections uploded.
+
 ## BETA 0.0.13 (2023-11-30)- Bugs and stabilization release
 ### Fixed
 - **Issue #23**: The number of elements in the lists  now can be up to 32KBytes.
