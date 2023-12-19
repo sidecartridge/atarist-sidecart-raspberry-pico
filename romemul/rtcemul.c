@@ -418,8 +418,6 @@ int init_rtcemul(bool safe_config_reboot)
     FATFS fs;
 
     srand(time(0));
-    printf("Initializing RTC emulation...\n"); // Print always
-
     char *rtc_type_str = find_entry("RTC_TYPE")->value;
 
     if (strcmp(rtc_type_str, "DALLAS") == 0)
@@ -656,16 +654,5 @@ int init_rtcemul(bool safe_config_reboot)
         network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
     }
 
-    // If we are here, something went wrong. Flash 'E' in morse code until pressed SELECT or RESET.
-    while (1)
-    {
-        blink_morse('E');
-        sleep_ms(1000);
-        // If SELECT button is pressed, launch the configurator
-        if (gpio_get(5) != 0)
-        {
-            // Ignore safe reboot here
-            select_button_action(false, true);
-        }
-    }
+    blink_error();
 }

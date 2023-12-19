@@ -736,10 +736,18 @@ int init_firmware()
             char *dest_ptr = (char *)(memory_area + RANDOM_SEED_SIZE);
             for (int i = 0; i < filtered_num_network_files; i++)
             {
-                // Copy the string from network_files[i].name to dest_ptr with strcpy
-                // strcpy(dest_ptr, network_files[i].name + "(" + network_files[i].size_kb + " Kb)" + '\0');
-                // dest_ptr += strlen(network_files[i].name) + 1;
-                sprintf(dest_ptr, "%s\t(%d Kb)", network_files[i].name, network_files[i].size_kb);
+                // Ensure the name is padded with spaces up to position 60
+                char padded_name[51]; // 50 characters for padding + 1 for null terminator
+                snprintf(padded_name, sizeof(padded_name), "%-50s", network_files[i].name);
+
+                char padded_tags[26]; // 25 characters for padding + 1 for null terminator
+                snprintf(padded_tags, sizeof(padded_tags), "%-25s", network_files[i].tags);
+
+                char padded_size[6]; // 5 characters for padding + 1 for null terminator
+                snprintf(padded_size, sizeof(padded_size), "%5d", network_files[i].size_kb);
+
+                // Display padded content
+                sprintf(dest_ptr, "%s%s%s\0", padded_name, padded_tags, padded_size);
                 dest_ptr += strlen(dest_ptr) + 1;
             }
             // If dest_ptr is odd, add a 0x00 byte to align the next string
@@ -862,8 +870,16 @@ int init_firmware()
                 for (int i = 0; i < filtered_num_floppy_images_files; i++)
                 {
                     // Copy the string from network_files[i].name to dest_ptr
-                    sprintf(dest_ptr, "%s\0", floppy_images_file->name);
-                    dest_ptr += strlen(floppy_images_file->name) + 1;
+                    // Ensure the name is padded with spaces up to position 60
+                    char padded_name[61]; // 60 characters for padding + 1 for null terminator
+                    snprintf(padded_name, sizeof(padded_name), "%-65s", floppy_images_file->name);
+
+                    char padded_extra[16]; // 15 characters for padding + 1 for null terminator
+                    snprintf(padded_extra, sizeof(padded_extra), "%-15s", floppy_images_file->extra);
+
+                    // Display padded content
+                    sprintf(dest_ptr, "%s%s\0", padded_name, padded_extra);
+                    dest_ptr += strlen(dest_ptr) + 1;
                     floppy_images_file = floppy_images_file->next;
                 }
 

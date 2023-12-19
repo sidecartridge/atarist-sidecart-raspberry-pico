@@ -67,10 +67,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         pico_lwip_http
         )
 
-# Debug outputs
-pico_enable_stdio_usb(${PROJECT_NAME} 0)
-pico_enable_stdio_uart(${PROJECT_NAME} _DEBUG)
-
 # Link custom memmap with reserved memory for ROMs
 set_target_properties(${PROJECT_NAME} PROPERTIES
         PICO_TARGET_LINKER_SCRIPT ${CMAKE_CURRENT_LIST_DIR}/memmap_romemul.ld
@@ -110,11 +106,11 @@ if(NOT RELEASE_VERSION)
 endif()
 
 if(NOT RELEASE_TYPE OR RELEASE_TYPE STREQUAL "" OR RELEASE_TYPE STREQUAL "final")
-        set(LATEST_RELEASE_URL "http://atarist.sidecart.xyz/version.txt")
+        set(LATEST_RELEASE_URL "http://atarist.sidecartridge.com/version.txt")
 endif()
 
 if(RELEASE_TYPE STREQUAL "beta")
-        set(LATEST_RELEASE_URL "http://atarist.sidecart.xyz/beta.txt")
+        set(LATEST_RELEASE_URL "http://atarist.sidecartridge.com/beta.txt")
 endif()
 
 
@@ -125,6 +121,16 @@ endif()
 
 if (NOT _DEBUG)
         set(_DEBUG 0)
+endif()
+
+
+# Debug outputs
+pico_enable_stdio_usb(${PROJECT_NAME} 0)
+# Workaround to disable USB output in release builds
+if(${_DEBUG} STREQUAL "0")
+    pico_enable_stdio_uart(${PROJECT_NAME} 0)
+else()
+    pico_enable_stdio_uart(${PROJECT_NAME} 1)
 endif()
 
 # Print the variables on screen

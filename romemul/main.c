@@ -16,18 +16,30 @@ int main()
     // Set the clock frequency. 20% overclocking
     set_sys_clock_khz(RP2040_CLOCK_FREQ_KHZ, true);
 
+    // Set the voltage
+    vreg_set_voltage(RP2040_VOLTAGE);
+
     // Configure the input pins for ROM4 and ROM3
     gpio_init(SELECT_GPIO);
     gpio_set_dir(SELECT_GPIO, GPIO_IN);
     gpio_set_pulls(SELECT_GPIO, false, true); // Pull down (false, true)
     gpio_pull_down(SELECT_GPIO);
 
+#if _DEBUG
     // Initialize chosen serial port
     stdio_init_all();
     setvbuf(stdout, NULL, _IONBF, 1); // specify that the stream should be unbuffered
-
+#endif
     // Only startup information to display
-    printf("Sidecart ROM emulator. %s (%s). %s mode.\n\n", RELEASE_VERSION, RELEASE_DATE, _DEBUG ? "DEBUG" : "RELEASE");
+    printf("\n\nSidecart ROM emulator. %s (%s). %s mode.\n\n", RELEASE_VERSION, RELEASE_DATE, _DEBUG ? "DEBUG" : "RELEASE");
+
+#if _DEBUG
+    // Show information about the frequency and voltage
+    int current_clock_frequency_khz = RP2040_CLOCK_FREQ_KHZ;
+    const char *current_voltage = VOLTAGE_VALUES[RP2040_VOLTAGE];
+    DPRINTF("Clock frequency: %i KHz\n", current_clock_frequency_khz);
+    DPRINTF("Voltage: %s\n", current_voltage);
+#endif
 
     // Init the CYW43 WiFi module
     if (cyw43_arch_init())
@@ -102,7 +114,7 @@ int main()
                 if (gpio_get(5) != 0)
                 {
                     select_button_action(safe_config_reboot, write_config_only_once);
-                    // Write config only once to avoid hitting the flash too much
+                    // Write config only once to avoid hitting the flash too much 
                     write_config_only_once = false;
                 }
             }
@@ -110,22 +122,22 @@ int main()
 
         if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
         {
-            printf("FLOPPY_EMULATOR entry found in config. Launching.\n");
+            DPRINTF("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
             // Copy the ST floppy firmware emulator to RAM
             // Copy the firmware to RAM
             copy_firmware_to_RAM((uint16_t *)floppyemulROM, floppyemulROM_length);
-            // Reserve memory for the protocol parser
-            init_protocol_parser();
 
             // Hybrid way to initialize the ROM emulator:
             // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
             // and start the state machine
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
-            DPRINTF("Ready to accept commands.\n");
 
-            // The "F" character stands for "Floppy"
-            blink_morse('F');
+            // Reserve memory for the protocol parser
+            init_protocol_parser();
+
+            printf("Floppy emulation started.\n"); // Print always
+            DPRINTF("Ready to accept commands.\n");
 
             init_floppyemul(safe_config_reboot);
 
@@ -134,7 +146,7 @@ int main()
 
         if (strcmp(default_config_entry->value, "RTC_EMULATOR") == 0)
         {
-            printf("RTC_EMULATOR entry found in config. Launching.\n");
+            DPRINTF("RTC_EMULATOR entry found in config. Launching.\n");
 
             char *rtc_type_str = find_entry("RTC_TYPE")->value;
             if (strcmp(rtc_type_str, "SIDECART") == 0)
@@ -149,6 +161,7 @@ int main()
 
             // Reserve memory for the protocol parser
             init_protocol_parser();
+            printf("RTC emulation started.\n"); // Print always
 
             // Hybrid way to initialize the ROM emulator:
             // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM

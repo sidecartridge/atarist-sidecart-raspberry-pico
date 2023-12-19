@@ -20,6 +20,8 @@
 #define PROTOCOL_READ_RESTART_MICROSECONDS 10000
 #define MAX_PROTOCOL_PAYLOAD_SIZE 1024
 
+#define SHOW_COMMANDS 0 // Set to 1 to show commands received
+
 typedef enum
 {
     HEADER_DETECTION,

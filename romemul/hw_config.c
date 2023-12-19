@@ -35,6 +35,8 @@ socket, which SPI it is driven by, and how it is wired.
 //
 #include "diskio.h" /* Declarations of disk functions */
 
+#define FF_USE_FASTSEEK 1
+
 // Hardware Configuration of SPI "objects"
 // Note: multiple SD cards can be driven by one SPI if they use different slave
 // selects.
@@ -44,7 +46,7 @@ static spi_t spis[] = { // One for each SPI.
         .miso_gpio = 4,  // GPIO number (not pin number)
         .mosi_gpio = 3,
         .sck_gpio = 2,
-        .use_exclusive_DMA_IRQ_handler = false,
+        .use_exclusive_DMA_IRQ_handler = true,
         //.baud_rate = 1 * 1000 * 1000,
         .baud_rate = 12.5 * 1000 * 1000,
         //.baud_rate = 25 * 1000 * 1000, // Actual frequency: 20833333.

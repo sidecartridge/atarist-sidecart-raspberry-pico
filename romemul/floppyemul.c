@@ -60,6 +60,15 @@ static uint32_t hdv_bpb_payload = 0;
 static uint32_t hdv_rw_payload = 0;
 static uint32_t hdv_mediach_payload = 0;
 static uint32_t XBIOS_trap_payload = 0;
+static bool hdv_bpb_payload_set = false;
+static bool hdv_rw_payload_set = false;
+static bool hdv_mediach_payload_set = false;
+static bool XBIOS_trap_payload_set = false;
+
+static uint32_t hardware_type = 0;
+static uint32_t hardware_type_start_function = 0;
+static uint32_t hardware_type_end_function = 0;
+static bool hardware_type_set = false;
 
 static int __not_in_flash_func(create_BPB(FRESULT *fr, FIL *fsrc))
 {
@@ -167,6 +176,17 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         ping_received = true;
         break; // ... handle other commands
+    case FLOPPYEMUL_SAVE_HARDWARE:
+        DPRINTF("Command SAVE_HARDWARE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        payloadPtr = (uint16_t *)protocol->payload + 2;
+        hardware_type = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+        payloadPtr += 2;
+        hardware_type_start_function = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+        payloadPtr += 2;
+        hardware_type_end_function = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+        hardware_type_set = true;
+        break;
     default:
         DPRINTF("Unknown command: %d\n", protocol->command_id);
     }
@@ -175,9 +195,6 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
 // Interrupt handler callback for DMA completion
 void __not_in_flash_func(floppyemul_dma_irq_handler_lookup_callback)(void)
 {
-    // Clear the interrupt request for the channel
-    dma_hw->ints1 = 1u << lookup_data_rom_dma_channel;
-
     // Read the address to process
     uint32_t addr = (uint32_t)dma_hw->ch[lookup_data_rom_dma_channel].al3_read_addr_trig;
 
@@ -187,21 +204,8 @@ void __not_in_flash_func(floppyemul_dma_irq_handler_lookup_callback)(void)
     {
         parse_protocol((uint16_t)(addr & 0xFFFF), handle_protocol_command);
     }
-}
-
-int copy_floppy_firmware_to_RAM()
-{
-    // Need to initialize the ROM4 section with the firmware data
-    extern uint16_t __rom_in_ram_start__;
-    uint16_t *rom4_dest = &__rom_in_ram_start__;
-    uint16_t *rom4_src = (uint16_t *)floppyemulROM;
-    for (int i = 0; i < floppyemulROM_length; i++)
-    {
-        uint16_t value = *rom4_src++;
-        *rom4_dest++ = value;
-    }
-    DPRINTF("Floppy emulation firmware copied to RAM.\n");
-    return 0;
+    // Clear the interrupt request for the channel
+    dma_hw->ints1 = 1u << lookup_data_rom_dma_channel;
 }
 
 int init_floppyemul(bool safe_config_reboot)
@@ -209,12 +213,9 @@ int init_floppyemul(bool safe_config_reboot)
 
     FRESULT fr; /* FatFs function common result code */
     FATFS fs;
-
-    srand(time(0));
-    printf("Initializing floppy emulation...\n"); // Print always
-
+    int SZ_TBL = 1024;       /* Number of table entries */
+    DWORD clmt[SZ_TBL];      /* Linked list of cluster status */
     FIL fsrc_a;              /* File objects */
-    BYTE buffer_a[4096];     /* File copy buffer */
     unsigned int br_a = 0;   /* File read/write count */
     unsigned int size_a = 0; // File size
 
@@ -222,11 +223,24 @@ int init_floppyemul(bool safe_config_reboot)
 
     DPRINTF("Waiting for commands...\n");
     uint32_t memory_shared_address = ROM3_START_ADDRESS; // Start of the shared memory buffer
+    uint32_t memory_code_address = ROM4_START_ADDRESS;   // Start of the code memory
 
-    while (true)
+    bool error = false;
+    bool show_blink = true;
+    srand(time(0));
+    while (!error)
     {
         *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
         tight_loop_contents();
+
+        /* Delay the blink to the main loop */
+        if (show_blink)
+        {
+            blink_morse('F');
+            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+            cyw43_arch_deinit();
+            show_blink = false;
+        }
 
         if (ping_received)
         {
@@ -237,7 +251,7 @@ int init_floppyemul(bool safe_config_reboot)
                 if (!sd_init_driver())
                 {
                     DPRINTF("ERROR: Could not initialize SD card\r\n");
-                    return -1;
+                    error = true;
                 }
 
                 // Mount drive
@@ -246,8 +260,9 @@ int init_floppyemul(bool safe_config_reboot)
                 if (!microsd_mounted)
                 {
                     DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
-                    return -1;
+                    error = true;
                 }
+
                 char *dir = find_entry("FLOPPIES_FOLDER")->value;
                 char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
                 fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
@@ -264,12 +279,42 @@ int init_floppyemul(bool safe_config_reboot)
                 if (fr)
                 {
                     DPRINTF("ERROR: Could not open file %s (%d)\r\n", fullpath_a, fr);
-                    return -1;
+                    error = true;
                 }
+
+                fsrc_a.cltbl = clmt;                   /* Enable fast seek mode (cltbl != NULL) */
+                clmt[0] = SZ_TBL;                      /* Set table size */
+                fr = f_lseek(&fsrc_a, CREATE_LINKMAP); /* Create CLMT */
+                if (fr)
+                {
+                    DPRINTF("ERROR: Could not create CLMT for file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                    f_close(&fsrc_a);
+                    error = true;
+                }
+
                 // Get file size
                 size_a = f_size(&fsrc_a);
+                fr = f_lseek(&fsrc_a, size_a);
+                if (fr)
+                {
+                    DPRINTF("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                    f_close(&fsrc_a);
+                    error = true;
+                }
+                fr = f_lseek(&fsrc_a, 0);
+                if (fr)
+                {
+                    DPRINTF("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
+                    f_close(&fsrc_a);
+                    error = true;
+                }
                 DPRINTF("File size of %s: %i bytes\n", fullpath_a, size_a);
 
+                // Reset the vectors if they are not set
+                hdv_bpb_payload_set = (XBIOS_trap_payload & 0xFF == 0xFA);
+                hdv_rw_payload_set = (hdv_bpb_payload & 0xFF == 0xFA);
+                hdv_mediach_payload_set = (hdv_rw_payload & 0xFF == 0xFA);
+                XBIOS_trap_payload_set = (hdv_mediach_payload & 0xFF == 0xFA);
                 file_ready_a = true;
             }
             *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
@@ -282,7 +327,7 @@ int init_floppyemul(bool safe_config_reboot)
             if (bpb_found)
             {
                 DPRINTF("ERROR: Could not create BPB for image file  %s (%d)\r\n", fullpath_a, fr);
-                return -1;
+                error = true;
             }
             for (int i = 0; i < sizeof(BpbData) / sizeof(uint16_t); i++)
             {
@@ -296,55 +341,106 @@ int init_floppyemul(bool safe_config_reboot)
             save_vectors = false;
             // Save the vectors needed for the floppy emulation
             DPRINTF("Saving vectors\n");
-            // DPRINTF("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
-            // DPRINTF("hdv_bpb_payload: %x\n", hdv_bpb_payload);
-            // DPRINTF("hdv_rw_payload: %x\n", hdv_rw_payload);
-            // DPRINTF("hdv_mediach_payload: %x\n", hdv_mediach_payload);
             // DPRINTF("random token: %x\n", random_token);
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
+            if (!XBIOS_trap_payload_set)
+            {
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP)) = XBIOS_trap_payload & 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_XBIOS_TRAP + 2)) = XBIOS_trap_payload >> 16;
+                XBIOS_trap_payload_set = true;
+            }
+            else
+            {
+                DPRINTF("XBIOS_trap_payload previously set.\n");
+            }
+            DPRINTF("XBIOS_trap_payload: %x\n", XBIOS_trap_payload);
 
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
+            if (!hdv_bpb_payload_set)
+            {
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB)) = hdv_bpb_payload & 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_BPB + 2)) = hdv_bpb_payload >> 16;
+                hdv_bpb_payload_set = true;
+            }
+            else
+            {
+                DPRINTF("hdv_bpb_payload previously set.\n");
+            }
+            DPRINTF("hdv_bpb_payload: %x\n", hdv_bpb_payload);
 
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
+            if (!hdv_rw_payload_set)
+            {
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW)) = hdv_rw_payload & 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_RW + 2)) = hdv_rw_payload >> 16;
+                hdv_rw_payload_set = true;
+            }
+            else
+            {
+                DPRINTF("hdv_rw_payload previously set.\n");
+            }
+            DPRINTF("hdv_rw_payload: %x\n", hdv_rw_payload);
 
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
-            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
+            if (!hdv_mediach_payload_set)
+            {
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH)) = hdv_mediach_payload & 0xFFFF;
+                *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_OLD_HDV_MEDIACH + 2)) = hdv_mediach_payload >> 16;
+                hdv_mediach_payload_set = true;
+            }
+            else
+            {
+                DPRINTF("hdv_mediach_payload previously set.\n");
+            }
+            DPRINTF("hdv_mediach_payload: %x\n", hdv_mediach_payload);
+            *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
+        }
+        if (file_ready_a && hardware_type_set)
+        {
+            hardware_type_set = false;
+            DPRINTF("Setting hardware type: %x\n", hardware_type);
+            DPRINTF("Setting hardware type start function: %x\n", hardware_type_start_function & 0xFFFF);
+            DPRINTF("Setting hardware type end function: %x\n", hardware_type_end_function & 0xFFFF);
+
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_HARDWARE_TYPE + 2)) = hardware_type & 0xFFFF;
+            *((volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_HARDWARE_TYPE)) = hardware_type >> 16;
+            // Self-modifying code to change the speed of the cpu and cache or not. Not strictly needed, but can avoid bus errors
+            // Check if the hardware type is 0x00010010 (Atari MegaSTe)
+            if (hardware_type != 0x00010010)
+            {
+                // 16 bytes
+                for (int i = 0; i < 8; i++)
+                {
+                    *((volatile uint16_t *)(memory_code_address + (hardware_type_start_function & 0xFFFF) + i * 2)) = 0x4E71; // NOP
+                }
+                // 4 bytes
+                for (int i = 0; i < 2; i++)
+                {
+                    *((volatile uint16_t *)(memory_code_address + (hardware_type_end_function & 0xFFFF) + i * 2)) = 0x4E71; // NOP
+                }
+            }
 
             *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
+
         if (file_ready_a && sector_read)
         {
             sector_read = false;
-            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
             DPRINTF("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
+
             /* Set read/write pointer to logical sector position */
             fr = f_lseek(&fsrc_a, logical_sector * sector_size);
             if (fr)
             {
                 printf("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
                 f_close(&fsrc_a);
-                //                                return (int)fr; // Check for error in reading
+                error = true;
             }
-            fr = f_read(&fsrc_a, buffer_a, sector_size, &br_a); /* Read a chunk of data from the source file */
+            fr = f_read(&fsrc_a, (void *)(memory_shared_address + FLOPPYEMUL_IMAGE), sector_size, &br_a); /* Read a chunk of data from the source file */
             if (fr)
             {
                 printf("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
                 f_close(&fsrc_a);
-                //                                return (int)fr; // Check for error in reading
+                error = true;
             }
-            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
 
-            // Transform buffer's words from little endian to big endian inline
-            volatile uint16_t *target = (volatile uint16_t *)(memory_shared_address + FLOPPYEMUL_IMAGE);
-            for (int i = 0; i < br_a; i += 2)
-            {
-                uint16_t value = *(uint16_t *)(buffer_a + i);
-                value = (value << 8) | (value >> 8);
-                *(target++) = value;
-            }
+            swap_words((uint16_t *)(memory_shared_address + FLOPPYEMUL_IMAGE), sector_size);
             *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN)) = random_token;
         }
         if (file_ready_a && sector_write)
@@ -354,7 +450,6 @@ int init_floppyemul(bool safe_config_reboot)
             // Only write if the floppy image is read/write. It's important because the FatFS seems to ignore the FA_READ flag
             if (floppy_read_write)
             {
-                dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
                 DPRINTF("LSECTOR: %i / SSIZE: %i\n", logical_sector, sector_size);
                 // Transform buffer's words from little endian to big endian inline
                 uint16_t *target_start = payloadPtr;
@@ -365,20 +460,21 @@ int init_floppyemul(bool safe_config_reboot)
                     value = (value << 8) | (value >> 8);
                     *(target + i) = value;
                 }
+                dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
                 /* Set read/write pointer to logical sector position */
                 fr = f_lseek(&fsrc_a, logical_sector * sector_size);
                 if (fr)
                 {
                     DPRINTF("ERROR: Could not seek file %s (%d). Closing file.\r\n", fullpath_a, fr);
                     f_close(&fsrc_a);
-                    //                                return (int)fr; // Check for error in reading
+                    error = true;
                 }
                 fr = f_write(&fsrc_a, target_start, sector_size, &br_a); /* Write a chunk of data from the source file */
                 if (fr)
                 {
                     DPRINTF("ERROR: Could not read file %s (%d). Closing file.\r\n", fullpath_a, fr);
                     f_close(&fsrc_a);
-                    //                                return (int)fr; // Check for error in reading
+                    error = true;
                 }
                 dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
             }
@@ -396,4 +492,7 @@ int init_floppyemul(bool safe_config_reboot)
             write_config_only_once = false;
         }
     }
+    // Init the CYW43 WiFi module. Needed to show the error message in the LED
+    cyw43_arch_init();
+    blink_error();
 }

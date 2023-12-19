@@ -43,7 +43,9 @@
 #define FLOPPYEMUL_OLD_HDV_BPB (FLOPPYEMUL_OLD_XBIOS_TRAP + 4)     // old_XBIOS_trap + 4 bytes
 #define FLOPPYEMUL_OLD_HDV_RW (FLOPPYEMUL_OLD_HDV_BPB + 4)         // old_hdv_bpb + 4 bytes
 #define FLOPPYEMUL_OLD_HDV_MEDIACH (FLOPPYEMUL_OLD_HDV_RW + 4)     // old_hdv_rw + 4 bytes
-#define FLOPPYEMUL_IMAGE (FLOPPYEMUL_RANDOM_TOKEN + 0x1000)        // random_token + 0x1000 bytes
+#define FLOPPYEMUL_HARDWARE_TYPE (FLOPPYEMUL_OLD_HDV_MEDIACH + 4)  // old_hdv_mediach + 4 bytes
+
+#define FLOPPYEMUL_IMAGE (FLOPPYEMUL_RANDOM_TOKEN + 0x1000) // random_token + 0x1000 bytes
 
 typedef void (*IRQInterceptionCallback)();
 

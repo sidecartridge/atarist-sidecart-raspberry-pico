@@ -1,6 +1,6 @@
 [
     {
-        "url": "http://roms.sidecart.xyz/Missile%20Command.STC",
+        "url": "http://roms.sidecartridge.com/Missile%20Command.STC",
         "name": "Missile Command",
         "description": "A classic arcade game where players defend cities from incoming missiles.",
         "tags": [
@@ -10,7 +10,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Buggy%20Boy.img",
+        "url": "http://roms.sidecartridge.com/Buggy%20Boy.img",
         "name": "Buggy Boy",
         "description": "An off-road racing game where players drive a buggy and avoid obstacles.",
         "tags": [
@@ -20,7 +20,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Joust%20and%20Moon%20Patrol.STC",
+        "url": "http://roms.sidecartridge.com/Joust%20and%20Moon%20Patrol.STC",
         "name": "Joust and Moon Patrol",
         "description": "A combo of two arcade classics - Joust, a competitive bird-riding game, and Moon Patrol, a lunar vehicle shooter.",
         "tags": [
@@ -31,7 +31,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Wizball.STC",
+        "url": "http://roms.sidecartridge.com/Wizball.STC",
         "name": "Wizball",
         "description": "Guide Wizball, a bouncing sphere, through various levels and collect droplets.",
         "tags": [
@@ -41,7 +41,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Star%20Wars.STC",
+        "url": "http://roms.sidecartridge.com/Star%20Wars.STC",
         "name": "Star Wars",
         "description": "A space simulation game based on the Star Wars movies.",
         "tags": [
@@ -52,7 +52,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/STE%20Test%20v1.9.img",
+        "url": "http://roms.sidecartridge.com/STE%20Test%20v1.9.img",
         "name": "STE Diagnostic v1.9",
         "description": "A diagnostic tool for Atari STE computers.",
         "tags": [
@@ -62,7 +62,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/Manix.STC",
+        "url": "http://roms.sidecartridge.com/Manix.STC",
         "name": "Manix",
         "description": "An action-packed platformer game with a wide range of enemies.",
         "tags": [
@@ -72,7 +72,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Rick%20Dangerous.STC",
+        "url": "http://roms.sidecartridge.com/Rick%20Dangerous.STC",
         "name": "Rick Dangerous",
         "description": "Join Rick Dangerous in his quest through various terrains filled with traps and enemies.",
         "tags": [
@@ -82,7 +82,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/CA3F_1W.BIN",
+        "url": "http://roms.sidecartridge.com/CA3F_1W.BIN",
         "name": "DiskDoctor, FIRDC and MonST",
         "description": "DiskDoctor, FIRDC and MonST in a PPera example of custom built cartridge.",
         "tags": [
@@ -93,7 +93,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/Xenon.STC",
+        "url": "http://roms.sidecartridge.com/Xenon.STC",
         "name": "Xenon",
         "description": "A vertical scrolling shooter game where players control a vehicle.",
         "tags": [
@@ -104,7 +104,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Ultimate%20Ripper%20v1.2.img",
+        "url": "http://roms.sidecartridge.com/Ultimate%20Ripper%20v1.2.img",
         "name": "Ultimate Ripper v1.2",
         "description": "A tool for extracting or 'ripping' data from games or applications on Atari.",
         "tags": [
@@ -114,7 +114,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/TESTROM.BIN",
+        "url": "http://roms.sidecartridge.com/TESTROM.BIN",
         "name": "TESTROM Cartridge for Sidecart",
         "description": "A generic test ROM for Atari hardware, used to verify functionality.",
         "tags": [
@@ -124,7 +124,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%203.61.img",
+        "url": "http://roms.sidecartridge.com/ST%20Diagnostic%203.61.img",
         "name": "ST Diagnostic 3.61",
         "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
         "tags": [
@@ -135,7 +135,7 @@
         "size_kb": 32
     },
     {
-        "url": "http://roms.sidecart.xyz/Start%20Raiders.STC",
+        "url": "http://roms.sidecartridge.com/Start%20Raiders.STC",
         "name": "Start Raiders",
         "description": "A space adventure game where players embark on a journey through the stars.",
         "tags": [
@@ -146,7 +146,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/cumana%20OS-9.stc",
+        "url": "http://roms.sidecartridge.com/cumana%20OS-9.stc",
         "name": "Cumana OS-9",
         "description": "A popular operating system.",
         "tags": [
@@ -155,7 +155,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Multiface%20ST%202.0.stc",
+        "url": "http://roms.sidecartridge.com/Multiface%20ST%202.0.stc",
         "name": "Multiface ST 2.0",
         "description": "A tool for extracting or 'ripping' data from games or applications on Atari.",
         "tags": [
@@ -165,7 +165,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Subhumans%20LLS.stc",
+        "url": "http://roms.sidecartridge.com/Subhumans%20LLS.stc",
         "name": "Subhumans LLS",
         "description": "A tool for extracting or 'ripping' data from games or applications on Atari.",
         "tags": [
@@ -175,7 +175,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/FastBASIC%201.05b.stc",
+        "url": "http://roms.sidecartridge.com/FastBASIC%201.05b.stc",
         "name": "FastBASIC 1.05b",
         "description": "A version of the BASIC programming language.",
         "tags": [
@@ -185,7 +185,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/backpack.stc",
+        "url": "http://roms.sidecartridge.com/backpack.stc",
         "name": "Backpack",
         "description": "Utility software for file management.",
         "tags": [
@@ -195,7 +195,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/DeskCart.stc",
+        "url": "http://roms.sidecartridge.com/DeskCart.stc",
         "name": "DeskCart",
         "description": "Desktop cart utility.",
         "tags": [
@@ -205,7 +205,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Magic%20SAC.stc",
+        "url": "http://roms.sidecartridge.com/Magic%20SAC.stc",
         "name": "Magic SAC",
         "description": "Apple MAC Roms for the Macintosh emulator.",
         "tags": [
@@ -215,7 +215,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/VT100.stc",
+        "url": "http://roms.sidecartridge.com/VT100.stc",
         "name": "VT100 Terminal Emulator",
         "description": "Terminal emulation software.",
         "tags": [
@@ -225,7 +225,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Supermon%201b3.stc",
+        "url": "http://roms.sidecartridge.com/Supermon%201b3.stc",
         "name": "Supermon 1b3",
         "description": "A monitor and debugging tool.",
         "tags": [
@@ -235,7 +235,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Spectre%20GCR.stc",
+        "url": "http://roms.sidecartridge.com/Spectre%20GCR.stc",
         "name": "Spectre GCR",
         "description": "Apple MAC Roms for the Macintosh emulator.",
         "tags": [
@@ -245,7 +245,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/SMS2.stc",
+        "url": "http://roms.sidecartridge.com/SMS2.stc",
         "name": "Small Multitasking System 2",
         "description": "Small Multitasking System 2, an alternative OS",
         "tags": [
@@ -254,7 +254,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/explorer%200.28.stc",
+        "url": "http://roms.sidecartridge.com/explorer%200.28.stc",
         "name": "Explorer",
         "description": "A tool for extracting or 'ripping' data from games or applications on Atari.",
         "tags": [
@@ -264,7 +264,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/Mystery1.stc",
+        "url": "http://roms.sidecartridge.com/Mystery1.stc",
         "name": "Mystery1",
         "description": "A mysterious game. Can you solve the puzzle?",
         "tags": [
@@ -274,7 +274,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/etoscart.img",
+        "url": "http://roms.sidecartridge.com/etoscart.img",
         "name": "EmuTOS 1.2.1",
         "description": "EmuTOS is a TOS compatible operating system for Atari ST series computers, and more. It is made from Digital Research's GPLed original sources and is a free and open source alternative to Atari proprietary ROMs.",
         "tags": [
@@ -283,7 +283,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/MegaSTE%20Diagnostic%20v1.5.bin",
+        "url": "http://roms.sidecartridge.com/MegaSTE%20Diagnostic%20v1.5.bin",
         "name": "MegaSTE Diagnostic v1.5",
         "description": "A diagnostic tool tailored for the Atari MegaSTE computer series.",
         "tags": [
@@ -293,7 +293,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/Falcon%20Diagnostic%20v1.21.bin",
+        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.21.bin",
         "name": "Falcon Diagnostic v1.21",
         "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
         "tags": [
@@ -304,7 +304,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/Falcon%20Diagnostic%20v1.20.bin",
+        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.20.bin",
         "name": "Falcon Diagnostic v1.20",
         "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
         "tags": [
@@ -315,7 +315,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/TT%20Diagnostic%20v1.6.bin",
+        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.6.bin",
         "name": "TT Diagnostic v1.6",
         "description": "A diagnostic tool tailored for the Atari TT computer series.",
         "tags": [
@@ -326,7 +326,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/SYSINFO.STC",
+        "url": "http://roms.sidecartridge.com/SYSINFO.STC",
         "name": "SYSINFO",
         "description": "System information tool",
         "tags": [
@@ -336,7 +336,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/Falcon%20Diagnostic%20v1.25.bin",
+        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.25.bin",
         "name": "Falcon Diagnostic v1.25",
         "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
         "tags": [
@@ -347,7 +347,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/TT%20Diagnostic%20v1.5.bin",
+        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.5.bin",
         "name": "TT Diagnostic v1.5",
         "description": "A diagnostic tool tailored for the Atari TT computer series.",
         "tags": [
@@ -358,7 +358,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/REVCART.STC",
+        "url": "http://roms.sidecartridge.com/REVCART.STC",
         "name": "Revenge of the Mutant Camels",
         "description": "The follow-up game of the classic Attack of the Mutant Camels.",
         "tags": [
@@ -368,7 +368,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/TT%20Diagnostic%20v1.4.bin",
+        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.4.bin",
         "name": "TT Diagnostic v1.4",
         "description": "A diagnostic tool tailored for the Atari TT computer series.",
         "tags": [
@@ -379,7 +379,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/YAART_TT.STC",
+        "url": "http://roms.sidecartridge.com/YAART_TT.STC",
         "name": "Yet Another Atari RAM Test for TT",
         "description": "Yet Another Atari RAM Test for TT series",
         "tags": [
@@ -390,7 +390,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/ULTIBOOT.STC",
+        "url": "http://roms.sidecartridge.com/ULTIBOOT.STC",
         "name": "ULTIBOOT - Disk utilities",
         "description": "A set of disk utilities for Atari ST computers.",
         "tags": [
@@ -400,7 +400,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/YAART_ST.STC",
+        "url": "http://roms.sidecartridge.com/YAART_ST.STC",
         "name": "Yet Another Atari RAM Test for ST/STE series",
         "description": "Yet Another Atari RAM Test for ST/STE series",
         "tags": [
@@ -411,7 +411,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%204.21.bin",
+        "url": "http://roms.sidecartridge.com/ST%20Diagnostic%204.21.bin",
         "name": "ST Diagnostic 4.21",
         "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
         "tags": [
@@ -422,7 +422,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/GB6.STC",
+        "url": "http://roms.sidecartridge.com/GB6.STC",
         "name": "GEMBENCH 6.0",
         "description": "GEMBENCH 6.0 - A diagnostic tool for Atari ST computers by Exxos.",
         "tags": [
@@ -432,7 +432,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/CARD1.STC",
+        "url": "http://roms.sidecartridge.com/CARD1.STC",
         "name": "DiskDoctor, Kobold and Tracc 4",
         "description": "Copy disk utilities for Atari ST computers.",
         "tags": [
@@ -442,7 +442,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%204.0c.bin",
+        "url": "http://roms.sidecartridge.com/ST%20Diagnostic%204.0c.bin",
         "name": "ST Diagnostic 4.0c",
         "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
         "tags": [
@@ -453,7 +453,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/Falcon%20Diagnostic%20v1.27b.bin",
+        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.27b.bin",
         "name": "Falcon Diagnostic v1.27b",
         "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
         "tags": [
@@ -464,7 +464,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%20v4.3.bin",
+        "url": "http://roms.sidecartridge.com/ST%20Diagnostic%20v4.3.bin",
         "name": "ST Diagnostic v4.3",
         "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
         "tags": [
@@ -475,7 +475,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/ST%20Diagnostic%20v4.4.bin",
+        "url": "http://roms.sidecartridge.com/ST%20Diagnostic%20v4.4.bin",
         "name": "ST Diagnostic v4.4",
         "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
         "tags": [
@@ -486,7 +486,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/Ultimate%20Ripper%201.2fr.bin",
+        "url": "http://roms.sidecartridge.com/Ultimate%20Ripper%201.2fr.bin",
         "name": "Ultimate Ripper v1.2fr",
         "description": "A tool for extracting or 'ripping' data from games or applications on Atari. French version.",
         "tags": [
@@ -496,7 +496,7 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecart.xyz/Shackled.bin",
+        "url": "http://roms.sidecartridge.com/Shackled.bin",
         "name": "Shackled",
         "description": "Shackled is an Atari's Gauntlet-like run and gun video game developed by Data East and released in 1986 for arcades.",
         "tags": [
@@ -506,7 +506,7 @@
         "size_kb": 128
     },
     {
-        "url": "http://roms.sidecart.xyz/1st%20address%20v1.01-D.bin",
+        "url": "http://roms.sidecartridge.com/1st%20address%20v1.01-D.bin",
         "name": "1st address v1.01-D",
         "description": "1st address is a file management assistant.",
         "tags": [
