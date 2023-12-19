@@ -16,6 +16,9 @@ int main()
     // Set the clock frequency. 20% overclocking
     set_sys_clock_khz(RP2040_CLOCK_FREQ_KHZ, true);
 
+    // Set the voltage
+    vreg_set_voltage(RP2040_VOLTAGE);
+
     // Configure the input pins for ROM4 and ROM3
     gpio_init(SELECT_GPIO);
     gpio_set_dir(SELECT_GPIO, GPIO_IN);
@@ -29,6 +32,14 @@ int main()
 #endif
     // Only startup information to display
     printf("\n\nSidecart ROM emulator. %s (%s). %s mode.\n\n", RELEASE_VERSION, RELEASE_DATE, _DEBUG ? "DEBUG" : "RELEASE");
+
+#if _DEBUG
+    // Show information about the frequency and voltage
+    int current_clock_frequency_khz = RP2040_CLOCK_FREQ_KHZ;
+    const char *current_voltage = VOLTAGE_VALUES[RP2040_VOLTAGE];
+    DPRINTF("Clock frequency: %i KHz\n", current_clock_frequency_khz);
+    DPRINTF("Voltage: %s\n", current_voltage);
+#endif
 
     // Init the CYW43 WiFi module
     if (cyw43_arch_init())
@@ -103,7 +114,7 @@ int main()
                 if (gpio_get(5) != 0)
                 {
                     select_button_action(safe_config_reboot, write_config_only_once);
-                    // Write config only once to avoid hitting the flash too much
+                    // Write config only once to avoid hitting the flash too much 
                     write_config_only_once = false;
                 }
             }
