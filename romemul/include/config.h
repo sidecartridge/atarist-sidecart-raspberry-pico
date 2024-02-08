@@ -80,6 +80,10 @@ int erase_firmware_from_RAM();
 
 void blink_error();
 
+char *bin_2_str(int number);
+
+void set_and_swap_longword(uint32_t memory_address, uint32_t longword_value);
+
 // int remove_entry(const char *key);
 
 #endif // CONFIG_H

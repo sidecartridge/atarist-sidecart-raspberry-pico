@@ -486,3 +486,32 @@ void blink_error()
         }
     }
 }
+
+// Don't forget to free the returned string after use!
+char *bin_2_str(int number)
+{
+    int numBits = sizeof(number) * 8;
+    char *binaryStr = malloc(numBits + 1); // Allocate memory for the binary string plus the null terminator
+    if (binaryStr == NULL)
+    {
+        return NULL; // Return NULL if memory allocation fails
+    }
+
+    unsigned int mask = 1 << (numBits - 1);
+    for (int i = 0; i < numBits; i++)
+    {
+        binaryStr[i] = (number & mask) ? '1' : '0'; // Use bitwise AND to check if the current bit is 1 or 0 and store in the string
+        mask >>= 1;                                 // Shift the mask one bit to the right
+    }
+    binaryStr[numBits] = '\0'; // Null-terminate the string
+
+    return binaryStr;
+}
+
+// Change endianess of a 32 bit value by swapping the words in the longword in memory
+void set_and_swap_longword(uint32_t memory_address, uint32_t longword_value)
+{
+    uint16_t *address = (uint16_t *)(memory_address);
+    address[0] = (longword_value >> 16) & 0xFFFF; // Most significant 16 bits
+    address[1] = longword_value & 0xFFFF;         // Least significant 16 bit
+}

@@ -1510,3 +1510,33 @@ void shorten_fname(const char *originalName, char shortenedName[14])
     }
     DPRINTF("Shortened file name: %s\n", shortenedName);
 }
+
+/**
+ * @brief Removes consecutive duplicate slashes from a string.
+ *
+ * This function iterates through the provided string, `str`, and when it
+ * finds two consecutive forward slashes, it removes one of them. This
+ * process is done in-place, modifying the original string.
+ *
+ * @param str The string from which duplicate slashes are to be removed.
+ *            This parameter is modified in place.
+ *
+ * @note The function modifies the string in place. Ensure the provided
+ *       string is modifiable and not a string literal.
+ *
+ * Example Usage:
+ *     char path[] = "path//to//your//directory/";
+ *     remove_dup_slashes(path);
+ *     // path is now "path/to/your/directory/"
+ */
+void remove_dup_slashes(char *str)
+{
+    for (char *p = str; *p != '\0'; p++)
+    {
+        if (*p == '/' && *(p + 1) == '/')
+        {
+            memmove(p, p + 1, strlen(p));
+            p--; // Adjust pointer to recheck this position after removal
+        }
+    }
+}

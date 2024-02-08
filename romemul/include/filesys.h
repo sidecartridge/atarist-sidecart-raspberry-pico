@@ -91,5 +91,6 @@ FRESULT read_and_trim_file(const char *path, char **content);
 void split_fullpath(const char *fullPath, char *drive, char *folders, char *filePattern);
 void back_2_forwardslash(char *path);
 void shorten_fname(const char *originalName, char shortenedName[12]);
+void remove_dup_slashes(char *str);
 
 #endif // FILESYS_H

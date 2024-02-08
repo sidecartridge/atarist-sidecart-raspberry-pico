@@ -59,12 +59,23 @@
 #define GEMDRVEMUL_SHOW_VECTOR_CALL (APP_GEMDRVEMUL << 8 | 2) // Show the vector call of the GEMDRIVE emulator
 #define GEMDRVEMUL_REENTRY_LOCK (APP_GEMDRVEMUL << 8 | 3)     // Lock the reentry of the GEMDRIVE emulator
 #define GEMDRVEMUL_REENTRY_UNLOCK (APP_GEMDRVEMUL << 8 | 4)   // Unlock the reentry of the GEMDRIVE emulator
-#define GEMDRVEMUL_DGETDRV_CALL (APP_GEMDRVEMUL << 8 | 0x19)     // Show the Dgetdrv call
-#define GEMDRVEMUL_FSETDTA_CALL (APP_GEMDRVEMUL << 8 | 0x1A)     // Show the Fsetdta call
-#define GEMDRVEMUL_FSFIRST_CALL (APP_GEMDRVEMUL << 8 | 0x4E)     // Show the Fsfirst call
-#define GEMDRVEMUL_FSNEXT_CALL (APP_GEMDRVEMUL << 8 | 0x4F)      // Show the Fsnext call
-#define GEMDRVEMUL_FOPEN_CALL (APP_GEMDRVEMUL << 8 | 0x3D)       // Show the Fopen call
-#define GEMDRVEMUL_DGETPATH_CALL (APP_GEMDRVEMUL << 8 | 0x47)   // Show the Dgetpath call
-#define GEMDRVEMUL_DSETPATH_CALL (APP_GEMDRVEMUL << 8 | 0x3B)   // Show the Dgetpath call
+#define GEMDRVEMUL_DGETDRV_CALL (APP_GEMDRVEMUL << 8 | 0x19)  // Show the Dgetdrv call
+#define GEMDRVEMUL_FSETDTA_CALL (APP_GEMDRVEMUL << 8 | 0x1A)  // Show the Fsetdta call
+#define GEMDRVEMUL_DCREATE_CALL (APP_GEMDRVEMUL << 8 | 0x39)  // Show the Dcreate call
+#define GEMDRVEMUL_DDELETE_CALL (APP_GEMDRVEMUL << 8 | 0x3A)  // Show the Ddelete call
+#define GEMDRVEMUL_DSETPATH_CALL (APP_GEMDRVEMUL << 8 | 0x3B) // Show the Dgetpath call
+#define GEMDRVEMUL_FCREATE_CALL (APP_GEMDRVEMUL << 8 | 0x3C)  // Show the Fcreate call
+#define GEMDRVEMUL_FOPEN_CALL (APP_GEMDRVEMUL << 8 | 0x3D)    // Show the Fopen call
+#define GEMDRVEMUL_FCLOSE_CALL (APP_GEMDRVEMUL << 8 | 0x3E)   // Show the Fclose call
+#define GEMDRVEMUL_FDELETE_CALL (APP_GEMDRVEMUL << 8 | 0x41)  // Show the Fdelete call
+#define GEMDRVEMUL_DGETPATH_CALL (APP_GEMDRVEMUL << 8 | 0x47) // Show the Dgetpath call
+#define GEMDRVEMUL_FSFIRST_CALL (APP_GEMDRVEMUL << 8 | 0x4E)  // Show the Fsfirst call
+#define GEMDRVEMUL_FSNEXT_CALL (APP_GEMDRVEMUL << 8 | 0x4F)   // Show the Fsnext call
+#define GEMDRVEMUL_PEXEC_CALL (APP_GEMDRVEMUL << 8 | 0x4B)    // Show the Pexec call
+
+#define GEMDRVEMUL_READ_BUFF_CALL (APP_GEMDRVEMUL << 8 | 0x81)   // Show the read buffer call
+#define GEMDRVEMUL_DEBUG (APP_GEMDRVEMUL << 8 | 0x82)            // Show the debug info
+#define GEMDRVEMUL_SAVE_BASEPAGE (APP_GEMDRVEMUL << 8 | 0x83)    // Save a basepage
+#define GEMDRVEMUL_SAVE_EXEC_HEADER (APP_GEMDRVEMUL << 8 | 0x84) // Save an exec header
 
 #endif // COMMANDS_H_
