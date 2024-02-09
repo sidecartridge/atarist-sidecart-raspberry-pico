@@ -142,7 +142,7 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url);
 char *get_latest_release(void);
 int download_rom(const char *url, uint32_t rom_load_offset);
 int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag);
-void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url);
+err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url);
 
 void freeRomItem(RomInfo *item);
 

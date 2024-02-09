@@ -846,6 +846,7 @@ int download_rom(const char *url, uint32_t rom_load_offset)
     bool is_steem = false;
     httpc_state_t *connection;
     bool complete = false;
+    err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
     UrlParts parts;
     uint32_t dest_address = rom_load_offset; // Initialize pointer to the ROM address
 
@@ -863,6 +864,7 @@ int download_rom(const char *url, uint32_t rom_load_offset)
         if (srv_res != 200)
         {
             DPRINTF("ROM image download something went wrong. HTTP error: %d\n", srv_res);
+            callback_error = srv_res;
         }
         else
         {
@@ -1037,16 +1039,17 @@ int download_rom(const char *url, uint32_t rom_load_offset)
 
     free_url_parts(&parts);
     free(flash_buff);
-    return 0;
+    return callback_error;
 }
 
-void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url)
+err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url)
 {
     size_t BUFFER_SIZE = 32768;
     char *buff = malloc(BUFFER_SIZE);
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
     bool complete = false;
+    err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
     UrlParts parts;
     u32_t content_len = 0;
 
@@ -1065,6 +1068,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
         if (srv_res != 200)
         {
             DPRINTF("Floppy images db something went wrong. HTTP error: %d\n", srv_res);
+            callback_error = srv_res;
         }
         else
         {
@@ -1093,7 +1097,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     if (split_url(url, &parts) != 0)
     {
         DPRINTF("Failed to split URL\n");
-        return;
+        return -1;
     }
 
     DPRINTF("Protocol %s\n", parts.protocol);
@@ -1122,7 +1126,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
         DPRINTF("HTTP GET failed: %d\n", err);
         free_url_parts(&parts);
         free(buff);
-        return;
+        return -1;
     }
     while (!complete)
     {
@@ -1141,6 +1145,13 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     }
 
     free_url_parts(&parts);
+
+    if (callback_error != ERR_OK)
+    {
+        if (buff != NULL)
+            free(buff);
+        return callback_error;
+    }
 
     bool inside_quotes = false;
     char *start = NULL;
@@ -1163,7 +1174,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     {
         // If no entries found, short circuit and return
         free(buff);
-        return;
+        return -1;
     }
 
     FloppyImageInfo *current = NULL;
@@ -1174,7 +1185,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     {
         DPRINTF("Memory allocation failed\n");
         free(buff);
-        return;
+        return -1;
     }
     char *buff_iter = buff;
     current = *items; // Set current to the first allocated FloppyImageInfo structure
@@ -1222,7 +1233,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
                     if (!next)
                     {
                         DPRINTF("Memory allocation failed\n");
-                        return;
+                        return -1;
                     }
                     // Initialize the newly allocated structure
                     *next = (FloppyImageInfo){0};
@@ -1238,6 +1249,7 @@ void get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *ur
     {
         free(buff);
     }
+    return callback_error;
 }
 
 int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag)
@@ -1247,6 +1259,7 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
     bool complete = false;
+    err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
     UrlParts parts;
 
     FRESULT fr;    // FatFS function common result code
@@ -1268,6 +1281,7 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
         if (srv_res != 200)
         {
             DPRINTF("Floppy image download something went wrong. HTTP error: %d\n", srv_res);
+            callback_error = srv_res;
         }
         else
         {
@@ -1382,5 +1396,5 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
 
     free_url_parts(&parts);
     free(buff);
-    return 0;
+    return callback_error;
 }
