@@ -678,16 +678,16 @@ char *download_latest_release(const char *url)
 
 char *get_latest_release(void)
 {
-    ConfigEntry *entry = find_entry("LASTEST_RELEASE_URL");
+    ConfigEntry *entry = find_entry(PARAM_LASTEST_RELEASE_URL);
 
     if (entry == NULL)
     {
-        DPRINTF("LASTEST_RELEASE_URL not found in config\n");
+        DPRINTF("%s not found in config\n", PARAM_LASTEST_RELEASE_URL);
         return NULL;
     }
     if (strlen(entry->value) == 0)
     {
-        DPRINTF("LASTEST_RELEASE_URL is empty\n");
+        DPRINTF("%s is empty\n", PARAM_LASTEST_RELEASE_URL);
         return NULL;
     }
 

@@ -506,6 +506,23 @@ int init_firmware()
     {
         DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
     }
+    u_int32_t network_status_polling_ms = NETWORK_POLL_INTERVAL;
+    ConfigEntry *default_network_status_polling_sec = find_entry(PARAM_NETWORK_STATUS_SEC);
+    if (default_network_status_polling_sec != NULL)
+    {
+        DPRINTF("%s found in the config file. Raw value: %s\n", PARAM_NETWORK_STATUS_SEC, default_network_status_polling_sec->value);
+        network_status_polling_ms = atoi(default_network_status_polling_sec->value) * 1000;
+        // If the value is too small, set the minimum value
+        if (network_status_polling_ms < NETWORK_POLL_INTERVAL_MIN)
+        {
+            network_status_polling_ms = NETWORK_POLL_INTERVAL_MIN;
+        }
+        DPRINTF("%s found in the config file. Using value: %d\n", PARAM_NETWORK_STATUS_SEC, network_status_polling_ms);
+    }
+    else
+    {
+        DPRINTF("%s not found in the config file. Using default value: %d\n", PARAM_NETWORK_STATUS_SEC, network_status_polling_ms);
+    }
 
     if (microsd_mounted)
     {
@@ -727,7 +744,7 @@ int init_firmware()
             memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
 
             // Get the URL from the configuration
-            char *url = find_entry("ROMS_YAML_URL")->value;
+            char *url = find_entry(PARAM_ROMS_YAML_URL)->value;
 
             // The the JSON file info
             get_json_files(&network_files, &filtered_num_network_files, url);
@@ -935,7 +952,7 @@ int init_firmware()
         }
 
         // Increase the counter and reset it if it reaches the limit
-        network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
+        network_poll_counter >= network_status_polling_ms ? network_poll_counter = 0 : network_poll_counter++;
         storage_poll_counter >= STORAGE_POLL_INTERVAL ? storage_poll_counter = 0 : storage_poll_counter++;
 
         // Store the seed of the random number generator in the ROM memory space
