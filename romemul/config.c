@@ -24,7 +24,8 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"WIFI_SCAN_SECONDS", TYPE_INT, "15"},
     {"WIFI_PASSWORD", TYPE_STRING, ""},
     {"WIFI_SSID", TYPE_STRING, ""},
-    {"WIFI_AUTH", TYPE_INT, ""}};
+    {"WIFI_AUTH", TYPE_INT, ""},
+    {"WIFI_COUNTRY", TYPE_STRING, ""}};
 
 ConfigData configData;
 

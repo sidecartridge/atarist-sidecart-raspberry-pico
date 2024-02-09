@@ -62,10 +62,15 @@ void network_swap_json_data(uint16_t *dest_ptr_word)
 void network_init()
 {
 
+    uint32_t country = CYW43_COUNTRY_WORLDWIDE;
+    char *country_entry = find_entry("WIFI_COUNTRY")->value;
+    if (strlen(country_entry) == 2) {
+        country = CYW43_COUNTRY(country_entry[0], country_entry[1], 0);
+    }
     cyw43_wifi_set_up(&cyw43_state,
                       CYW43_ITF_STA,
                       true,
-                      CYW43_COUNTRY_WORLDWIDE);
+                      country);
 
     // Enable the STA mode
     cyw43_arch_enable_sta_mode();
