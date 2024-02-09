@@ -35,9 +35,10 @@
 #define MAX_BSSID_LENGTH 20
 #define IPV4_ADDRESS_LENGTH 16
 #define IPV6_ADDRESS_LENGTH 40
-#define NETWORK_POLL_INTERVAL 10000
+#define NETWORK_POLL_INTERVAL 10000    // milliseconds
+#define NETWORK_POLL_INTERVAL_MIN 3000 // milliseconds
 #define NETWORK_CONNECTION_ASYNC true
-#define NETWORK_CONNECTION_TIMEOUT 5000 // 5 seconds
+#define NETWORK_CONNECTION_TIMEOUT 5000 // 5000 milliseconds
 #define FIRMWARE_RELEASE_VERSION_URL "https://api.github.com/repos/diegoparrilla/atarist-sidecart-raspberry-pico/releases/latest"
 
 typedef enum
