@@ -22,7 +22,8 @@
 #include <hardware/watchdog.h>
 #include "pico/cyw43_arch.h"
 
-#define MAX_ENTRIES 22
+// sync values here as well : atarist-sidecart-firmware/configurator/src/include/config.h
+#define MAX_ENTRIES 23
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
