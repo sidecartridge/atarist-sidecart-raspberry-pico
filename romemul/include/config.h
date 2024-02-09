@@ -22,7 +22,7 @@
 #include <hardware/watchdog.h>
 #include "pico/cyw43_arch.h"
 
-#define MAX_ENTRIES 19
+#define MAX_ENTRIES 20
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 

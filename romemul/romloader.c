@@ -848,7 +848,7 @@ int init_firmware()
 
             sprintf(url, "%s/db/%c.csv", base_url, query_floppy_letter);
 
-            get_floppy_db_files(&floppy_images_files, &filtered_num_floppy_images_files, url);
+            err_t res = get_floppy_db_files(&floppy_images_files, &filtered_num_floppy_images_files, url);
 
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
 
@@ -861,34 +861,41 @@ int init_firmware()
             // }
 
             memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE); // Clean the memory area except the random token
-            if (filtered_num_floppy_images_files > 0)
+            if (res == ERR_OK)
             {
-                // Iterate over the RomInfo items and populate the names array
-                char *dest_ptr = (char *)(memory_area + 4); // Bypass random token
-                // Get the first element, if any
-                FloppyImageInfo *floppy_images_file = floppy_images_files;
-                for (int i = 0; i < filtered_num_floppy_images_files; i++)
+                if (filtered_num_floppy_images_files > 0)
                 {
-                    // Copy the string from network_files[i].name to dest_ptr
-                    // Ensure the name is padded with spaces up to position 60
-                    char padded_name[61]; // 60 characters for padding + 1 for null terminator
-                    snprintf(padded_name, sizeof(padded_name), "%-65s", floppy_images_file->name);
+                    // Iterate over the RomInfo items and populate the names array
+                    char *dest_ptr = (char *)(memory_area + 4); // Bypass random token
+                    // Get the first element, if any
+                    FloppyImageInfo *floppy_images_file = floppy_images_files;
+                    for (int i = 0; i < filtered_num_floppy_images_files; i++)
+                    {
+                        // Copy the string from network_files[i].name to dest_ptr
+                        // Ensure the name is padded with spaces up to position 60
+                        char padded_name[61]; // 60 characters for padding + 1 for null terminator
+                        snprintf(padded_name, sizeof(padded_name), "%-65s", floppy_images_file->name);
 
-                    char padded_extra[16]; // 15 characters for padding + 1 for null terminator
-                    snprintf(padded_extra, sizeof(padded_extra), "%-15s", floppy_images_file->extra);
+                        char padded_extra[16]; // 15 characters for padding + 1 for null terminator
+                        snprintf(padded_extra, sizeof(padded_extra), "%-15s", floppy_images_file->extra);
 
-                    // Display padded content
-                    sprintf(dest_ptr, "%s%s\0", padded_name, padded_extra);
-                    dest_ptr += strlen(dest_ptr) + 1;
-                    floppy_images_file = floppy_images_file->next;
+                        // Display padded content
+                        sprintf(dest_ptr, "%s%s\0", padded_name, padded_extra);
+                        dest_ptr += strlen(dest_ptr) + 1;
+                        floppy_images_file = floppy_images_file->next;
+                    }
+
+                    // Swap the words to motorola endian format: BIG ENDIAN
+                    swap_words((__uint16_t *)(memory_area + RANDOM_SEED_SIZE), CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
                 }
-
-                // Swap the words to motorola endian format: BIG ENDIAN
-                swap_words((__uint16_t *)(memory_area + RANDOM_SEED_SIZE), CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
+                else
+                {
+                    DPRINTF("No floppy images found for letter %c\n", query_floppy_letter);
+                }
             }
             else
             {
-                DPRINTF("No floppy images found for letter %c\n", query_floppy_letter);
+                DPRINTF("Error getting floppy images from the Atari ST Database: %d\n", res);
             }
 
             DPRINTF("Random token: %x\n", random_token);
@@ -978,19 +985,28 @@ int init_firmware()
     if (rom_network_selected > 0)
     {
         DPRINTF("ROM network selected: %d\n", rom_network_selected);
-        int res = download_rom(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
+        err_t res = download_rom(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
+        DPRINTF("Download ROM result: %d\n", res);
 
-        // Free dynamically allocated memory
-        for (int i = 0; i < filtered_num_network_files; i++)
+        if (res == ERR_OK)
         {
-            freeRomItem(&network_files[i]);
+            // Free dynamically allocated memory
+            for (int i = 0; i < filtered_num_network_files; i++)
+            {
+                freeRomItem(&network_files[i]);
+            }
+            free(network_files);
+
+            put_string("BOOT_FEATURE", "ROM_EMULATOR");
+            write_all_entries();
+
+            *((volatile uint32_t *)(memory_area)) = random_token;
         }
-        free(network_files);
-
-        put_string("BOOT_FEATURE", "ROM_EMULATOR");
-        write_all_entries();
-
-        *((volatile uint32_t *)(memory_area)) = random_token;
+        else
+        {
+            DPRINTF("Error downloading ROM: %d\n", res);
+            // Continue and graciously reset the board
+        }
     }
 
     if (floppy_file_selected > 0)
@@ -1117,9 +1133,9 @@ int init_firmware()
             // Directory exists
             DPRINTF("Directory exists: %s\n", dir);
 
-            int err = download_floppy(&full_url[0], dir, dest_filename, true);
+            err_t err = download_floppy(&full_url[0], dir, dest_filename, true);
 
-            if (err != 0)
+            if (err != ERR_OK)
             {
                 floppy_image_selected = 0;
                 floppy_image_selected_status = 3; // Error: Failed downloading file
