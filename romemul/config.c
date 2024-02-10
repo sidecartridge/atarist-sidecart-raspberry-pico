@@ -7,7 +7,7 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"DELAY_ROM_EMULATION", TYPE_BOOL, "false"},
     {PARAM_DOWNLOAD_TIMEOUT_SEC, TYPE_INT, "60"},
     {"FLOPPIES_FOLDER", TYPE_STRING, "/floppies"},
-    {"FLOPPY_DB_URL", TYPE_STRING, "http://ataristdb.sidecart.xyz"},
+    {PARAM_FLOPPY_DB_URL, TYPE_STRING, "http://ataristdb.sidecartridge.com"},
     {"FLOPPY_IMAGE_A", TYPE_STRING, ""},
     {"FLOPPY_IMAGE_B", TYPE_STRING, ""},
     {"HOSTNAME", TYPE_STRING, "sidecart"},
@@ -15,7 +15,7 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {PARAM_MENU_REFRESH_SEC, TYPE_INT, "3"},
     {PARAM_NETWORK_STATUS_SEC, TYPE_INT, "5"},
     {"ROMS_FOLDER", TYPE_STRING, "/roms"},
-    {PARAM_ROMS_YAML_URL, TYPE_STRING, "http://roms.sidecart.xyz/roms.json"},
+    {PARAM_ROMS_YAML_URL, TYPE_STRING, "http://roms.sidecartridge.com/roms.json"},
     {"RTC_NTP_SERVER_HOST", TYPE_STRING, "pool.ntp.org"},
     {"RTC_NTP_SERVER_PORT", TYPE_INT, "123"},
     {"RTC_TYPE", TYPE_STRING, "SIDECART"},
@@ -67,11 +67,11 @@ static void replace_bad_domain_entries()
         }
         if (strcmp(configData.entries[i].value, "http://atarist.sidecart.xyz/beta.txt") == 0)
         {
-            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/beta.txtx");
+            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/beta.txt");
         }
         if (strcmp(configData.entries[i].value, "http://atarist.sidecart.xyz/version.txt") == 0)
         {
-            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/version.txtx");
+            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/version.txt");
         }
     }
 }
