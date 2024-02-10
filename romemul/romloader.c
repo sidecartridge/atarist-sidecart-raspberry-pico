@@ -858,7 +858,7 @@ int init_firmware()
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
 
             // Get the URL from the configuration
-            char *base_url = find_entry("FLOPPY_DB_URL")->value;
+            char *base_url = find_entry(PARAM_FLOPPY_DB_URL)->value;
 
             // Ensure that the buffer is large enough for the original URL, the `/db/`, the letter, `.csv`, and the null terminator.
             char url[256]; // Adjust the size as needed based on the maximum length of base_url.
