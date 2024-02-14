@@ -22,7 +22,8 @@
 #include <hardware/watchdog.h>
 #include "pico/cyw43_arch.h"
 
-#define MAX_ENTRIES 22
+// sync values here as well : atarist-sidecart-firmware/configurator/src/include/config.h
+#define MAX_ENTRIES 23
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
@@ -32,6 +33,7 @@
 #define PARAM_MENU_REFRESH_SEC "MENU_REFRESH_SEC"
 #define PARAM_NETWORK_STATUS_SEC "NETWORK_STATUS_SEC"
 #define PARAM_ROMS_YAML_URL "ROMS_YAML_URL"
+#define PARAM_WIFI_COUNTRY "WIFI_COUNTRY"
 
 #define TYPE_INT ((uint16_t)0)
 #define TYPE_STRING ((uint16_t)1)

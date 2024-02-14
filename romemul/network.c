@@ -59,13 +59,53 @@ void network_swap_json_data(uint16_t *dest_ptr_word)
     swap_words(dest_ptr_word, 4096);
 }
 
+uint32_t get_country_code(char *c, char **valid_country_str) {
+    *valid_country_str = "XX";
+    // empty configuration select worldwide
+    if (strlen(c) == 0) {
+        return CYW43_COUNTRY_WORLDWIDE;
+    }
+
+    if (strlen(c) != 2) {
+        return CYW43_COUNTRY_WORLDWIDE;
+    }
+
+    // current supported country code https://www.raspberrypi.com/documentation/pico-sdk/networking.html#CYW43_COUNTRY_
+    // ISO-3166-alpha-2
+    // XX select worldwide
+    char *valid_country_code[] = {
+        "XX", "AU", "AR", "AT", "BE", "BR", "CA", "CL",
+        "CN", "CO", "CZ", "DK", "EE", "FI", "FR", "DE",
+        "GR", "HK", "HU", "IS", "IN", "IL", "IT", "JP",
+        "KE", "LV", "LI", "LT", "LU", "MY", "MT", "MX",
+        "NL", "NZ", "NG", "NO", "PE", "PH", "PL", "PT",
+        "SG", "SK", "SI", "ZA", "KR", "ES", "SE", "CH",
+        "TW", "TH", "TR", "GB", "US"
+    };
+
+    char country[3] = { toupper(c[0]), toupper(c[1]), 0 };
+    for(int i=0;i<(sizeof(valid_country_code)/sizeof(valid_country_code[0]));i++) {
+        if (!strcmp(country, valid_country_code[i])) {
+            *valid_country_str = valid_country_code[i];
+            return CYW43_COUNTRY(country[0], country[1], 0);
+        }
+    }
+    return CYW43_COUNTRY_WORLDWIDE;
+}
+
 void network_init()
 {
-
+    uint32_t country = CYW43_COUNTRY_WORLDWIDE;
+    ConfigEntry *country_entry = find_entry(PARAM_WIFI_COUNTRY);
+    if (country_entry != NULL) {
+        char *valid;
+        country = get_country_code(country_entry->value, &valid);
+        put_string(PARAM_WIFI_COUNTRY, valid);
+    }
     cyw43_wifi_set_up(&cyw43_state,
                       CYW43_ITF_STA,
                       true,
-                      CYW43_COUNTRY_WORLDWIDE);
+                      country);
 
     // Enable the STA mode
     cyw43_arch_enable_sta_mode();

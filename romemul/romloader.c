@@ -54,6 +54,7 @@ static bool persist_config = false;
 static bool reset_default = false;
 static bool scan_network = false;
 static bool disconnect_network = false;
+static bool restart_network = false;
 static bool get_json_file = false;
 
 // ROMs in network variables
@@ -153,6 +154,9 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         swap_data((__uint16_t *)entry);
         DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_string(entry->key, entry->value);
+        if (!strcmp(entry->key, PARAM_WIFI_COUNTRY)) {
+            restart_network = true;
+        }
         *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case PUT_CONFIG_INTEGER:
@@ -599,6 +603,18 @@ int init_firmware()
             network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
             free(wifi_auth);
             wifi_auth = NULL;
+        }
+        if (restart_network)
+        {
+            restart_network = false;
+            // Force  network disconnection
+            network_disconnect();
+            // Need to deinit and init again the full network stack to be able to scan again
+            cyw43_arch_deinit();
+            cyw43_arch_init();
+            network_init();
+
+            network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
         }
         if (disconnect_network)
         {
