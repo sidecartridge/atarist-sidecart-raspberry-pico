@@ -49,8 +49,8 @@ void network_swap_data(uint16_t *dest_ptr_word, uint16_t total_items)
 
 void network_swap_connection_data(uint16_t *dest_ptr_word)
 {
-    // No need to swap the connection status
-    swap_words(dest_ptr_word, MAX_SSID_LENGTH + IPV4_ADDRESS_LENGTH + IPV6_ADDRESS_LENGTH + MAX_BSSID_LENGTH);
+    // No need to swap the uint16_t
+    swap_words(dest_ptr_word, sizeof(ConnectionData) - sizeof(uint16_t) * 6);
 }
 
 void network_swap_json_data(uint16_t *dest_ptr_word)
@@ -59,14 +59,17 @@ void network_swap_json_data(uint16_t *dest_ptr_word)
     swap_words(dest_ptr_word, 4096);
 }
 
-uint32_t get_country_code(char *c, char **valid_country_str) {
+uint32_t get_country_code(char *c, char **valid_country_str)
+{
     *valid_country_str = "XX";
     // empty configuration select worldwide
-    if (strlen(c) == 0) {
+    if (strlen(c) == 0)
+    {
         return CYW43_COUNTRY_WORLDWIDE;
     }
 
-    if (strlen(c) != 2) {
+    if (strlen(c) != 2)
+    {
         return CYW43_COUNTRY_WORLDWIDE;
     }
 
@@ -80,12 +83,13 @@ uint32_t get_country_code(char *c, char **valid_country_str) {
         "KE", "LV", "LI", "LT", "LU", "MY", "MT", "MX",
         "NL", "NZ", "NG", "NO", "PE", "PH", "PL", "PT",
         "SG", "SK", "SI", "ZA", "KR", "ES", "SE", "CH",
-        "TW", "TH", "TR", "GB", "US"
-    };
+        "TW", "TH", "TR", "GB", "US"};
 
-    char country[3] = { toupper(c[0]), toupper(c[1]), 0 };
-    for(int i=0;i<(sizeof(valid_country_code)/sizeof(valid_country_code[0]));i++) {
-        if (!strcmp(country, valid_country_code[i])) {
+    char country[3] = {toupper(c[0]), toupper(c[1]), 0};
+    for (int i = 0; i < (sizeof(valid_country_code) / sizeof(valid_country_code[0])); i++)
+    {
+        if (!strcmp(country, valid_country_code[i]))
+        {
             *valid_country_str = valid_country_code[i];
             return CYW43_COUNTRY(country[0], country[1], 0);
         }
@@ -97,7 +101,8 @@ void network_init()
 {
     uint32_t country = CYW43_COUNTRY_WORLDWIDE;
     ConfigEntry *country_entry = find_entry(PARAM_WIFI_COUNTRY);
-    if (country_entry != NULL) {
+    if (country_entry != NULL)
+    {
         char *valid;
         country = get_country_code(country_entry->value, &valid);
         put_string(PARAM_WIFI_COUNTRY, valid);
@@ -221,19 +226,19 @@ void network_connect(bool force, bool async, char **pass)
         }
     }
 
-    ConfigEntry *ssid = find_entry("WIFI_SSID");
+    ConfigEntry *ssid = find_entry(PARAM_WIFI_SSID);
     if (strlen(ssid->value) == 0)
     {
         DPRINTF("No SSID found in config. Can't connect\n");
         connection_status = DISCONNECTED;
         return;
     }
-    ConfigEntry *auth_mode = find_entry("WIFI_AUTH");
+    ConfigEntry *auth_mode = find_entry(PARAM_WIFI_AUTH);
     connection_status = CONNECTING;
     char *password_value = NULL;
     if (*pass == NULL)
     {
-        ConfigEntry *password = find_entry("WIFI_PASSWORD");
+        ConfigEntry *password = find_entry(PARAM_WIFI_PASSWORD);
         if (strlen(password->value) > 0)
         {
             password_value = strdup(password->value);
@@ -377,6 +382,47 @@ void network_poll()
     cyw43_arch_poll();
 }
 
+uint32_t get_network_status_polling_ms()
+{
+    uint32_t network_status_polling_ms = NETWORK_POLL_INTERVAL * 1000;
+    ConfigEntry *default_network_status_polling_sec = find_entry(PARAM_NETWORK_STATUS_SEC);
+    if (default_network_status_polling_sec != NULL)
+    {
+        network_status_polling_ms = atoi(default_network_status_polling_sec->value) * 1000;
+        // If the value is too small, set the minimum value
+        if (network_status_polling_ms < NETWORK_POLL_INTERVAL_MIN * 1000)
+        {
+            network_status_polling_ms = NETWORK_POLL_INTERVAL_MIN * 1000;
+            DPRINTF("NETWORK_STATUS_SEC value too small. Changing to minimum value: %d\n", network_status_polling_ms);
+        }
+    }
+    else
+    {
+        DPRINTF("%s not found in the config file. Using default value: %d\n", PARAM_NETWORK_STATUS_SEC, network_status_polling_ms);
+    }
+    return network_status_polling_ms;
+}
+
+uint16_t get_wifi_scan_poll_secs()
+{
+    uint16_t value = WIFI_SCAN_POLL_COUNTER;
+    ConfigEntry *default_config_entry = find_entry(PARAM_WIFI_SCAN_SECONDS);
+    if (default_config_entry != NULL)
+    {
+        value = atoi(default_config_entry->value);
+    }
+    else
+    {
+        DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
+    }
+    if (value < WIFI_SCAN_POLL_COUNTER_MIN)
+    {
+        value = WIFI_SCAN_POLL_COUNTER_MIN;
+        DPRINTF("WIFI_SCAN_SECONDS value too small. Changing to minimum value: %d\n", value);
+    }
+    return value;
+}
+
 u_int32_t get_ip_address()
 {
     return cyw43_state.netif[0].ip_addr.addr;
@@ -395,6 +441,12 @@ u_int32_t get_netmask()
 u_int32_t get_gateway()
 {
     return cyw43_state.netif[0].gw.addr;
+}
+
+u_int32_t get_dns()
+{
+    const ip_addr_t *dns_ip = dns_getserver(0);
+    return dns_ip->addr;
 }
 
 char *print_ipv4(u_int32_t ip)
@@ -419,11 +471,34 @@ char *print_mac(uint8_t *mac_address)
 
 void get_connection_data(ConnectionData *connection_data)
 {
-    ConfigEntry *ssid = find_entry("WIFI_SSID");
-    connection_data->status = (u_int16_t)connection_status;
+    ConfigEntry *ssid = find_entry(PARAM_WIFI_SSID);
+    ConfigEntry *wifi_auth = find_entry(PARAM_WIFI_AUTH);
+    ConfigEntry *wifi_scan_interval = find_entry(PARAM_WIFI_SCAN_SECONDS);
+    ConfigEntry *network_status_scan_interval = find_entry(PARAM_NETWORK_STATUS_SEC);
+    ConfigEntry *file_downloading_timeout = find_entry(PARAM_DOWNLOAD_TIMEOUT_SEC);
+    ConfigEntry *wifi_country = find_entry(PARAM_WIFI_COUNTRY);
+    connection_data->network_status = (u_int16_t)connection_status;
     snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Not connected" + '\0');
     snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Not connected" + '\0');
     snprintf(connection_data->mac_address, sizeof(connection_data->mac_address), "%s", "Not connected" + '\0');
+    snprintf(connection_data->gw_ipv4_address, sizeof(connection_data->gw_ipv4_address), "%s", "Not connected" + '\0');
+    snprintf(connection_data->netmask_ipv4_address, sizeof(connection_data->netmask_ipv4_address), "Not connected" + '\0');
+    snprintf(connection_data->dns_ipv4_address, sizeof(connection_data->dns_ipv4_address), "%s", "Not connected" + '\0');
+    connection_data->wifi_auth_mode = (uint16_t)atoi(wifi_auth->value);
+    connection_data->wifi_scan_interval = get_wifi_scan_poll_secs();
+    connection_data->network_status_poll_interval = (uint16_t)(get_network_status_polling_ms() / 1000);
+    connection_data->file_downloading_timeout = (uint16_t)atoi(file_downloading_timeout->value);
+
+    // If the country is empty, set it to XX. Otherwise, copy the first two characters
+    if (wifi_country->value[0] == '\0')
+    { // Check if the country value is empty
+        snprintf(connection_data->wifi_country, 4, "XX\0\0");
+    }
+    else
+    {
+        snprintf(connection_data->wifi_country, 4, "%.2s\0\0", wifi_country->value);
+    }
+
     switch (connection_status)
     {
     case CONNECTED_WIFI_IP:
@@ -431,16 +506,36 @@ void get_connection_data(ConnectionData *connection_data)
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", print_ipv4(get_ip_address()));
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Not implemented" + '\0');
         snprintf(connection_data->mac_address, sizeof(connection_data->mac_address), "%s", print_mac(get_mac_address()));
+        snprintf(connection_data->gw_ipv4_address, sizeof(connection_data->gw_ipv4_address), "%s", print_ipv4(get_gateway()));
+        snprintf(connection_data->gw_ipv6_address, sizeof(connection_data->gw_ipv6_address), "%s", "Not implemented" + '\0');
+        snprintf(connection_data->netmask_ipv4_address, sizeof(connection_data->netmask_ipv4_address), "%s", print_ipv4(get_netmask()));
+        snprintf(connection_data->netmask_ipv6_address, sizeof(connection_data->netmask_ipv6_address), "%s", "Not implemented" + '\0');
+        snprintf(connection_data->dns_ipv4_address, sizeof(connection_data->dns_ipv4_address), "%s", print_ipv4(get_dns()));
+        snprintf(connection_data->dns_ipv6_address, sizeof(connection_data->dns_ipv6_address), "%s", "Not implemented" + '\0');
         break;
     case CONNECTED_WIFI:
         snprintf(connection_data->ssid, sizeof(connection_data->ssid), "%s", ssid->value);
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Waiting address" + '\0');
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Waiting address" + '\0');
+        snprintf(connection_data->mac_address, sizeof(connection_data->mac_address), "%s", "Waiting address" + '\0');
+        snprintf(connection_data->gw_ipv4_address, sizeof(connection_data->gw_ipv4_address), "%s", "Waiting address" + '\0');
+        snprintf(connection_data->gw_ipv6_address, sizeof(connection_data->gw_ipv6_address), "%s", "Waiting address" + '\0');
+        snprintf(connection_data->netmask_ipv4_address, sizeof(connection_data->netmask_ipv4_address), "%s", "Waiting address" + '\0');
+        snprintf(connection_data->netmask_ipv6_address, sizeof(connection_data->netmask_ipv6_address), "%s", "Waiting address" + '\0');
+        snprintf(connection_data->dns_ipv4_address, sizeof(connection_data->dns_ipv4_address), "%s", "Waiting address" + '\0');
+        snprintf(connection_data->dns_ipv6_address, sizeof(connection_data->dns_ipv6_address), "%s", "Waiting address" + '\0');
         break;
     case CONNECTING:
         snprintf(connection_data->ssid, MAX_SSID_LENGTH, "%s", "Initializing" + '\0');
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Initializing" + '\0');
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->mac_address, sizeof(connection_data->mac_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->gw_ipv4_address, sizeof(connection_data->gw_ipv4_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->gw_ipv6_address, sizeof(connection_data->gw_ipv6_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->netmask_ipv4_address, sizeof(connection_data->netmask_ipv4_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->netmask_ipv6_address, sizeof(connection_data->netmask_ipv6_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->dns_ipv4_address, sizeof(connection_data->dns_ipv4_address), "%s", "Initializing" + '\0');
+        snprintf(connection_data->dns_ipv6_address, sizeof(connection_data->dns_ipv6_address), "%s", "Initializing" + '\0');
         break;
     case DISCONNECTED:
         snprintf(connection_data->ssid, MAX_SSID_LENGTH, "%s", "Not connected" + '\0');
@@ -457,6 +552,25 @@ void get_connection_data(ConnectionData *connection_data)
     default:
         snprintf(connection_data->ssid, MAX_SSID_LENGTH, "%s", "ERROR!" + '\0');
     }
+}
+
+void show_connection_data(ConnectionData *connection_data)
+{
+    DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s DNS:%s\n",
+            connection_data->ssid,
+            connection_data->network_status,
+            connection_data->ipv4_address,
+            connection_data->ipv6_address,
+            connection_data->gw_ipv4_address,
+            connection_data->netmask_ipv4_address,
+            connection_data->mac_address,
+            connection_data->dns_ipv4_address);
+    DPRINTF("WiFi country: %s - Auth mode: %d - Scan interval: %d - Network status poll interval: %d - File downloading timeout: %d\n",
+            connection_data->wifi_country,
+            connection_data->wifi_auth_mode,
+            connection_data->wifi_scan_interval,
+            connection_data->network_status_poll_interval,
+            connection_data->file_downloading_timeout);
 }
 
 RomInfo parseRomItem(cJSON *json_item)
