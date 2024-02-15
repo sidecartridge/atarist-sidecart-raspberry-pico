@@ -154,7 +154,8 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         swap_data((__uint16_t *)entry);
         DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_string(entry->key, entry->value);
-        if (!strcmp(entry->key, PARAM_WIFI_COUNTRY)) {
+        if (!strcmp(entry->key, PARAM_WIFI_COUNTRY))
+        {
             restart_network = true;
         }
         *((volatile uint32_t *)(memory_area)) = random_token;
@@ -497,37 +498,12 @@ int init_firmware()
     // The structure is a list of chars separated with a 0x00 byte. The end of the list is marked with
     // two 0x00 bytes.
 
-    u_int16_t wifi_scan_poll_counter = 0;
+    // Configure polling times
     u_int64_t wifi_scan_poll_counter_mcs = 0; // Force the first scan to be done in the loop
+    u_int16_t wifi_scan_poll_counter = get_wifi_scan_poll_secs();
+    u_int32_t network_status_polling_ms = get_network_status_polling_ms();
+
     SdCardData *sd_data = malloc(sizeof(SdCardData));
-
-    ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
-    if (default_config_entry != NULL)
-    {
-        wifi_scan_poll_counter = atoi(default_config_entry->value);
-    }
-    else
-    {
-        DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
-    }
-    u_int32_t network_status_polling_ms = NETWORK_POLL_INTERVAL;
-    ConfigEntry *default_network_status_polling_sec = find_entry(PARAM_NETWORK_STATUS_SEC);
-    if (default_network_status_polling_sec != NULL)
-    {
-        DPRINTF("%s found in the config file. Raw value: %s\n", PARAM_NETWORK_STATUS_SEC, default_network_status_polling_sec->value);
-        network_status_polling_ms = atoi(default_network_status_polling_sec->value) * 1000;
-        // If the value is too small, set the minimum value
-        if (network_status_polling_ms < NETWORK_POLL_INTERVAL_MIN)
-        {
-            network_status_polling_ms = NETWORK_POLL_INTERVAL_MIN;
-        }
-        DPRINTF("%s found in the config file. Using value: %d\n", PARAM_NETWORK_STATUS_SEC, network_status_polling_ms);
-    }
-    else
-    {
-        DPRINTF("%s not found in the config file. Using default value: %d\n", PARAM_NETWORK_STATUS_SEC, network_status_polling_ms);
-    }
-
     if (microsd_mounted)
     {
         FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
@@ -580,24 +556,16 @@ int init_firmware()
 #endif
         if ((time_us_64() - wifi_scan_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
         {
-            ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
-            if (default_config_entry != NULL)
-            {
-                network_scan();
-                wifi_scan_poll_counter = atoi(default_config_entry->value);
-                wifi_scan_poll_counter_mcs = time_us_64();
-            }
-            else
-            {
-                DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
-            }
+            network_scan();
+            wifi_scan_poll_counter = get_wifi_scan_poll_secs();
+            wifi_scan_poll_counter_mcs = time_us_64();
         }
         if (wifi_auth != NULL)
         {
             DPRINTF("Connecting to network...\n");
-            put_string("WIFI_SSID", wifi_auth->ssid);
-            put_string("WIFI_PASSWORD", wifi_auth->password);
-            put_integer("WIFI_AUTH", wifi_auth->auth_mode);
+            put_string(PARAM_WIFI_SSID, wifi_auth->ssid);
+            put_string(PARAM_WIFI_PASSWORD, wifi_auth->password);
+            put_integer(PARAM_WIFI_AUTH, wifi_auth->auth_mode);
             write_all_entries();
 
             network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
@@ -629,14 +597,14 @@ int init_firmware()
             network_scan();
 
             // Clean the credentials configuration
-            put_string("WIFI_SSID", "");
-            put_string("WIFI_PASSWORD", "");
-            put_integer("WIFI_AUTH", 0);
+            put_string(PARAM_WIFI_SSID, "");
+            put_string(PARAM_WIFI_PASSWORD, "");
+            put_integer(PARAM_WIFI_AUTH, 0);
             write_all_entries();
         }
         if (network_poll_counter == 0)
         {
-            if (strlen(find_entry("WIFI_SSID")->value) > 0)
+            if (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
             {
                 // Only display when changes status to avoid flooding the console
                 ConnectionStatus previous_status = get_previous_connection_status();
@@ -647,14 +615,7 @@ int init_firmware()
                     DPRINTF("Network previous status: %d\n", previous_status);
                     ConnectionData *connection_data = malloc(sizeof(ConnectionData));
                     get_connection_data(connection_data);
-                    DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s\n",
-                            connection_data->ssid,
-                            connection_data->status,
-                            connection_data->ipv4_address,
-                            connection_data->ipv6_address,
-                            print_ipv4(get_gateway()),
-                            print_ipv4(get_netmask()),
-                            print_mac(get_mac_address()));
+                    show_connection_data(connection_data);
                     free(connection_data);
                     if (current_status == BADAUTH_ERROR)
                     {
@@ -669,9 +630,9 @@ int init_firmware()
                         network_scan();
 
                         // Clean the credentials configuration
-                        put_string("WIFI_SSID", "");
-                        put_string("WIFI_PASSWORD", "");
-                        put_integer("WIFI_AUTH", 0);
+                        put_string(PARAM_WIFI_SSID, "");
+                        put_string(PARAM_WIFI_PASSWORD, "");
+                        put_integer(PARAM_WIFI_AUTH, 0);
                         write_all_entries();
 
                         // Start the network.
