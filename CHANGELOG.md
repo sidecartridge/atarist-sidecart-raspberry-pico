@@ -1,5 +1,16 @@
 # Changelog
 
+## BETA 0.0.15 (2024-02-16)- Network stability release
+### Changed
+- **Issue #85**: Change FLOPPY_DB_URL and ROMS_YAML_URL to sidecartridge.com.
+
+### New Features
+- **Issue #79**: Add a configurable timeout when downloading ROMs or Floppy images.
+- **Issue #80**: Add a configurable polling parameter for network status detection.
+- **Issue #81**: Add a per-country configuration of the Wifi.
+- **Issue #87**: Open the floppy database repository to all users.
+- **Issue #90**: Enhance Wi-Fi Configuration Menu with Comprehensive Network Information.
+
 ## BETA 0.0.14 (2023-12-19)- Mega STE support and floppy stability release
 ### Fixed
 - **Issue #71**: New reload floppy image after reset now keeps opened descriptors.
