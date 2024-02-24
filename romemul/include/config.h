@@ -22,13 +22,31 @@
 #include <hardware/watchdog.h>
 #include "pico/cyw43_arch.h"
 
-#define MAX_ENTRIES 20
+#include "include/network.h"
+
+// sync values here as well : atarist-sidecart-firmware/configurator/src/include/config.h
+#define MAX_ENTRIES 23
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
+
+#define PARAM_DOWNLOAD_TIMEOUT_SEC "DOWNLOAD_TIMEOUT_SEC"
+#define PARAM_FLOPPY_DB_URL "FLOPPY_DB_URL"
+#define PARAM_LASTEST_RELEASE_URL "LASTEST_RELEASE_URL"
+#define PARAM_MENU_REFRESH_SEC "MENU_REFRESH_SEC"
+#define PARAM_NETWORK_STATUS_SEC "NETWORK_STATUS_SEC"
+#define PARAM_ROMS_YAML_URL "ROMS_YAML_URL"
+#define PARAM_WIFI_AUTH "WIFI_AUTH"
+#define PARAM_WIFI_COUNTRY "WIFI_COUNTRY"
+#define PARAM_WIFI_PASSWORD "WIFI_PASSWORD"
+#define PARAM_WIFI_SCAN_SECONDS "WIFI_SCAN_SECONDS"
+#define PARAM_WIFI_SSID "WIFI_SSID"
 
 #define TYPE_INT ((uint16_t)0)
 #define TYPE_STRING ((uint16_t)1)
 #define TYPE_BOOL ((uint16_t)2)
+
+#define STRINGIFY_HELPER(x) #x
+#define STRINGIFY(x) STRINGIFY_HELPER(x)
 
 typedef uint16_t DataType;
 

@@ -5,24 +5,28 @@
 static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"BOOT_FEATURE", TYPE_STRING, "CONFIGURATOR"},
     {"DELAY_ROM_EMULATION", TYPE_BOOL, "false"},
+    {PARAM_DOWNLOAD_TIMEOUT_SEC, TYPE_INT, "60"},
     {"FLOPPIES_FOLDER", TYPE_STRING, "/floppies"},
-    {"FLOPPY_DB_URL", TYPE_STRING, "http://ataristdb.sidecart.xyz"},
+    {PARAM_FLOPPY_DB_URL, TYPE_STRING, "http://ataristdb.sidecartridge.com"},
     {"FLOPPY_IMAGE_A", TYPE_STRING, ""},
     {"FLOPPY_IMAGE_B", TYPE_STRING, ""},
     {"GEMDRIVE_FOLDERS", TYPE_STRING, "/hd"},
     {"HOSTNAME", TYPE_STRING, "sidecart"},
-    {"LASTEST_RELEASE_URL", TYPE_STRING, LATEST_RELEASE_URL},
+    {PARAM_LASTEST_RELEASE_URL, TYPE_STRING, LATEST_RELEASE_URL},
+    {PARAM_MENU_REFRESH_SEC, TYPE_INT, "3"},
+    {PARAM_NETWORK_STATUS_SEC, TYPE_INT, NETWORK_POLL_INTERVAL_STR},
     {"ROMS_FOLDER", TYPE_STRING, "/roms"},
-    {"ROMS_YAML_URL", TYPE_STRING, "http://roms.sidecart.xyz/roms.json"},
+    {PARAM_ROMS_YAML_URL, TYPE_STRING, "http://roms.sidecartridge.com/roms.json"},
     {"RTC_NTP_SERVER_HOST", TYPE_STRING, "pool.ntp.org"},
     {"RTC_NTP_SERVER_PORT", TYPE_INT, "123"},
     {"RTC_TYPE", TYPE_STRING, "SIDECART"},
     {"RTC_UTC_OFFSET", TYPE_STRING, "+1"},
     {"SAFE_CONFIG_REBOOT", TYPE_BOOL, "true"},
-    {"WIFI_SCAN_SECONDS", TYPE_INT, "15"},
-    {"WIFI_PASSWORD", TYPE_STRING, ""},
-    {"WIFI_SSID", TYPE_STRING, ""},
-    {"WIFI_AUTH", TYPE_INT, ""}};
+    {PARAM_WIFI_SCAN_SECONDS, TYPE_INT, WIFI_SCAN_POLL_COUNTER_STR},
+    {PARAM_WIFI_PASSWORD, TYPE_STRING, ""},
+    {PARAM_WIFI_SSID, TYPE_STRING, ""},
+    {PARAM_WIFI_AUTH, TYPE_INT, ""},
+    {PARAM_WIFI_COUNTRY, TYPE_STRING, ""}};
 
 ConfigData configData;
 
@@ -65,11 +69,11 @@ static void replace_bad_domain_entries()
         }
         if (strcmp(configData.entries[i].value, "http://atarist.sidecart.xyz/beta.txt") == 0)
         {
-            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/beta.txtx");
+            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/beta.txt");
         }
         if (strcmp(configData.entries[i].value, "http://atarist.sidecart.xyz/version.txt") == 0)
         {
-            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/version.txtx");
+            strcpy(configData.entries[i].value, "http://atarist.sidecartridge.com/version.txt");
         }
     }
 }

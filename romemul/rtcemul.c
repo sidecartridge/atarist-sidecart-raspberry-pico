@@ -538,7 +538,7 @@ int init_rtcemul(bool safe_config_reboot)
 
         if (network_poll_counter == 0)
         {
-            if (strlen(find_entry("WIFI_SSID")->value) > 0)
+            if (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
             {
                 // Only display when changes status to avoid flooding the console
                 ConnectionStatus previous_status = get_previous_connection_status();
@@ -551,7 +551,7 @@ int init_rtcemul(bool safe_config_reboot)
                     get_connection_data(connection_data);
                     DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s\n",
                             connection_data->ssid,
-                            connection_data->status,
+                            connection_data->network_status,
                             connection_data->ipv4_address,
                             connection_data->ipv6_address,
                             print_ipv4(get_gateway()),
@@ -565,7 +565,7 @@ int init_rtcemul(bool safe_config_reboot)
                         DPRINTF("Querying the DNS...\n");
 
                         // First do not retry immeditely
-                        network_poll_counter = NETWORK_POLL_INTERVAL;
+                        network_poll_counter = NETWORK_POLL_INTERVAL * 1000;
 
                         // Only query the DNS if we don't have the IP address yet
                         if (!net_time.ntp_server_found)
@@ -651,7 +651,7 @@ int init_rtcemul(bool safe_config_reboot)
         }
 
         // Increase the counter and reset it if it reaches the limit
-        network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
+        network_poll_counter >= (NETWORK_POLL_INTERVAL*1000) ? network_poll_counter = 0 : network_poll_counter++;
     }
 
     blink_error();

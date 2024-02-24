@@ -54,6 +54,7 @@ static bool persist_config = false;
 static bool reset_default = false;
 static bool scan_network = false;
 static bool disconnect_network = false;
+static bool restart_network = false;
 static bool get_json_file = false;
 
 // ROMs in network variables
@@ -153,6 +154,10 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         swap_data((__uint16_t *)entry);
         DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
         put_string(entry->key, entry->value);
+        if (!strcmp(entry->key, PARAM_WIFI_COUNTRY))
+        {
+            restart_network = true;
+        }
         *((volatile uint32_t *)(memory_area)) = random_token;
         break;
     case PUT_CONFIG_INTEGER:
@@ -493,20 +498,12 @@ int init_firmware()
     // The structure is a list of chars separated with a 0x00 byte. The end of the list is marked with
     // two 0x00 bytes.
 
-    u_int16_t wifi_scan_poll_counter = 0;
+    // Configure polling times
     u_int64_t wifi_scan_poll_counter_mcs = 0; // Force the first scan to be done in the loop
+    u_int16_t wifi_scan_poll_counter = get_wifi_scan_poll_secs();
+    u_int32_t network_status_polling_ms = get_network_status_polling_ms();
+
     SdCardData *sd_data = malloc(sizeof(SdCardData));
-
-    ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
-    if (default_config_entry != NULL)
-    {
-        wifi_scan_poll_counter = atoi(default_config_entry->value);
-    }
-    else
-    {
-        DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
-    }
-
     if (microsd_mounted)
     {
         FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
@@ -559,29 +556,33 @@ int init_firmware()
 #endif
         if ((time_us_64() - wifi_scan_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
         {
-            ConfigEntry *default_config_entry = find_entry("WIFI_SCAN_SECONDS");
-            if (default_config_entry != NULL)
-            {
-                network_scan();
-                wifi_scan_poll_counter = atoi(default_config_entry->value);
-                wifi_scan_poll_counter_mcs = time_us_64();
-            }
-            else
-            {
-                DPRINTF("WIFI_SCAN_SECONDS not found in the config file. Disabling polling.\n");
-            }
+            network_scan();
+            wifi_scan_poll_counter = get_wifi_scan_poll_secs();
+            wifi_scan_poll_counter_mcs = time_us_64();
         }
         if (wifi_auth != NULL)
         {
             DPRINTF("Connecting to network...\n");
-            put_string("WIFI_SSID", wifi_auth->ssid);
-            put_string("WIFI_PASSWORD", wifi_auth->password);
-            put_integer("WIFI_AUTH", wifi_auth->auth_mode);
+            put_string(PARAM_WIFI_SSID, wifi_auth->ssid);
+            put_string(PARAM_WIFI_PASSWORD, wifi_auth->password);
+            put_integer(PARAM_WIFI_AUTH, wifi_auth->auth_mode);
             write_all_entries();
 
             network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
             free(wifi_auth);
             wifi_auth = NULL;
+        }
+        if (restart_network)
+        {
+            restart_network = false;
+            // Force  network disconnection
+            network_disconnect();
+            // Need to deinit and init again the full network stack to be able to scan again
+            cyw43_arch_deinit();
+            cyw43_arch_init();
+            network_init();
+
+            network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
         }
         if (disconnect_network)
         {
@@ -596,14 +597,14 @@ int init_firmware()
             network_scan();
 
             // Clean the credentials configuration
-            put_string("WIFI_SSID", "");
-            put_string("WIFI_PASSWORD", "");
-            put_integer("WIFI_AUTH", 0);
+            put_string(PARAM_WIFI_SSID, "");
+            put_string(PARAM_WIFI_PASSWORD, "");
+            put_integer(PARAM_WIFI_AUTH, 0);
             write_all_entries();
         }
         if (network_poll_counter == 0)
         {
-            if (strlen(find_entry("WIFI_SSID")->value) > 0)
+            if (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
             {
                 // Only display when changes status to avoid flooding the console
                 ConnectionStatus previous_status = get_previous_connection_status();
@@ -614,14 +615,7 @@ int init_firmware()
                     DPRINTF("Network previous status: %d\n", previous_status);
                     ConnectionData *connection_data = malloc(sizeof(ConnectionData));
                     get_connection_data(connection_data);
-                    DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s\n",
-                            connection_data->ssid,
-                            connection_data->status,
-                            connection_data->ipv4_address,
-                            connection_data->ipv6_address,
-                            print_ipv4(get_gateway()),
-                            print_ipv4(get_netmask()),
-                            print_mac(get_mac_address()));
+                    show_connection_data(connection_data);
                     free(connection_data);
                     if (current_status == BADAUTH_ERROR)
                     {
@@ -636,9 +630,9 @@ int init_firmware()
                         network_scan();
 
                         // Clean the credentials configuration
-                        put_string("WIFI_SSID", "");
-                        put_string("WIFI_PASSWORD", "");
-                        put_integer("WIFI_AUTH", 0);
+                        put_string(PARAM_WIFI_SSID, "");
+                        put_string(PARAM_WIFI_PASSWORD, "");
+                        put_integer(PARAM_WIFI_AUTH, 0);
                         write_all_entries();
 
                         // Start the network.
@@ -727,7 +721,7 @@ int init_firmware()
             memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
 
             // Get the URL from the configuration
-            char *url = find_entry("ROMS_YAML_URL")->value;
+            char *url = find_entry(PARAM_ROMS_YAML_URL)->value;
 
             // The the JSON file info
             get_json_files(&network_files, &filtered_num_network_files, url);
@@ -841,14 +835,14 @@ int init_firmware()
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
 
             // Get the URL from the configuration
-            char *base_url = find_entry("FLOPPY_DB_URL")->value;
+            char *base_url = find_entry(PARAM_FLOPPY_DB_URL)->value;
 
             // Ensure that the buffer is large enough for the original URL, the `/db/`, the letter, `.csv`, and the null terminator.
             char url[256]; // Adjust the size as needed based on the maximum length of base_url.
 
             sprintf(url, "%s/db/%c.csv", base_url, query_floppy_letter);
 
-            get_floppy_db_files(&floppy_images_files, &filtered_num_floppy_images_files, url);
+            err_t res = get_floppy_db_files(&floppy_images_files, &filtered_num_floppy_images_files, url);
 
             dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
 
@@ -861,34 +855,41 @@ int init_firmware()
             // }
 
             memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE); // Clean the memory area except the random token
-            if (filtered_num_floppy_images_files > 0)
+            if (res == ERR_OK)
             {
-                // Iterate over the RomInfo items and populate the names array
-                char *dest_ptr = (char *)(memory_area + 4); // Bypass random token
-                // Get the first element, if any
-                FloppyImageInfo *floppy_images_file = floppy_images_files;
-                for (int i = 0; i < filtered_num_floppy_images_files; i++)
+                if (filtered_num_floppy_images_files > 0)
                 {
-                    // Copy the string from network_files[i].name to dest_ptr
-                    // Ensure the name is padded with spaces up to position 60
-                    char padded_name[61]; // 60 characters for padding + 1 for null terminator
-                    snprintf(padded_name, sizeof(padded_name), "%-65s", floppy_images_file->name);
+                    // Iterate over the RomInfo items and populate the names array
+                    char *dest_ptr = (char *)(memory_area + 4); // Bypass random token
+                    // Get the first element, if any
+                    FloppyImageInfo *floppy_images_file = floppy_images_files;
+                    for (int i = 0; i < filtered_num_floppy_images_files; i++)
+                    {
+                        // Copy the string from network_files[i].name to dest_ptr
+                        // Ensure the name is padded with spaces up to position 60
+                        char padded_name[61]; // 60 characters for padding + 1 for null terminator
+                        snprintf(padded_name, sizeof(padded_name), "%-65s", floppy_images_file->name);
 
-                    char padded_extra[16]; // 15 characters for padding + 1 for null terminator
-                    snprintf(padded_extra, sizeof(padded_extra), "%-15s", floppy_images_file->extra);
+                        char padded_extra[16]; // 15 characters for padding + 1 for null terminator
+                        snprintf(padded_extra, sizeof(padded_extra), "%-15s", floppy_images_file->extra);
 
-                    // Display padded content
-                    sprintf(dest_ptr, "%s%s\0", padded_name, padded_extra);
-                    dest_ptr += strlen(dest_ptr) + 1;
-                    floppy_images_file = floppy_images_file->next;
+                        // Display padded content
+                        sprintf(dest_ptr, "%s%s\0", padded_name, padded_extra);
+                        dest_ptr += strlen(dest_ptr) + 1;
+                        floppy_images_file = floppy_images_file->next;
+                    }
+
+                    // Swap the words to motorola endian format: BIG ENDIAN
+                    swap_words((__uint16_t *)(memory_area + RANDOM_SEED_SIZE), CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
                 }
-
-                // Swap the words to motorola endian format: BIG ENDIAN
-                swap_words((__uint16_t *)(memory_area + RANDOM_SEED_SIZE), CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
+                else
+                {
+                    DPRINTF("No floppy images found for letter %c\n", query_floppy_letter);
+                }
             }
             else
             {
-                DPRINTF("No floppy images found for letter %c\n", query_floppy_letter);
+                DPRINTF("Error getting floppy images from the Atari ST Database: %d\n", res);
             }
 
             DPRINTF("Random token: %x\n", random_token);
@@ -928,7 +929,7 @@ int init_firmware()
         }
 
         // Increase the counter and reset it if it reaches the limit
-        network_poll_counter >= NETWORK_POLL_INTERVAL ? network_poll_counter = 0 : network_poll_counter++;
+        network_poll_counter >= network_status_polling_ms ? network_poll_counter = 0 : network_poll_counter++;
         storage_poll_counter >= STORAGE_POLL_INTERVAL ? storage_poll_counter = 0 : storage_poll_counter++;
 
         // Store the seed of the random number generator in the ROM memory space
@@ -978,19 +979,28 @@ int init_firmware()
     if (rom_network_selected > 0)
     {
         DPRINTF("ROM network selected: %d\n", rom_network_selected);
-        int res = download_rom(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
+        err_t res = download_rom(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
+        DPRINTF("Download ROM result: %d\n", res);
 
-        // Free dynamically allocated memory
-        for (int i = 0; i < filtered_num_network_files; i++)
+        if (res == ERR_OK)
         {
-            freeRomItem(&network_files[i]);
+            // Free dynamically allocated memory
+            for (int i = 0; i < filtered_num_network_files; i++)
+            {
+                freeRomItem(&network_files[i]);
+            }
+            free(network_files);
+
+            put_string("BOOT_FEATURE", "ROM_EMULATOR");
+            write_all_entries();
+
+            *((volatile uint32_t *)(memory_area)) = random_token;
         }
-        free(network_files);
-
-        put_string("BOOT_FEATURE", "ROM_EMULATOR");
-        write_all_entries();
-
-        *((volatile uint32_t *)(memory_area)) = random_token;
+        else
+        {
+            DPRINTF("Error downloading ROM: %d\n", res);
+            // Continue and graciously reset the board
+        }
     }
 
     if (floppy_file_selected > 0)
@@ -1117,9 +1127,9 @@ int init_firmware()
             // Directory exists
             DPRINTF("Directory exists: %s\n", dir);
 
-            int err = download_floppy(&full_url[0], dir, dest_filename, true);
+            err_t err = download_floppy(&full_url[0], dir, dest_filename, true);
 
-            if (err != 0)
+            if (err != ERR_OK)
             {
                 floppy_image_selected = 0;
                 floppy_image_selected_status = 3; // Error: Failed downloading file
