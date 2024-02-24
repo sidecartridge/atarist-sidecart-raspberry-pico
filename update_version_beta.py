@@ -19,8 +19,8 @@ def upload_to_aws(local_file, bucket, s3_file):
 
 # Define the parameters
 local_file = "version-beta.txt"
-bucket_name = "atarist.sidecart.xyz"
 s3_file_name = "beta.txt"
 
 # Upload the file
-upload_to_aws(local_file, bucket_name, s3_file_name)
+upload_to_aws(local_file, "atarist.sidecart.xyz", s3_file_name)
+upload_to_aws(local_file, "atarist.sidecartridge.com", s3_file_name)
