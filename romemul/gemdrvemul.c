@@ -8,98 +8,54 @@
 
 #include "include/gemdrvemul.h"
 
+// Let's substitute the flags
+static uint16_t active_command_id = 0xFFFF;
+
 static uint16_t *payloadPtr = NULL;
-static char *fullpath_a = NULL;
 static uint32_t random_token;
-static bool ping_received = false;
+
+static char *fullpath_a = NULL;
 static bool hd_folder_ready = false;
 static char *hd_folder = NULL;
-
-// Save GEMOS vector variables
-static uint32_t gemdos_trap_address_old;
-static uint32_t gemdos_trap_address_xbra;
-static uint16_t trap_call = 0xFFFF;
-static bool save_vectors = false;
-
-// Reentry lock variable
-static uint16_t reentry_lock = 0xFFFF; // 0xFFFF = ignore, 1 = lock, 0 = unlock
-
-// Save Fsetdta variables
-static uint32_t ndta = 0;
-static bool fsetdta = false;
-
-// Save Fsfirst variables
-static char fspec_string[128] = {0};
-static FILINFO *fspec_files_found = NULL;
-static uint32_t fspec_files_found_count = 0;
-static uint32_t fspec_files_found_index = 0;
-static uint32_t fspec = 0;
-static uint16_t attribs = 0;
-static bool fsfirst = false;
-
-// Save Fsnext variables
-static bool fsnext = false;
+static bool debug = false;
+static char drive_letter = 'C';
 
 // Save Dgetdrv variables
 static uint16_t dgetdrive_value = 0xFFFF;
-
-// Save Fopen variables
-static bool fopen_call = false;
-static uint16_t fopen_mode = 0xFFFF;
 
 // Save Fcreate variables
 static bool fcreate_call = false;
 static uint16_t fcreate_mode = 0xFFFF;
 
-// Save Dgetpath variables
-static bool dgetpath_call = false;
-static uint16_t dpath_drive = 0xFFFF;
-
 // Save Dsetpath variables
-static bool dsetpath_call = false;
-static char dpath_string[128] = {0};
+static char dpath_string[MAX_FOLDER_LENGTH] = {0};
 
-//
-static DTANode *hashTable[DTA_HASH_TABLE_SIZE];
+// Save Fsetdta variables
+static DTANode *dtaTbl[DTA_HASH_TABLE_SIZE];
 
 // Structures to store the file descriptors
 static FileDescriptors *fdescriptors = NULL; // Initialize the head of the list to NULL
-static uint16_t fd_counter = 5;              // Start the counter at 3 to avoid conflicts with default file descriptors
-
-// Read buffer variables
-static bool readbuff_call = false;
-static uint16_t readbuff_fd = 0;
-static uint32_t readbuff_bytes_to_read = 0;
-static uint32_t readbuff_pending_bytes_to_read = 0;
-
-// FClose variables
-static bool fclose_call = false;
-static uint16_t fclose_fd = 0;
-
-// FDelete variables
-static bool fdelete_call = false;
-
-// Dcreate variables
-static bool dcreate_call = false;
-static bool ddelete_call = false;
-
-// Pexec variables
-static uint16_t pexec_mode = 0xFFFF;
-static bool pexec_call = false;
-static char pexec_filename[128] = {0};
 static PD *pexec_pd = NULL;
 static ExecHeader *pexec_exec_header = NULL;
-static bool save_basepage = false;
-static bool save_exec_header = false;
+
+static inline void __not_in_flash_func(generate_random_token_seed)(const TransmissionProtocol *protocol)
+{
+    random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+}
+
+static void __not_in_flash_func(write_random_token)(uint32_t memory_shared_address)
+{
+    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+}
 
 // Hash function
-static unsigned int hash(uint32_t key)
+static unsigned int __not_in_flash_func(hash)(uint32_t key)
 {
     return key % DTA_HASH_TABLE_SIZE;
 }
 
 // Insert function
-static void insertDTA(uint32_t key, DTA data)
+static void __not_in_flash_func(insertDTA)(uint32_t key, DTA data, DIR *dj, FILINFO *fno)
 {
     unsigned int index = hash(key);
     DTANode *newNode = malloc(sizeof(DTANode));
@@ -111,31 +67,33 @@ static void insertDTA(uint32_t key, DTA data)
 
     newNode->key = key;
     newNode->data = data;
+    newNode->dj = dj;
+    newNode->fno = fno;
     newNode->next = NULL;
 
-    if (hashTable[index] == NULL)
+    if (dtaTbl[index] == NULL)
     {
-        hashTable[index] = newNode;
+        dtaTbl[index] = newNode;
     }
     else
     {
         // Handle collision with separate chaining
-        newNode->next = hashTable[index];
-        hashTable[index] = newNode;
+        newNode->next = dtaTbl[index];
+        dtaTbl[index] = newNode;
     }
 }
 
 // Lookup function
-static DTA *lookup(uint32_t key)
+static DTANode *__not_in_flash_func(lookupDTA)(uint32_t key)
 {
     unsigned int index = hash(key);
-    DTANode *current = hashTable[index];
+    DTANode *current = dtaTbl[index];
 
     while (current != NULL)
     {
         if (current->key == key)
         {
-            return &current->data;
+            return current;
         }
         current = current->next;
     }
@@ -144,10 +102,10 @@ static DTA *lookup(uint32_t key)
 }
 
 // Release function
-static void release(uint32_t key)
+static void __not_in_flash_func(releaseDTA)(uint32_t key)
 {
     unsigned int index = hash(key);
-    DTANode *current = hashTable[index];
+    DTANode *current = dtaTbl[index];
     DTANode *prev = NULL;
 
     while (current != NULL)
@@ -157,14 +115,22 @@ static void release(uint32_t key)
             if (prev == NULL)
             {
                 // The node to be deleted is the first node in the list
-                hashTable[index] = current->next;
+                dtaTbl[index] = current->next;
             }
             else
             {
                 // The node to be deleted is not the first node
                 prev->next = current->next;
             }
-
+            if (current->dj != NULL)
+            {
+                f_closedir(current->dj); // Close the directory
+                free(current->dj);       // Free the memory of the DIR
+            }
+            if (current->fno != NULL)
+            {
+                free(current->fno); // Free the memory of the FILINFO
+            }
             free(current); // Free the memory of the node
             return;
         }
@@ -174,144 +140,111 @@ static void release(uint32_t key)
     }
 }
 
+// Count the number of elements in the hash table
+unsigned int __not_in_flash_func(countDTA)()
+{
+    unsigned int totalCount = 0;
+    for (int i = 0; i < DTA_HASH_TABLE_SIZE; i++)
+    {
+        DTANode *currentNode = dtaTbl[i];
+        while (currentNode != NULL)
+        {
+            totalCount++;
+            currentNode = currentNode->next;
+        }
+    }
+    return totalCount;
+}
 // Initialize the hash table
-static void initializeDTAHashTable()
+static void __not_in_flash_func(initializeDTAHashTable)()
 {
     for (int i = 0; i < DTA_HASH_TABLE_SIZE; ++i)
     {
-        hashTable[i] = NULL;
+        dtaTbl[i] = NULL;
     }
 }
 
-/* Search a directory for objects */
-static void find(const char *fspec_str, char path[], uint8_t attribs)
+static void __not_in_flash_func(swap_string_endiannes)(const char *origin, char *swap_str)
 {
-    FRESULT fr;  /* Return value */
-    DIR dj;      /* Directory object */
-    FILINFO fno; /* File information */
+    // Obtain the fspec string and keep it in memory
+    for (int i = 0; i < 64; i += 2)
+    {
+        swap_str[i] = (char)*(origin + i + 1);
+        swap_str[i + 1] = (char)*(origin + i);
+    }
+}
 
+static void __not_in_flash_func(seach_path_2_st)(const char *fspec_str, char *internal_path, char *name_pattern)
+{
     char drive[2] = {0};
-    char internal_path[MAX_FOLDER_LENGTH * 2] = {0};
-    char pattern[32] = {0};
     char path_forwardslash[MAX_FOLDER_LENGTH] = {0};
-    split_fullpath(fspec_str, drive, path_forwardslash, pattern);
+    char path[MAX_FOLDER_LENGTH] = {0};
+    split_fullpath(fspec_str, drive, path_forwardslash, name_pattern);
 
     // Concatenate again the drive with the path
-    snprintf(path, MAX_FOLDER_LENGTH, "%s%s", drive, path_forwardslash);
+    snprintf(path, sizeof(path), "%s%s", drive, path_forwardslash);
 
     back_2_forwardslash(path_forwardslash);
 
     // Concatenate the path with the hd_folder
-    snprintf(internal_path, sizeof(internal_path), "%s/%s", hd_folder, path_forwardslash);
+    snprintf(internal_path, MAX_FOLDER_LENGTH * 2, "%s/%s", hd_folder, path_forwardslash);
 
     // Remove duplicated forward slashes
-    for (char *p = internal_path; *p != '\0'; p++)
-        if (*p == '/' && *(p + 1) == '/')
-            memmove(p, p + 1, strlen(p));
+    char *p = internal_path;
+    while ((p = strstr(p, "//")) != NULL)
+    {
+        memmove(p, p + 1, strlen(p));
+    }
 
     // Patterns do not work with FatFs as Atari ST expects, so we need to adjust them
     // Remove the asterisk if it is the last character behind a dot
-    if ((pattern[strlen(pattern) - 1] == '*') && (pattern[strlen(pattern) - 2] == '.'))
+    size_t np_len = strlen(name_pattern);
+    if (np_len >= 2 && name_pattern[np_len - 1] == '*' && name_pattern[np_len - 2] == '.')
     {
-        pattern[strlen(pattern) - 2] = '\0';
+        name_pattern[np_len - 2] = '\0'; // Handle pattern ending with ".*"
     }
 
-    DPRINTF("drive: %s\n", drive);
-    DPRINTF("path: %s\n", path);
-    DPRINTF("full internal path: %s\n", internal_path);
-    DPRINTF("filename pattern: %s\n", pattern);
-
-    fspec_files_found_count = 0;
-    fspec_files_found_index = 0;
-    fr = f_findfirst(&dj, &fno, internal_path, pattern);
-    while (fr == FR_OK && fno.fname[0])
+    // If the pattern starts with a slash or a backslash, remove it
+    if (name_pattern[0] == '/' || name_pattern[0] == '\\')
     {
-        // Filter out elements that do not match the attributes
-        if ((fno.fattrib & attribs) && fno.fname[0] != '.') // Skip hidden files and folders of the FatFs system
-        {
-            char shorten_filename[14];
-            shorten_fname(fno.fname, shorten_filename);
-            strcpy(fno.fname, shorten_filename);
-
-            DPRINTF("Found file: %s\n", fno.fname);
-            // Reallocate memory to accommodate one more FILINFO
-            FILINFO *temp = realloc(fspec_files_found, (fspec_files_found_count + 1) * sizeof(FILINFO));
-            if (temp == NULL)
-            {
-                // Handle memory allocation failure
-                DPRINTF("Memory allocation failed\n");
-                fspec_files_found_count = 0;
-                break; // Exit the loop if memory allocation fails
-            }
-            fspec_files_found = temp;
-
-            // Add the new file information to the array
-            fspec_files_found[fspec_files_found_count] = fno;
-            fspec_files_found_count++;
-        }
-        else
-        {
-            DPRINTF("Skipping file: %s\n", fno.fname);
-        }
-        fr = f_findnext(&dj, &fno); // Search for next item
-    }
-    DPRINTF("Total files found: %u\n", fspec_files_found_count);
-
-    f_closedir(&dj);
-}
-
-// Function to release the memory allocated for fspec_files_found
-static void release_fspec()
-{
-    if (fspec_files_found != NULL)
-    {
-        free(fspec_files_found);  // Free the allocated memory
-        fspec_files_found = NULL; // Set pointer to NULL to avoid dangling pointer
-
-        // Reset counters
-        fspec_files_found_count = 0;
-        fspec_files_found_index = 0;
+        memmove(name_pattern, name_pattern + 1, strlen(name_pattern)); // Handle leading slashes or backslashes
     }
 }
 
-// Function to print the contents of the fspec_files_found
-static void print_fspec()
+static void __not_in_flash_func(populate_dta)(uint32_t memory_address_dta, uint32_t dta_address, int16_t gemdos_err_code)
 {
-    for (uint32_t i = 0; i < fspec_files_found_count; i++)
-    {
-        DPRINTF("File %u:\n", i + 1);
-        char shorten_filename[14];
-        shorten_fname(fspec_files_found[i].fname, shorten_filename);
-        DPRINTF("  Name: %s\n", shorten_filename);
-        DPRINTF("  Size: %lu\n", (unsigned long)fspec_files_found[i].fsize);
-        DPRINTF("  Date: %u\n", fspec_files_found[i].fdate);
-        DPRINTF("  Time: %u\n", fspec_files_found[i].ftime);
-        DPRINTF("  Attrib: %u\n", fspec_files_found[i].fattrib);
-        DPRINTF("\n");
-    }
-}
-
-static void populate_dta(uint32_t memory_address_dta, uint32_t dta_address)
-{
-    DPRINTF("ndta: %x\n", dta_address);
     // Search the folder for the files
-    DTA *data = lookup(dta_address);
-    // Obtain the fspec string and keep it in memory
+    DTANode *dataNode = lookupDTA(dta_address);
+    DTA *data = dataNode != NULL ? &dataNode->data : NULL;
     if (data != NULL)
     {
         *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_F_FOUND)) = 0;
-        *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_FORCE_BYPASS)) = 0; // Force bypass
-        if (fspec_files_found_index < fspec_files_found_count)
+        FILINFO *fno = dataNode->fno;
+        if (fno)
         {
-            strcpy(data->d_fname, fspec_files_found[fspec_files_found_index].fname);
-            data->d_attrib = fspec_files_found[fspec_files_found_index].fattrib;
-            data->d_time = fspec_files_found[fspec_files_found_index].ftime;
-            data->d_date = fspec_files_found[fspec_files_found_index].fdate;
-            data->d_length = (uint32_t)fspec_files_found[fspec_files_found_index].fsize;
+            strcpy(data->d_name, fno->fname);
+            strcpy(data->d_fname, fno->fname);
+            data->d_offset_drive = 0;
+            data->d_curbyt = 0;
+            data->d_curcl = 0;
+            data->d_attr = attribs_fat2st(fno->fattrib);
+            data->d_attrib = attribs_fat2st(fno->fattrib);
+            data->d_time = fno->ftime;
+            data->d_date = fno->fdate;
+            data->d_length = (uint32_t)fno->fsize;
             // Ignore the reserved field
 
             // Transfer the DTA to the Atari ST
             // Copy the DTA to the shared memory
+            for (uint8_t i = 0; i < 12; i += 1)
+            {
+                *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + i)) = (uint8_t)data->d_name[i];
+            }
+            swap_words((uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30), 14);
+            *((volatile uint32_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 12)) = data->d_offset_drive;
+            *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 16)) = data->d_curbyt;
+            *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 18)) = data->d_curcl;
+            *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 20)) = data->d_attr;
             *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 21)) = data->d_attrib;
             swap_words((uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 20), 2);
             *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 22)) = data->d_time;
@@ -326,56 +259,67 @@ static void populate_dta(uint32_t memory_address_dta, uint32_t dta_address)
                 *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30 + i)) = (uint8_t)data->d_fname[i];
             }
             swap_words((uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30), 14);
-            DPRINTF("DTA: %x - size: %i - attrib: %d - time: %d - date: %d - length: %x - filename: %s\n",
-                    ndta,
-                    sizeof(DTA),
-                    *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 21)),
+            char attribs_str[7] = "";
+            get_attribs_st_str(attribs_str, *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 21)));
+            DPRINTF("Populate DTA. addr: %x - attrib: %s - time: %d - date: %d - length: %x - filename: %s\n",
+                    dta_address,
+                    attribs_str,
                     *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 22)),
                     *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 24)),
                     ((uint32_t)address[0] << 16) | address[1],
                     (char *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30));
-            fspec_files_found_index++;
         }
         else
         {
             // If no more files found, return ENMFIL for Fsnext
             // If no files found, return EFILNF for Fsfirst
-            int16_t error_code = (fspec_files_found_count == 0 ? GEMDOS_EFILNF : GEMDOS_ENMFIL);
-            DPRINTF("Showing error code: %x\n", error_code);
-            *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_F_FOUND)) = error_code;
+            DPRINTF("DTA at %x showing error code: %x\n", dta_address, gemdos_err_code);
+            *((volatile int16_t *)(memory_address_dta + GEMDRVEMUL_DTA_F_FOUND)) = (int16_t)gemdos_err_code;
+            for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
+            {
+                *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
+            }
             // release the memory allocated for the hash table
-            // release(dta_address);
-            // Also release the memory allocated for fspec_files_found
-            // release_fspec();
-            DPRINTF("No more files found. End of search\n");
+            releaseDTA(dta_address);
+            DPRINTF("DTA at %x released. DTA table elements: %d\n", dta_address, countDTA());
+            if (gemdos_err_code == GEMDOS_EFILNF)
+            {
+                DPRINTF("Files not found in FSFIRST.\n");
+            }
+            else
+            {
+                DPRINTF("No more files found in FSNEXT.\n");
+            }
         }
     }
     else
     {
-        // End of search, no more elements
+        // No DTA structure found, return error
+        DPRINTF("DTA not found at %x\n", dta_address);
         *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_F_FOUND)) = 0xFFFF;
-        *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_FORCE_BYPASS)) = 0xFFFF; // Do not force bypass
     }
 }
 
-static FileDescriptors *add_file(FileDescriptors **head, const char *fpath, FIL fobject, int new_fd)
+static FileDescriptors *__not_in_flash_func(add_file)(FileDescriptors **head, const char *fpath, FIL fobject, int new_fd)
 {
-    FileDescriptors *newFD = malloc(sizeof(FileDescriptors));
-    if (newFD == NULL)
+    FileDescriptors *newFDescriptor = malloc(sizeof(FileDescriptors));
+    if (newFDescriptor == NULL)
     {
+        DPRINTF("Memory allocation failed for new FileDescriptors\n");
         return NULL; // Allocation failed
     }
-    strncpy(newFD->fpath, fpath, 127);
-    newFD->fpath[127] = '\0'; // Ensure null-termination
-    newFD->fobject = fobject;
-    newFD->fd = new_fd;
-    newFD->offset = 0;
-    newFD->next = *head;
-    *head = newFD;
-    return newFD;
+    strncpy(newFDescriptor->fpath, fpath, 127);
+    newFDescriptor->fpath[127] = '\0'; // Ensure null-termination
+    newFDescriptor->fobject = fobject;
+    newFDescriptor->fd = new_fd;
+    newFDescriptor->offset = 0;
+    newFDescriptor->next = *head;
+    *head = newFDescriptor;
+    DPRINTF("File %s added with fd %i\n", fpath, new_fd);
+    return newFDescriptor;
 }
 
-static FileDescriptors *get_file_by_fpath(FileDescriptors *head, const char *fpath)
+static FileDescriptors *__not_in_flash_func(get_file_by_fpath)(FileDescriptors *head, const char *fpath)
 {
     while (head != NULL)
     {
@@ -388,7 +332,7 @@ static FileDescriptors *get_file_by_fpath(FileDescriptors *head, const char *fpa
     return NULL;
 }
 
-static FileDescriptors *get_file_by_fdesc(FileDescriptors *head, int fd)
+static FileDescriptors *__not_in_flash_func(get_file_by_fdesc)(FileDescriptors *head, int fd)
 {
     while (head != NULL)
     {
@@ -403,7 +347,7 @@ static FileDescriptors *get_file_by_fdesc(FileDescriptors *head, int fd)
     }
 }
 
-static void delete_file_by_fpath(FileDescriptors **head, const char *fpath)
+static void __not_in_flash_func(delete_file_by_fpath)(FileDescriptors **head, const char *fpath)
 {
     FileDescriptors *current = *head;
     FileDescriptors *prev = NULL;
@@ -428,7 +372,7 @@ static void delete_file_by_fpath(FileDescriptors **head, const char *fpath)
     }
 }
 
-static void delete_file_by_fdesc(FileDescriptors **head, int fd)
+static void __not_in_flash_func(delete_file_by_fdesc)(FileDescriptors **head, int fd)
 {
     FileDescriptors *current = *head;
     FileDescriptors *prev = NULL;
@@ -456,12 +400,12 @@ static void delete_file_by_fdesc(FileDescriptors **head, int fd)
 }
 
 // Comparator function for qsort
-static int compare_fd(const void *a, const void *b)
+static int __not_in_flash_func(compare_fd)(const void *a, const void *b)
 {
     return (*(int *)a - *(int *)b);
 }
 
-static int get_first_available_fd(FileDescriptors *head)
+static int __not_in_flash_func(get_first_available_fd)(FileDescriptors *head)
 {
     if (head == NULL)
     {
@@ -512,43 +456,17 @@ static int get_first_available_fd(FileDescriptors *head)
     return val;
 }
 
-static void split_str(const char *input, char *first_part, char *second_part, char delimiter)
-{
-    int delimiter_position = -1;
-
-    for (int i = 0; i < 128; i++)
-    {
-        if (input[i] == delimiter && delimiter_position == -1)
-        {
-            delimiter_position = i;
-            break;
-        }
-        else
-        {
-            first_part[i] = input[i];
-        }
-    }
-
-    if (delimiter_position != -1)
-    {
-        for (int i = delimiter_position + 1, j = 0; i < 128; i++, j++)
-        {
-            second_part[j] = input[i];
-        }
-    }
-}
-
 // payloadPtr, dpath_string, hd_folder are global variables
-static void get_local_full_pathname(char *tmp_filepath)
+static void __not_in_flash_func(get_local_full_pathname)(char *tmp_filepath)
 {
     // Obtain the fname string and keep it in memory
     // concatenated path and filename
-    char path_filename[128] = {0};
+    char path_filename[MAX_FOLDER_LENGTH] = {0};
 
     char tmp_path[MAX_FOLDER_LENGTH] = {0};
 
     char *origin = (char *)payloadPtr;
-    for (int i = 0; i < 64; i += 2)
+    for (int i = 0; i < MAX_FOLDER_LENGTH / 2; i += 2)
     {
         path_filename[i] = (char)*(origin + i + 1);
         path_filename[i + 1] = (char)*(origin + i);
@@ -585,218 +503,63 @@ static void get_local_full_pathname(char *tmp_filepath)
     DPRINTF("tmp_filepath: %s\n", tmp_filepath);
 }
 
-static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
+static void print_payload(uint8_t *payloadShowBytesPtr)
 {
-    ConfigEntry *entry = NULL;
-    uint16_t value_payload = 0;
-    // Handle the protocol
-    switch (protocol->command_id)
+    // Display the first 256 bytes of the payload in hexadecimal showing 16 bytes per line and the ASCII representation
+    for (int i = 0; i < 256 - 10; i += 16)
     {
-    case GEMDRVEMUL_SAVE_VECTORS:
-        // Save the vectors needed for the floppy emulation
-        DPRINTF("Command SAVE_VECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        gemdos_trap_address_old = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
-        payloadPtr += 2;
-        gemdos_trap_address_xbra = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        save_vectors = true;
-        break;
-    case GEMDRVEMUL_DEBUG:
-        DPRINTF("Command DEBUG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        if (protocol->payload_size == 8)
+        DPRINTF("%04x - %02x %02x %02x %02x %02x %02x %02x %02x  %02x %02x %02x %02x %02x %02x %02x %02x  |%c %c %c %c %c %c %c %c  %c %c %c %c %c %c %c %c|\n",
+                i,
+                payloadShowBytesPtr[i + 1], payloadShowBytesPtr[i], payloadShowBytesPtr[i + 3], payloadShowBytesPtr[i + 2],
+                payloadShowBytesPtr[i + 5], payloadShowBytesPtr[i + 4], payloadShowBytesPtr[i + 7], payloadShowBytesPtr[i + 6],
+                payloadShowBytesPtr[i + 9], payloadShowBytesPtr[i + 8], payloadShowBytesPtr[i + 11], payloadShowBytesPtr[i + 10],
+                payloadShowBytesPtr[i + 13], payloadShowBytesPtr[i + 12], payloadShowBytesPtr[i + 15], payloadShowBytesPtr[i + 14],
+                (payloadShowBytesPtr[i + 1] >= 32 && payloadShowBytesPtr[i + 1] <= 126) ? payloadShowBytesPtr[i + 1] : '.',
+                (payloadShowBytesPtr[i] >= 32 && payloadShowBytesPtr[i] <= 126) ? payloadShowBytesPtr[i] : '.',
+                (payloadShowBytesPtr[i + 3] >= 32 && payloadShowBytesPtr[i + 3] <= 126) ? payloadShowBytesPtr[i + 3] : '.',
+                (payloadShowBytesPtr[i + 2] >= 32 && payloadShowBytesPtr[i + 2] <= 126) ? payloadShowBytesPtr[i + 2] : '.',
+                (payloadShowBytesPtr[i + 5] >= 32 && payloadShowBytesPtr[i + 5] <= 126) ? payloadShowBytesPtr[i + 5] : '.',
+                (payloadShowBytesPtr[i + 4] >= 32 && payloadShowBytesPtr[i + 4] <= 126) ? payloadShowBytesPtr[i + 4] : '.',
+                (payloadShowBytesPtr[i + 7] >= 32 && payloadShowBytesPtr[i + 7] <= 126) ? payloadShowBytesPtr[i + 7] : '.',
+                (payloadShowBytesPtr[i + 6] >= 32 && payloadShowBytesPtr[i + 6] <= 126) ? payloadShowBytesPtr[i + 6] : '.',
+                (payloadShowBytesPtr[i + 9] >= 32 && payloadShowBytesPtr[i + 9] <= 126) ? payloadShowBytesPtr[i + 9] : '.',
+                (payloadShowBytesPtr[i + 8] >= 32 && payloadShowBytesPtr[i + 8] <= 126) ? payloadShowBytesPtr[i + 8] : '.',
+                (payloadShowBytesPtr[i + 11] >= 32 && payloadShowBytesPtr[i + 11] <= 126) ? payloadShowBytesPtr[i + 11] : '.',
+                (payloadShowBytesPtr[i + 10] >= 32 && payloadShowBytesPtr[i + 10] <= 126) ? payloadShowBytesPtr[i + 10] : '.',
+                (payloadShowBytesPtr[i + 13] >= 32 && payloadShowBytesPtr[i + 13] <= 126) ? payloadShowBytesPtr[i + 13] : '.',
+                (payloadShowBytesPtr[i + 12] >= 32 && payloadShowBytesPtr[i + 12] <= 126) ? payloadShowBytesPtr[i + 12] : '.',
+                (payloadShowBytesPtr[i + 15] >= 32 && payloadShowBytesPtr[i + 15] <= 126) ? payloadShowBytesPtr[i + 15] : '.',
+                (payloadShowBytesPtr[i + 14] >= 32 && payloadShowBytesPtr[i + 14] <= 126) ? payloadShowBytesPtr[i + 14] : '.');
+    }
+}
+
+static void set_shared_var(uint32_t p_shared_variable_index, uint32_t p_shared_variable_value, uint32_t memory_shared_address)
+{
+    DPRINTF("Setting shared variable %d to %x\n", p_shared_variable_index, p_shared_variable_value);
+    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4) + 2)) = p_shared_variable_value & 0xFFFF;
+    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4))) = p_shared_variable_value >> 16;
+}
+
+inline const char *__not_in_flash_func(get_command_name)(unsigned int value)
+{
+    for (int i = 0; i < numCommands; i++)
+    {
+        if (commandStr[i].value == value)
         {
-            uint32_t debug_payload = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
-            DPRINTF("DEBUG: %x\n", debug_payload);
+            return commandStr[i].name;
         }
-        if (protocol->payload_size < 8)
-        {
-            uint16_t debug_payload = payloadPtr[0];
-            DPRINTF("DEBUG: %x\n", debug_payload);
-        }
-        if (protocol->payload_size > 8)
-        {
-            payloadPtr += 6;
-            uint8_t *payloadShowBytesPtr = (uint8_t *)payloadPtr;
-            // Display the first 256 bytes of the payload in hexadecimal showing 16 bytes per line and the ASCII representation
-            for (int i = 0; i < protocol->payload_size - 10; i += 16)
-            {
-                DPRINTF("%04x - %02x %02x %02x %02x %02x %02x %02x %02x  %02x %02x %02x %02x %02x %02x %02x %02x  |%c %c %c %c %c %c %c %c  %c %c %c %c %c %c %c %c|\n",
-                        i,
-                        payloadShowBytesPtr[i + 1], payloadShowBytesPtr[i], payloadShowBytesPtr[i + 3], payloadShowBytesPtr[i + 2],
-                        payloadShowBytesPtr[i + 5], payloadShowBytesPtr[i + 4], payloadShowBytesPtr[i + 7], payloadShowBytesPtr[i + 6],
-                        payloadShowBytesPtr[i + 9], payloadShowBytesPtr[i + 8], payloadShowBytesPtr[i + 11], payloadShowBytesPtr[i + 10],
-                        payloadShowBytesPtr[i + 13], payloadShowBytesPtr[i + 12], payloadShowBytesPtr[i + 15], payloadShowBytesPtr[i + 14],
-                        (payloadShowBytesPtr[i + 1] >= 32 && payloadShowBytesPtr[i + 1] <= 126) ? payloadShowBytesPtr[i + 1] : '.',
-                        (payloadShowBytesPtr[i] >= 32 && payloadShowBytesPtr[i] <= 126) ? payloadShowBytesPtr[i] : '.',
-                        (payloadShowBytesPtr[i + 3] >= 32 && payloadShowBytesPtr[i + 3] <= 126) ? payloadShowBytesPtr[i + 3] : '.',
-                        (payloadShowBytesPtr[i + 2] >= 32 && payloadShowBytesPtr[i + 2] <= 126) ? payloadShowBytesPtr[i + 2] : '.',
-                        (payloadShowBytesPtr[i + 5] >= 32 && payloadShowBytesPtr[i + 5] <= 126) ? payloadShowBytesPtr[i + 5] : '.',
-                        (payloadShowBytesPtr[i + 4] >= 32 && payloadShowBytesPtr[i + 4] <= 126) ? payloadShowBytesPtr[i + 4] : '.',
-                        (payloadShowBytesPtr[i + 7] >= 32 && payloadShowBytesPtr[i + 7] <= 126) ? payloadShowBytesPtr[i + 7] : '.',
-                        (payloadShowBytesPtr[i + 6] >= 32 && payloadShowBytesPtr[i + 6] <= 126) ? payloadShowBytesPtr[i + 6] : '.',
-                        (payloadShowBytesPtr[i + 9] >= 32 && payloadShowBytesPtr[i + 9] <= 126) ? payloadShowBytesPtr[i + 9] : '.',
-                        (payloadShowBytesPtr[i + 8] >= 32 && payloadShowBytesPtr[i + 8] <= 126) ? payloadShowBytesPtr[i + 8] : '.',
-                        (payloadShowBytesPtr[i + 11] >= 32 && payloadShowBytesPtr[i + 11] <= 126) ? payloadShowBytesPtr[i + 11] : '.',
-                        (payloadShowBytesPtr[i + 10] >= 32 && payloadShowBytesPtr[i + 10] <= 126) ? payloadShowBytesPtr[i + 10] : '.',
-                        (payloadShowBytesPtr[i + 13] >= 32 && payloadShowBytesPtr[i + 13] <= 126) ? payloadShowBytesPtr[i + 13] : '.',
-                        (payloadShowBytesPtr[i + 12] >= 32 && payloadShowBytesPtr[i + 12] <= 126) ? payloadShowBytesPtr[i + 12] : '.',
-                        (payloadShowBytesPtr[i + 15] >= 32 && payloadShowBytesPtr[i + 15] <= 126) ? payloadShowBytesPtr[i + 15] : '.',
-                        (payloadShowBytesPtr[i + 14] >= 32 && payloadShowBytesPtr[i + 14] <= 126) ? payloadShowBytesPtr[i + 14] : '.');
-            }
-        }
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_PING:
-        DPRINTF("Command PING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        ping_received = true;
-        break;
-    case GEMDRVEMUL_SHOW_VECTOR_CALL:
-        //        DPRINTF("Command SHOW_VECTOR_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+    }
+    return "COMMAND NOT DEFINED";
+}
+
+static inline void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
+{
+    if (active_command_id == 0xFFFF)
+    {
         payloadPtr = (uint16_t *)protocol->payload + 2;
-        trap_call = (uint16_t)payloadPtr[0];
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_REENTRY_LOCK:
-        DPRINTF("Command REENTRY_LOCK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        reentry_lock = 1;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_REENTRY_UNLOCK:
-        DPRINTF("Command REENTRY_UNLOCK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        reentry_lock = 0;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_DGETDRV_CALL:
-        DPRINTF("Command DGETDRV_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        dgetdrive_value = (uint16_t)payloadPtr[0];
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_DCREATE_CALL:
-        DPRINTF("Command DCREATE_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 8; // Skip eight words
-        dcreate_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_DDELETE_CALL:
-        DPRINTF("Command DDELETE_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 8; // Skip eight words
-        ddelete_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_FSETDTA_CALL:
-        DPRINTF("Command FSETDTA_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
-        fsetdta = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_FSFIRST_CALL:
-        DPRINTF("Command FSFIRST_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];  // d3 register
-        payloadPtr += 2;                                         // Skip two words
-        attribs = payloadPtr[0];                                 // d4 register
-        payloadPtr += 2;                                         // Skip two words
-        fspec = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d5 register
-        payloadPtr += 2;                                         // Skip two words
-        fsfirst = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_FSNEXT_CALL:
-        DPRINTF("Command FSNEXT_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d3 register
-        fsnext = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_FOPEN_CALL:
-        DPRINTF("Command FOPEN_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        fopen_mode = payloadPtr[0]; // d3 register
-        payloadPtr += 6;            // Skip six words
-        fopen_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_FCREATE_CALL:
-        DPRINTF("Command FCREATE_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2; // Skip 2 words
-        fcreate_mode = payloadPtr[0];                   // d3 register
-        payloadPtr += 6;                                // Skip six words
-        fcreate_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_FCLOSE_CALL:
-        DPRINTF("Command FCLOSE_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        fclose_fd = payloadPtr[0]; // d3 register
-        fclose_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_FDELETE_CALL:
-        DPRINTF("Command FDELETE_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 8; // Skip eight words
-        fdelete_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_READ_BUFF_CALL:
-        DPRINTF("Command READ_BUFF_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        readbuff_fd = payloadPtr[0];                                                      // d3 register
-        payloadPtr += 2;                                                                  // Skip two words
-        readbuff_bytes_to_read = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];         // d4 register constains the number of bytes to read
-        payloadPtr += 2;                                                                  // Skip two words
-        readbuff_pending_bytes_to_read = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d5 register constains the number of bytes to read
-        readbuff_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_DGETPATH_CALL:
-        DPRINTF("Command DGETPATH_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        dpath_drive = payloadPtr[0]; // d3 register
-        payloadPtr += 6;             // Skip six words
-        dgetpath_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-    case GEMDRVEMUL_DSETPATH_CALL:
-        DPRINTF("Command DSETPATH (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        payloadPtr += 6; // Skip six words
-        dsetpath_call = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_PEXEC_CALL:
-        DPRINTF("Command PEXEC_CALL (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2;
-        pexec_mode = payloadPtr[0]; // d3 register
-        payloadPtr += 6;            // Skip six words
-        pexec_call = true;
-        break;
-    case GEMDRVEMUL_SAVE_BASEPAGE:
-        DPRINTF("Command SAVE_BASEPAGE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 2; // Skip eight words
-        {
-            uint32_t d3 = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d3 register
-            uint32_t d4 = ((uint32_t)payloadPtr[3] << 16) | payloadPtr[2]; // d4 register
-            uint32_t d5 = ((uint32_t)payloadPtr[5] << 16) | payloadPtr[4]; // d5 register
-            DPRINTF("d3: %x\n", d3);
-            DPRINTF("d4: %x\n", d4);
-            DPRINTF("d5: %x\n", d5);
-        }
-        payloadPtr += 6; // Skip eight words
-        save_basepage = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    case GEMDRVEMUL_SAVE_EXEC_HEADER:
-        DPRINTF("Command SAVE_EXEC_HEADER (%i) received: %d\n", protocol->command_id, protocol->payload_size);
-        payloadPtr = (uint16_t *)protocol->payload + 8; // Skip the registries and parse the buffer
-        save_exec_header = true;
-        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        break;
-    default:
-        DPRINTF("Unknown command: %d\n", protocol->command_id);
+        //        DPRINTF("Command %s(%i) received: %d\n", get_command_name(protocol->command_id), protocol->command_id, protocol->payload_size);
+        generate_random_token_seed(protocol);
+        active_command_id = protocol->command_id;
     }
 }
 
@@ -812,6 +575,7 @@ void __not_in_flash_func(gemdrvemul_dma_irq_handler_lookup_callback)(void)
     {
         parse_protocol((uint16_t)(addr & 0xFFFF), handle_protocol_command);
     }
+
     // Clear the interrupt request for the channel
     dma_hw->ints1 = 1u << lookup_data_rom_dma_channel;
 }
@@ -839,25 +603,103 @@ int init_gemdrvemul(bool safe_config_reboot)
     srand(time(0));
     printf("Initializing GEMDRIVE...\n"); // Print alwayse
 
+    // This code should be replaced by the initialization RTC code
+    datetime_t rtc_time = {2024, 03, 24, 0, 0, 0, 0};
+
+    // Start the RTC
+    rtc_init();
+    // Set the RTC with the received time
+    if (!rtc_set_datetime(&rtc_time))
+    {
+        DPRINTF("Cannot set internal RTC!\n");
+    }
+    else
+    {
+        DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
+                rtc_time.day, rtc_time.month, rtc_time.year, rtc_time.hour, rtc_time.min, rtc_time.sec);
+    }
     initializeDTAHashTable();
 
     dpath_string[0] = '\\'; // Set the root folder as default
     dpath_string[1] = '\0';
 
     bool write_config_only_once = true;
+    active_command_id = 0xFFFF;
 
     DPRINTF("Waiting for commands...\n");
     uint32_t memory_shared_address = ROM3_START_ADDRESS; // Start of the shared memory buffer
     uint32_t memory_firmware_code = ROM4_START_ADDRESS;  // Start of the firmware code
+
+    ConfigEntry *drive_letter_conf = find_entry(PARAM_GEMDRIVE_DRIVE);
+    char drive_letter = 'C';
+    if (drive_letter_conf != NULL)
+    {
+        drive_letter = drive_letter_conf->value[0];
+    }
+    uint16_t drive_letter_num = (uint8_t)toupper(drive_letter);
+    uint16_t drive_number = drive_letter_num - 65; // Convert the drive letter to a number. Add 1 because 0 is the current drive
+
+    ConfigEntry *buffer_type_conf = find_entry(PARAM_GEMDRIVE_BUFF_TYPE);
+    uint16_t buffer_type = 0; // 0: Diskbuffer, 1: Stack
+    if (buffer_type_conf != NULL)
+    {
+        buffer_type = atoi(buffer_type_conf->value);
+    }
+
+    set_shared_var(SHARED_VARIABLE_FIRST_FILE_DESCRIPTOR, FIRST_FILE_DESCRIPTOR, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_DRIVE_LETTER, drive_letter_num, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_DRIVE_NUMBER, drive_number, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_BUFFER_TYPE, buffer_type, memory_shared_address);
+
+    for (int i = 0; i < SHARED_VARIABLES_SIZE; i++)
+    {
+        uint32_t value = *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_SHARED_VARIABLES + (i * 4)));
+        DPRINTF("Shared variable %d: %04x%04x\n", i, value & 0xFFFF, value >> 16);
+    }
 
     while (true)
     {
         *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
         tight_loop_contents();
 
-        if (ping_received)
+        switch (active_command_id)
         {
-            ping_received = false;
+        case GEMDRVEMUL_DEBUG:
+        {
+            uint32_t d3 = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+            DPRINTF("DEBUG: %x\n", d3);
+            payloadPtr += 2;
+            uint32_t d4 = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+            DPRINTF("DEBUG: %x\n", d4);
+            payloadPtr += 2;
+            uint32_t d5 = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+            DPRINTF("DEBUG: %x\n", d5);
+            payloadPtr += 2;
+            uint8_t *payloadShowBytesPtr = (uint8_t *)payloadPtr;
+            print_payload(payloadShowBytesPtr);
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_SAVE_VECTORS:
+        {
+            DPRINTF("Saving vectors\n");
+            uint32_t gemdos_trap_address_old = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
+            payloadPtr += 2;
+            uint32_t gemdos_trap_address_xbra = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+            // Save the vectors needed for the floppy emulation
+            DPRINTF("gemdos_trap_addres_xbra: %x\n", gemdos_trap_address_xbra);
+            DPRINTF("gemdos_trap_address_old: %x\n", gemdos_trap_address_old);
+            // DPRINTF("random token: %x\n", random_token);
+            // Self modifying code to create the old and venerable XBRA structure
+            *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS)) = gemdos_trap_address_old & 0xFFFF;
+            *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS + 2)) = gemdos_trap_address_old >> 16;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_PING:
+        {
             if (!hd_folder_ready)
             {
                 // Initialize SD card
@@ -869,6 +711,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 else
                 {
                     // Mount drive
+                    FRESULT fr; /* FatFs function common result code */
                     fr = f_mount(&fs, "0:", 1);
                     bool microsd_mounted = (fr == FR_OK);
                     if (!microsd_mounted)
@@ -878,7 +721,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                     }
                     else
                     {
-                        hd_folder = find_entry("GEMDRIVE_FOLDERS")->value;
+                        hd_folder = find_entry(PARAM_GEMDRIVE_FOLDERS)->value;
                         DPRINTF("Emulating GEMDRIVE in folder: %s\n", hd_folder);
                         hd_folder_ready = true;
                         *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_SUCCESS)) = 0xFFFF;
@@ -886,38 +729,168 @@ int init_gemdrvemul(bool safe_config_reboot)
                 }
             }
             DPRINTF("PING received. Answering with: %d\n", *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_SUCCESS)));
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-        if (save_vectors)
+        case GEMDRVEMUL_SHOW_VECTOR_CALL:
         {
-            save_vectors = false;
-            // Save the vectors needed for the floppy emulation
-            DPRINTF("Saving vectors\n");
-            DPRINTF("gemdos_trap_addres_xbra: %x\n", gemdos_trap_address_xbra);
-            DPRINTF("gemdos_trap_address_old: %x\n", gemdos_trap_address_old);
-            // DPRINTF("random token: %x\n", random_token);
-            // Self modifying code to create the old and venerable XBRA structure
-            *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS)) = gemdos_trap_address_old & 0xFFFF;
-            *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS + 2)) = gemdos_trap_address_old >> 16;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
-        }
-        if (trap_call != 0xFFFF)
-        {
+            uint16_t trap_call = (uint16_t)payloadPtr[0];
+            bool isBlacklisted = false;
+            for (int i = 0; i < sizeof(BLACKLISTED_GEMDOS_CALLS); i++)
+            {
+                if (trap_call == BLACKLISTED_GEMDOS_CALLS[i])
+                {
+                    isBlacklisted = true; // Found the call in the blacklist
+                    break;
+                }
+            }
+            // if (!isBlacklisted)
+            // {
+            // If the call is not blacklisted, print its information
             DPRINTF("GEMDOS CALL: %s (%x)\n", GEMDOS_CALLS[trap_call], trap_call);
-            trap_call = 0xFFFF;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            // }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (dgetdrive_value != 0xFFFF)
+        case GEMDRVEMUL_SET_SHARED_VAR:
         {
-            DPRINTF("Dgetdrv value: %x\n", dgetdrive_value);
-            dgetdrive_value = 0xFFFF;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            // Shared variables
+            uint32_t shared_variable_index = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d3 register
+            payloadPtr += 2;                                                                  // Skip two words
+            uint32_t shared_variable_value = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d4 register
+            set_shared_var(shared_variable_index, shared_variable_value, memory_shared_address);
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-        if (dcreate_call)
+        case GEMDRVEMUL_DGETDRV_CALL:
+        {
+            // Get the drive letter
+            uint16_t dgetdrive_value = (uint16_t)payloadPtr[0];
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_REENTRY_LOCK:
+        {
+            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_REENTRY_TRAP)) = 0xFFFF;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_REENTRY_UNLOCK:
+        {
+            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_REENTRY_TRAP)) = 0x0;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_DFREE_CALL:
+        {
+            uint32_t dfree_unit = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+            // Check the free space
+            DWORD fre_clust;
+            FATFS *fs;
+            FRESULT fr;
+            // Get free space
+            fr = f_getfree(hd_folder, &fre_clust, &fs);
+            if (fr != FR_OK)
+            {
+                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DFREE_STATUS)) = GEMDOS_ERROR;
+            }
+            else
+            {
+                // Calculate the total number of free bytes
+                uint64_t freeBytes = fre_clust * fs->csize * NUM_BYTES_PER_SECTOR;
+                DPRINTF("Total clusters: %d, free clusters: %d, bytes per sector: %d, sectors per cluster: %d\n", fs->n_fatent - 2, fre_clust, NUM_BYTES_PER_SECTOR, fs->csize);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT, fre_clust);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT + 4, fs->n_fatent - 2);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT + 8, NUM_BYTES_PER_SECTOR);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT + 12, fs->csize);
+                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DFREE_STATUS)) = GEMDOS_EOK;
+            }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+        }
+        case GEMDRVEMUL_DGETPATH_CALL:
+        {
+            uint16_t dpath_drive = payloadPtr[0]; // d3 register
+
+            DPRINTF("Dpath drive: %x\n", dpath_drive);
+            // Copy the content of the path variable to memory_shared_address + GEMDRVEMUL_DEFAULT_PATH
+            for (int i = 0; i < MAX_FOLDER_LENGTH; i++)
+            {
+                *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH + i)) = dpath_string[i];
+            }
+            // Swap the bytes
+            swap_words((uint16_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH), MAX_FOLDER_LENGTH);
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_DSETPATH_CALL:
+        {
+            payloadPtr += 6; // Skip six words
+            // Obtain the fname string and keep it in memory
+            char *origin = (char *)payloadPtr;
+            char dpath_tmp[MAX_FOLDER_LENGTH] = {};
+            for (int i = 0; i < 64; i += 2)
+            {
+                dpath_tmp[i] = (char)*(origin + i + 1);
+                dpath_tmp[i + 1] = (char)*(origin + i);
+            }
+            DPRINTF("Default path string: %s\n", dpath_tmp);
+            // Check if the directory exists
+            char tmp_path[MAX_FOLDER_LENGTH] = {0};
+
+            if (dpath_tmp[0] == drive_letter)
+            {
+                DPRINTF("Drive letter found: %c. Removing it.\n", drive_letter);
+                // Remove the drive letter and the colon from the path
+                memmove(dpath_tmp, dpath_tmp + 2, strlen(dpath_tmp));
+            }
+
+            if (dpath_tmp[0] != '\\')
+            {
+                // Concatenate the path with the existing dpath_string
+                DPRINTF("Dpath string: %s\n", dpath_string);
+                DPRINTF("Dpath tmp: %s\n", dpath_tmp);
+                char tmp_path_concat[MAX_FOLDER_LENGTH] = {0};
+                snprintf(tmp_path_concat, sizeof(tmp_path_concat), "%s/%s", dpath_string, dpath_tmp);
+                DPRINTF("Concatenated path: %s\n", tmp_path_concat);
+                strcpy(dpath_tmp, tmp_path_concat);
+                DPRINTF("Dpath tmp: %s\n", dpath_tmp);
+            }
+            // Concatenate the path with the hd_folder
+            snprintf(tmp_path, sizeof(tmp_path), "%s/%s", hd_folder, dpath_tmp);
+            back_2_forwardslash(tmp_path);
+
+            // Remove duplicated forward slashes
+            remove_dup_slashes(tmp_path);
+
+            if (directory_exists(tmp_path))
+            {
+                DPRINTF("Directory exists: %s\n", tmp_path);
+                // Copy dpath_tmp to dpath_string
+                strcpy(dpath_string, dpath_tmp);
+                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SET_DPATH_STATUS)) = GEMDOS_EOK;
+            }
+            else
+            {
+                DPRINTF("Directory does not exist: %s\n", tmp_path);
+                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SET_DPATH_STATUS)) = GEMDOS_EDRIVE;
+            }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_DCREATE_CALL:
         {
             // Obtain the pathname string and keep it in memory
             // concatenated with the local harddisk folder and the default path (if any)
+            payloadPtr += 6; // Skip six words
             char tmp_pathname[MAX_FOLDER_LENGTH] = {0};
             get_local_full_pathname(tmp_pathname);
             DPRINTF("Folder to create: %s\n", tmp_pathname);
@@ -943,13 +916,15 @@ int init_gemdrvemul(bool safe_config_reboot)
                     *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DCREATE_STATUS)) = GEMDOS_EOK;
                 }
             }
-            dcreate_call = false;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-        if (ddelete_call)
+        case GEMDRVEMUL_DDELETE_CALL:
         {
             // Obtain the pathname string and keep it in memory
             // concatenated with the local harddisk folder and the default path (if any)
+            payloadPtr += 6; // Skip six words
             char tmp_pathname[MAX_FOLDER_LENGTH] = {0};
             get_local_full_pathname(tmp_pathname);
             DPRINTF("Folder to delete: %s\n", tmp_pathname);
@@ -989,67 +964,258 @@ int init_gemdrvemul(bool safe_config_reboot)
                     *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DDELETE_STATUS)) = GEMDOS_EOK;
                 }
             }
-            ddelete_call = false;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (fsetdta)
+        case GEMDRVEMUL_FSETDTA_CALL:
         {
-            DPRINTF("ndta: %x\n", ndta);
-            DTA data = {{0}, 0, 0, 0, 0, "filename"};
-            insertDTA(ndta, data);
-            fsetdta = false;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
-        }
-
-        if (fsfirst)
-        {
-            fsfirst = false;
-            DPRINTF("ndta: %x\n", ndta);
-            DPRINTF("attribs: %x\n", attribs);
-            DPRINTF("fspec: %x\n", fspec);
-
-            // Obtain the fspec string and keep it in memory
-            char *origin = (char *)payloadPtr;
-            for (int i = 0; i < 64; i += 2)
+            uint32_t ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+            bool ndta_exists = lookupDTA(ndta);
+            if (ndta_exists)
             {
-                fspec_string[i] = (char)*(origin + i + 1);
-                fspec_string[i + 1] = (char)*(origin + i);
+                // We don't release the DTA if it already exists. Wait for FsFirst to do it
+                DPRINTF("DTA at %x already exists.\n", ndta);
             }
-            DPRINTF("fspec string: %s\n", fspec_string);
-
-            // We need to search for directory and files, so we need to add the AM_ARC attribute
-            find(fspec_string, dpath_string, (uint8_t)(attribs | AM_ARC));
-            populate_dta(memory_shared_address, ndta);
-
-            // Copy the content of the path variable to memory_shared_address + GEMDRVEMUL_DEFAULT_PATH
-            for (int i = 0; i < 128; i++)
+            else
             {
-                *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH + i)) = dpath_string[i];
+                DTA data = {"filename", 0, 0, 0, 0, 0, 0, 0, 0, "filename"};
+                insertDTA(ndta, data, NULL, NULL);
+                DPRINTF("Added ndta: %x.\n", ndta);
             }
-            // Swap the bytes
-            swap_words((uint16_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH), 128);
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (fsnext)
+        case GEMDRVEMUL_DTA_EXIST_CALL:
         {
-            fsnext = false;
-            populate_dta(memory_shared_address, ndta);
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            uint32_t ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+            bool ndta_exists = lookupDTA(ndta);
+            DPRINTF("DTA exists: %s\n", (ndta_exists) ? "TRUE" : "FALSE");
+            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DTA_EXIST, (ndta_exists ? ndta : 0));
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (fopen_call)
+        case GEMDRVEMUL_DTA_RELEASE_CALL:
         {
-            fopen_call = false;
-            DPRINTF("mode: %x\n", fopen_mode);
+            uint32_t ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+            DPRINTF("Releasing DTA: %x\n", ndta);
+            DTANode *dtaNode = lookupDTA(ndta);
+            if (dtaNode != NULL)
+            {
+                releaseDTA(ndta);
+                DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
+            }
+            for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
+            {
+                *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
+            }
+            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DTA_RELEASE, countDTA());
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_FSFIRST_CALL:
+        {
+            uint32_t ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];  // d3 register
+            payloadPtr += 2;                                                  // Skip two words
+            uint32_t attribs = payloadPtr[0];                                 // d4 register
+            payloadPtr += 2;                                                  // Skip two words
+            uint32_t fspec = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d5 register
+            payloadPtr += 2;                                                  // Skip two words
+            char attribs_str[7] = "";
+            char internal_path[MAX_FOLDER_LENGTH * 2] = {0};
+            char pattern[32] = {0};
+            char fspec_string[MAX_FOLDER_LENGTH] = {0};
+            swap_string_endiannes((char *)payloadPtr, fspec_string);
+            DPRINTF("Fspec string: %s\n", fspec_string);
+            get_attribs_st_str(attribs_str, attribs);
+            seach_path_2_st(fspec_string, internal_path, pattern);
+            DPRINTF("Fsfirst ndta: %x, attribs: %s, fspec: %x, fspec string: %s\n", ndta, attribs_str, fspec, fspec_string);
+            DPRINTF("Fsfirst Full internal path: %s, filename pattern: %s\n", internal_path, pattern);
 
+            bool ndta_exists = lookupDTA(ndta) ? true : false;
+
+            FRESULT fr;   /* Return value */
+            DIR *dj;      /* Directory object */
+            FILINFO *fno; /* File information */
+            dj = (DIR *)malloc(sizeof(DIR));
+            fno = (FILINFO *)malloc(sizeof(FILINFO));
+            fr = f_findfirst(dj, fno, internal_path, pattern);
+            if (fr == FR_OK && fno->fname[0] && (!(fno->fname[0] == '.' || fno->fname[1] == '_')))
+            {
+                uint8_t attribs_conv_st = attribs_fat2st(fno->fattrib);
+                if (!(attribs & FS_ST_LABEL))
+                {
+                    attribs |= FS_ST_ARCH;
+                }
+                char attribs_str[7] = "";
+                get_attribs_st_str(attribs_str, attribs_conv_st);
+                char shorten_filename[14];
+                char upper_filename[14];
+                char filtered_filename[14];
+                filter_fname(fno->fname, filtered_filename);
+                upper_fname(filtered_filename, upper_filename);
+                shorten_fname(upper_filename, shorten_filename);
+
+                strcpy(fno->fname, shorten_filename);
+
+                // Filter out elements that do not match the attributes
+                if (attribs_conv_st & attribs)
+                {
+                    DPRINTF("Found: %s, attr: %s\n", fno->fname, attribs_str);
+                    if (ndta_exists)
+                    {
+                        releaseDTA(ndta);
+                        DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
+                        for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
+                        {
+                            *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
+                        }
+                    }
+                    DTA data = {"filename.typ", 0, 0, 0, 0, 0, 0, 0, 0, "filename.typ"};
+                    insertDTA(ndta, data, dj, fno);
+                    // Populate the DTA with the first file found
+                    populate_dta(memory_shared_address, ndta, GEMDOS_EFILNF);
+                }
+                else
+                {
+                    DPRINTF("Skipped: %s, attr: %s\n", fno->fname, attribs_str);
+                    int16_t error_code = GEMDOS_EFILNF;
+                    DPRINTF("DTA at %x showing error code: %x\n", ndta, error_code);
+                    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DTA_F_FOUND)) = error_code;
+                    if (ndta_exists)
+                    {
+                        releaseDTA(ndta);
+                        DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
+                        for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
+                        {
+                            *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                DPRINTF("Nothing returned from Fsfirst\n");
+                int16_t error_code = GEMDOS_EFILNF;
+                DPRINTF("DTA at %x showing error code: %x\n", ndta, error_code);
+                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DTA_F_FOUND)) = error_code;
+                for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
+                {
+                    *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
+                }
+                if (ndta_exists)
+                {
+                    releaseDTA(ndta);
+                    DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
+                }
+            }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_FSNEXT_CALL:
+        {
+            uint32_t ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d3 register
+            DPRINTF("Fsnext ndta: %x\n", ndta);
+
+            FRESULT fr; /* Return value */
+            DTANode *dtaNode = lookupDTA(ndta);
+
+            bool ndta_exists = dtaNode ? true : false;
+            if (dtaNode != NULL && dtaNode->dj != NULL && dtaNode->fno != NULL && ndta_exists)
+            {
+                // We need to filter out the elements that does not make sense in the FsFat environment
+                // And in the Atari ST environment
+                char raw_filename[2] = "._";
+                fr = FR_OK;
+                while (fr == FR_OK && (raw_filename[0] == '.' || raw_filename[1] == '_'))
+                {
+                    fr = f_findnext(dtaNode->dj, dtaNode->fno);
+                    if (dtaNode->fno->fname[0])
+                    {
+                        if (fr == FR_OK)
+                        {
+                            raw_filename[0] = dtaNode->fno->fname[0];
+                            raw_filename[1] = dtaNode->fno->fname[1];
+                        }
+                    }
+                    else
+                    {
+                        raw_filename[0] = 'X'; // Force exit, no more elements
+                        raw_filename[1] = 'X'; // Force exit, no more elements
+                    }
+                }
+                if (fr == FR_OK && dtaNode->fno->fname[0])
+                {
+                    char shorten_filename[14];
+                    char upper_filename[14];
+                    char filtered_filename[14];
+                    filter_fname(dtaNode->fno->fname, filtered_filename);
+                    upper_fname(filtered_filename, upper_filename);
+                    shorten_fname(upper_filename, shorten_filename);
+                    strcpy(dtaNode->fno->fname, shorten_filename);
+
+                    uint8_t attribs = dtaNode->fno->fattrib;
+                    uint8_t attribs_conv_st = attribs_fat2st(attribs);
+                    if (!(attribs & (FS_ST_LABEL | FS_ST_FOLDER)))
+                    {
+                        attribs |= FS_ST_ARCH;
+                    }
+                    char attribs_str[7] = "";
+                    get_attribs_st_str(attribs_str, attribs_conv_st);
+                    DPRINTF("Found: %s, attr: %s\n", dtaNode->fno->fname, attribs_str);
+                    // Populate the DTA with the next file found
+                    populate_dta(memory_shared_address, ndta, GEMDOS_ENMFIL);
+                }
+                else
+                {
+                    DPRINTF("Nothing found\n");
+                    int16_t error_code = GEMDOS_ENMFIL;
+                    DPRINTF("DTA at %x showing error code: %x\n", ndta, error_code);
+                    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DTA_F_FOUND)) = error_code;
+                    if (ndta_exists)
+                    {
+                        releaseDTA(ndta);
+                        DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
+                    }
+                    for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
+                    {
+                        *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
+                    }
+                }
+            }
+            else
+            {
+                DPRINTF("FsFirst not initalized\n");
+                int16_t error_code = GEMDOS_EINTRN;
+                DPRINTF("DTA at %x showing error code: %x\n", ndta, error_code);
+                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DTA_F_FOUND)) = error_code;
+                if (ndta_exists)
+                {
+                    releaseDTA(ndta);
+                    DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
+                }
+                for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
+                {
+                    *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
+                }
+            }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_FOPEN_CALL:
+        {
+            uint16_t fopen_mode = payloadPtr[0]; // d3 register
+            payloadPtr += 6;                     // Skip six words
             // Obtain the fname string and keep it in memory
             // concatenated path and filename
             char tmp_filepath[MAX_FOLDER_LENGTH] = {0};
             get_local_full_pathname(tmp_filepath);
-            DPRINTF("Opening file: %s\n", tmp_filepath);
-
+            DPRINTF("Opening file: %s with mode: %x\n", tmp_filepath, fopen_mode);
             // Convert the fopen_mode to FatFs mode
             BYTE fatfs_open_mode = 0;
             switch (fopen_mode)
@@ -1083,19 +1249,29 @@ int init_gemdrvemul(bool safe_config_reboot)
                 {
                     // Add the file to the list of open files
                     int fd_counter = get_first_available_fd(fdescriptors);
-                    DPRINTF("File opened with file descriptor: %d\n", fd_counter);
-                    add_file(&fdescriptors, tmp_filepath, file_object, fd_counter);
-                    // Return the file descriptor
-                    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE)) = fd_counter;
+                    DPRINTF("Opening file with new file descriptor: %d\n", fd_counter);
+                    FileDescriptors *new_fd = add_file(&fdescriptors, tmp_filepath, file_object, fd_counter);
+                    if (new_fd == NULL)
+                    {
+                        DPRINTF("ERROR: Could not add file to the list of open files\n");
+                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE)) = GEMDOS_EINTRN;
+                    }
+                    else
+                    {
+                        DPRINTF("File opened with file descriptor: %d\n", fd_counter);
+                        // Return the file descriptor
+                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE)) = fd_counter;
+                    }
                 }
             }
-
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-        if (fclose_call)
+        case GEMDRVEMUL_FCLOSE_CALL:
         {
-            fclose_call = false;
-            DPRINTF("fd: %x\n", fclose_fd);
+            uint16_t fclose_fd = payloadPtr[0]; // d3 register
+            DPRINTF("Closing file with fd: %x\n", fclose_fd);
             // Obtain the file descriptor
             FileDescriptors *file = get_file_by_fdesc(fdescriptors, fclose_fd);
             if (file == NULL)
@@ -1121,23 +1297,23 @@ int init_gemdrvemul(bool safe_config_reboot)
                     *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FCLOSE_STATUS)) = GEMDOS_EOK;
                 }
             }
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
 
-        if (fcreate_call)
+        case GEMDRVEMUL_FCREATE_CALL:
         {
-            fcreate_call = false;
-            DPRINTF("mode: %x\n", fcreate_mode);
-
+            fcreate_mode = payloadPtr[0]; // d3 register
+            payloadPtr += 6;              // Skip six words
             // Obtain the fname string and keep it in memory
             // concatenated path and filename
             char tmp_filepath[MAX_FOLDER_LENGTH] = {0};
             get_local_full_pathname(tmp_filepath);
-            DPRINTF("Creating file: %s\n", tmp_filepath);
+            DPRINTF("Creating file: %s\n with mode: %x", tmp_filepath, fcreate_mode);
 
             // CREATE ALWAYS MODE
             BYTE fatfs_create_mode = FA_READ | FA_WRITE | FA_CREATE_ALWAYS;
-            // fatfs_create_mode = FA_READ | FA_WRITE | FA_CREATE_ALWAYS;
             DPRINTF("FatFs create mode: %x\n", fatfs_create_mode);
 
             // Open the file with FatFs
@@ -1155,58 +1331,351 @@ int init_gemdrvemul(bool safe_config_reboot)
                 DPRINTF("File created with file descriptor: %d\n", fd_counter);
                 add_file(&fdescriptors, tmp_filepath, file_object, fd_counter);
 
-                // Missing attribute modification
+                // MISSING ATTRIBUTE MODIFICATION
 
                 // Return the file descriptor
                 *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = SWAP_LONGWORD(fd_counter);
             }
 
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (fdelete_call)
+        case GEMDRVEMUL_FDELETE_CALL:
         {
-            fdelete_call = false;
+            payloadPtr += 6; // Skip six words
             // Obtain the fname string and keep it in memory
             // concatenated path and filename
             char tmp_filepath[MAX_FOLDER_LENGTH] = {0};
             get_local_full_pathname(tmp_filepath);
             DPRINTF("Deleting file: %s\n", tmp_filepath);
-
             // Delete the file
             fr = f_unlink(tmp_filepath);
+            uint32_t status;
             if (fr != FR_OK)
             {
                 DPRINTF("ERROR: Could not delete file (%d)\r\n", fr);
                 if (fr == FR_DENIED)
                 {
-                    DPRINTF("ERROR: Not enough premissions to delete file\n");
-                    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDELETE_STATUS)) = SWAP_LONGWORD(GEMDOS_EACCDN);
+                    DPRINTF("ERROR: Not enough permissions to delete file\n");
+                    status = GEMDOS_EACCDN;
                 }
                 else if (fr == FR_NO_PATH)
                 {
                     DPRINTF("ERROR: Folder does not exist\n");
-                    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDELETE_STATUS)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
+                    status = GEMDOS_EPTHNF;
                 }
                 else
                 {
                     DPRINTF("ERROR: Internal error\n");
-                    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDELETE_STATUS)) = SWAP_LONGWORD(GEMDOS_EINTRN);
+                    status = GEMDOS_EINTRN;
                 }
             }
             else
             {
                 DPRINTF("File deleted\n");
-                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDELETE_STATUS)) = GEMDOS_EOK;
+                status = GEMDOS_EOK;
+            }
+            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDELETE_STATUS)) = SWAP_LONGWORD(status);
+
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_FSEEK_CALL:
+        {
+            uint16_t fseek_fd = payloadPtr[0];                                       // d3 register
+            payloadPtr += 2;                                                         // Skip two words
+            uint32_t fseek_offset = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d4 register
+            payloadPtr += 2;                                                         // Skip two words
+            uint16_t fseek_mode = payloadPtr[0];                                     // d5 register
+            DPRINTF("Fseek in the file with fd: %x, offset: %x, mode: %x\n", fseek_fd, fseek_offset, fseek_mode);
+            // Obtain the file descriptor
+            FileDescriptors *file = get_file_by_fdesc(fdescriptors, fseek_fd);
+            if (file == NULL)
+            {
+                DPRINTF("ERROR: File descriptor not found\n");
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FSEEK_STATUS, GEMDOS_EIHNDL);
+            }
+            else
+            {
+                switch (fseek_mode)
+                {
+                case 0: // SEEK_SET 0 offset specifies the positive number of bytes from the beginning of the file
+                    file->offset = fseek_offset;
+                    break;
+                case 1: // SEEK_CUR 1 offset specifies offset specifies the negative or positive number of bytes from the current file position
+                    file->offset += fseek_offset;
+                    if (file->offset < 0)
+                    {
+                        file->offset = 0;
+                    }
+                    break;
+                case 2: // SEEK_END 2 offset specifies the negative number of bytes from the end of the file
+                    // Get file size
+                    file->offset = f_size(&(file->fobject)) + fseek_offset;
+                    if (file->offset < 0)
+                    {
+                        file->offset = 0;
+                    }
+                    break;
+                }
+                // We don't really need to do the lseek here, because it will be performed in the read operation
+                if (fr != FR_OK)
+                {
+                    DPRINTF("ERROR: Could not seek file (%d)\r\n", fr);
+                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FSEEK_STATUS, GEMDOS_EINTRN);
+                }
+                else
+                {
+                    DPRINTF("File seeked\n");
+                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FSEEK_STATUS, file->offset);
+                }
+            }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_FATTRIB_CALL:
+        {
+            uint16_t fattrib_flag = payloadPtr[0]; // d3 register
+            payloadPtr += 2;                       // Skip two words
+            // Obtain the new attributes, if FATTRIB_SET is set
+            uint16_t fattrib_new = payloadPtr[0]; // d4 register
+            payloadPtr += 4;                      // Skip four words
+            // Obtain the fname string and keep it in memory
+            // concatenated path and filename
+            char tmp_filepath[MAX_FOLDER_LENGTH] = {0};
+            get_local_full_pathname(tmp_filepath);
+            DPRINTF("Fattrib flag: %x, new attributes: %x\n", fattrib_flag, fattrib_new);
+            DPRINTF("Getting attributes of file: %s\n", tmp_filepath);
+
+            // Get the attributes of the file
+            FILINFO fno;
+            fr = f_stat(tmp_filepath, &fno);
+            if (fr != FR_OK)
+            {
+                DPRINTF("ERROR: Could not get file attributes (%d)\r\n", fr);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FATTRIB_STATUS, GEMDOS_EFILNF);
+            }
+            else
+            {
+                uint32_t fattrib_st = attribs_fat2st(fno.fattrib);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FATTRIB_STATUS, fattrib_st);
+                char fattrib_st_str[7] = "";
+                get_attribs_st_str(fattrib_st_str, fattrib_st);
+                if (fattrib_flag == FATTRIB_INQUIRE)
+                {
+                    DPRINTF("File attributes: %s\n", fattrib_st_str);
+                }
+                else
+                {
+                    // WE will assume here FATTRIB_SET
+                    // Set the attributes of the file
+                    char fattrib_st_str[7] = "";
+                    get_attribs_st_str(fattrib_st_str, fattrib_new);
+                    DPRINTF("New file attributes: %s\n", fattrib_st_str);
+                    BYTE fattrib_fatfs_new = (BYTE)attribs_st2fat(fattrib_new);
+                    fr = f_chmod(tmp_filepath, fattrib_fatfs_new, AM_RDO | AM_HID | AM_SYS);
+                    if (fr != FR_OK)
+                    {
+                        DPRINTF("ERROR: Could not set file attributes (%d)\r\n", fr);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FATTRIB_STATUS, GEMDOS_EACCDN);
+                    }
+                }
+            }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_FRENAME_CALL:
+        {
+            payloadPtr += 6; // Skip six words
+            // Obtain the src name from the payload
+            char *origin = (char *)payloadPtr;
+            char frename_fname_src[MAX_FOLDER_LENGTH] = {0};
+            char frename_fname_dst[MAX_FOLDER_LENGTH] = {0};
+            for (int i = 0; i < MAX_FOLDER_LENGTH; i += 2)
+            {
+                frename_fname_src[i] = (char)*(origin + i + 1);
+                frename_fname_src[i + 1] = (char)*(origin + i);
+            }
+            for (int i = MAX_FOLDER_LENGTH; i < MAX_FOLDER_LENGTH * 2; i += 2)
+            {
+                frename_fname_dst[i - MAX_FOLDER_LENGTH] = (char)*(origin + i + 1);
+                frename_fname_dst[i - MAX_FOLDER_LENGTH + 1] = (char)*(origin + i);
+            }
+            // DPRINTF("Renaming file: %s to %s\n", frename_fname_src, frename_fname_dst);
+            // get_local_full_pathname(frename_fname_src);
+            // get_local_full_pathname(frename_fname_dst);
+            // DPRINTF("Renaming file: %s to %s\n", frename_fname_src, frename_fname_dst);
+
+            char drive_src[3] = {0};
+            char folders_src[MAX_FOLDER_LENGTH] = {0};
+            char filePattern_src[MAX_FOLDER_LENGTH] = {0};
+            char drive_dst[3] = {0};
+            char folders_dst[MAX_FOLDER_LENGTH] = {0};
+            char filePattern_dst[MAX_FOLDER_LENGTH] = {0};
+            split_fullpath(frename_fname_src, drive_src, folders_src, filePattern_src);
+            DPRINTF("Drive: %s, Folders: %s, FilePattern: %s\n", drive_src, folders_src, filePattern_src);
+            split_fullpath(frename_fname_dst, drive_dst, folders_dst, filePattern_dst);
+            DPRINTF("Drive: %s, Folders: %s, FilePattern: %s\n", drive_dst, folders_dst, filePattern_dst);
+
+            if (strcasecmp(drive_src, drive_dst) != 0)
+            {
+                DPRINTF("ERROR: Different drives\n");
+                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
+            }
+            else if (strcasecmp(folders_src, folders_dst) != 0)
+            {
+                DPRINTF("ERROR: Different folders\n");
+                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
+            }
+            else
+            {
+                DPRINTF("Renaming file: %s to %s\n", frename_fname_src, frename_fname_dst);
+                get_local_full_pathname(frename_fname_src);
+                payloadPtr += MAX_FOLDER_LENGTH / 2; // MAX_FOLDER_LENGTH * 2 bytes per uint16_t
+                get_local_full_pathname(frename_fname_dst);
+                DPRINTF("Renaming file: %s to %s\n", frename_fname_src, frename_fname_dst);
+                // Rename the file
+                fr = f_rename(frename_fname_src, frename_fname_dst);
+                if (fr != FR_OK)
+                {
+                    DPRINTF("ERROR: Could not rename file (%d)\r\n", fr);
+                    if (fr == FR_DENIED)
+                    {
+                        DPRINTF("ERROR: Not enough premissions to rename file\n");
+                        *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EACCDN);
+                    }
+                    else if (fr == FR_NO_PATH)
+                    {
+                        DPRINTF("ERROR: Folder does not exist\n");
+                        *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
+                    }
+                    else
+                    {
+                        DPRINTF("ERROR: Internal error\n");
+                        *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EINTRN);
+                    }
+                }
+                else
+                {
+                    DPRINTF("File renamed\n");
+                    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = GEMDOS_EOK;
+                }
             }
 
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_FDATETIME_CALL:
+        {
+            uint16_t fdatetime_flag = payloadPtr[0]; // d3 register
+            payloadPtr += 2;                         // Skip two words
+            // Obtain the file descriptor to change the date and time
+            uint16_t fdatetime_fd = payloadPtr[0]; // d4 register
+            payloadPtr += 4;                       // Skip four words
+
+            FileDescriptors *fd = get_file_by_fdesc(fdescriptors, fdatetime_fd);
+            if (fd == NULL)
+            {
+                DPRINTF("ERROR: File descriptor not found\n");
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EIHNDL);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
+            }
+            else
+            {
+                if (fdatetime_flag == FDATETIME_INQUIRE)
+                {
+                    FILINFO fno;
+                    FRESULT fr;
+                    fr = f_stat(fd->fpath, &fno);
+                    if (fr == FR_OK)
+                    {
+                        // File information is now in fno
+                        // Convert the date and time
+                        unsigned int year = (fno.fdate >> 9);
+                        unsigned int month = (fno.fdate >> 5) & 0x0F;
+                        unsigned int day = fno.fdate & 0x1F;
+
+                        unsigned int hour = fno.ftime >> 11;
+                        unsigned int minute = (fno.ftime >> 5) & 0x3F;
+                        unsigned int second = (fno.ftime & 0x1F);
+
+                        DPRINTF("Get file date and time: %02d:%02d:%02d %02d/%02d/%02d\n", hour, minute, second * 2, day, month, year + 1980);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EOK);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, (year << 16) | (month << 8) | day);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, (hour << 16) | (minute << 8) | second);
+                    }
+                    else
+                    {
+                        DPRINTF("ERROR: Could not get file date and time from file %s (%d)\r\n", fd->fpath, fr);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EFILNF);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
+                    }
+                }
+                else
+                {
+                    uint8_t hour = payloadPtr[0];
+                    uint8_t minute = payloadPtr[1];
+                    uint8_t second = payloadPtr[2];
+                    uint8_t year = payloadPtr[3];
+                    uint8_t month = payloadPtr[4];
+                    uint8_t day = payloadPtr[5];
+                    DPRINTF("File date and time: %02d:%02d:%02d %02d/%02d/%02d\n", hour, minute, second * 2, day, month, year + 1980);
+
+                    FILINFO fno;
+
+                    fno.fdate = (WORD)(((year) * 512U) | month * 32U | day);
+                    fno.ftime = (WORD)(hour * 2048U | minute * 32U | second);
+
+                    FRESULT fr = f_utime(fd->fpath, &fno);
+                    if (fr == FR_OK)
+                    {
+                        // File exists and date and time set
+                        // So now we can return the status
+                        DPRINTF("Set the file date and time: %02d:%02d:%02d %02d/%02d/%02d\n", hour, minute, second * 2, day, month, year + 1980);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EOK);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
+                    }
+                    else
+                    {
+                        DPRINTF("ERROR: Could not set file date and time to file %s (%d)\r\n", fd->fpath, fr);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EFILNF);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
+                    }
+
+                    // // Set the date and time of the file with the values read from the payload
+                    // datetime_t rtc_time = {0};
+                    // rtc_get_datetime(&rtc_time);
+                    // // Ensure the values fit into the designated bit sizes
+                    // uint16_t hours = rtc_time.hour & 0x1F;        // Take only the lowest 5 bits
+                    // uint16_t minutes = rtc_time.min & 0x3F;       // Take only the lowest 6 bits
+                    // uint16_t seconds = rtc_time.sec & 0x1F;       // Take only the lowest 5 bits
+                    // uint16_t day = rtc_time.day & 0x1F;           // Take only the lowest 5 bits
+                    // uint16_t month = rtc_time.month & 0xF;        // Take only the lowest 4 bits
+                    // uint16_t year = rtc_time.year & 0x7FFF >> 16; // Take only the lowest 7 bits
+                }
+            }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
 
-        if (readbuff_call)
+        case GEMDRVEMUL_READ_BUFF_CALL:
         {
-            readbuff_call = false;
-            DPRINTF("fd: x%x, bytes_to_read: x%08x, pending_bytes_to_read: x%08x\n", readbuff_fd, readbuff_bytes_to_read, readbuff_pending_bytes_to_read);
+            uint16_t readbuff_fd = payloadPtr[0];                                                      // d3 register
+            payloadPtr += 2;                                                                           // Skip two words
+            uint32_t readbuff_bytes_to_read = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];         // d4 register constains the number of bytes to read
+            payloadPtr += 2;                                                                           // Skip two words
+            uint32_t readbuff_pending_bytes_to_read = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d5 register constains the number of bytes to read
+            DPRINTF("Read buffering file with fd: x%x, bytes_to_read: x%08x, pending_bytes_to_read: x%08x\n", readbuff_fd, readbuff_bytes_to_read, readbuff_pending_bytes_to_read);
             // Obtain the file descriptor
             FileDescriptors *file = get_file_by_fdesc(fdescriptors, readbuff_fd);
             if (file == NULL)
@@ -1249,82 +1718,126 @@ int init_gemdrvemul(bool safe_config_reboot)
                     }
                 }
             }
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (dgetpath_call)
+        case GEMDRVEMUL_WRITE_BUFF_CALL:
         {
-            dgetpath_call = false;
-            DPRINTF("dpath_drive: %x\n", dpath_drive);
-            // Copy the content of the path variable to memory_shared_address + GEMDRVEMUL_DEFAULT_PATH
-            for (int i = 0; i < 128; i++)
+            uint16_t writebuff_fd = payloadPtr[0];                                                       // d3 register
+            payloadPtr += 2;                                                                             // Skip two words
+            uint32_t writebuff_bytes_to_write = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];         // d4 register constains the number of bytes to write
+            payloadPtr += 2;                                                                             // Skip two words
+            uint32_t writebuff_pending_bytes_to_write = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d5 register constains the number of bytes to write
+            payloadPtr += 2;
+            DPRINTF("Write buffering file with fd: x%x, bytes_to_write: x%08x, pending_bytes_to_write: x%08x\n", writebuff_fd, writebuff_bytes_to_write, writebuff_pending_bytes_to_write);
+            // Obtain the file descriptor
+            FileDescriptors *file = get_file_by_fdesc(fdescriptors, writebuff_fd);
+            if (file == NULL)
             {
-                *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH + i)) = dpath_string[i];
-            }
-            // Swap the bytes
-            swap_words((uint16_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH), 128);
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
-        }
-
-        if (dsetpath_call)
-        {
-            dsetpath_call = false;
-            // Obtain the fname string and keep it in memory
-            char *origin = (char *)payloadPtr;
-            char dpath_tmp[128] = {};
-            for (int i = 0; i < 64; i += 2)
-            {
-                dpath_tmp[i] = (char)*(origin + i + 1);
-                dpath_tmp[i + 1] = (char)*(origin + i);
-            }
-            DPRINTF("Default path string: %s\n", dpath_tmp);
-            // Check if the directory exists
-            char tmp_path[128] = {0};
-
-            // Concatenate the path with the hd_folder
-            snprintf(tmp_path, sizeof(tmp_path), "%s/%s", hd_folder, dpath_tmp);
-            back_2_forwardslash(tmp_path);
-
-            // Remove duplicated forward slashes
-            remove_dup_slashes(tmp_path);
-
-            if (directory_exists(tmp_path))
-            {
-                DPRINTF("Directory exists: %s\n", tmp_path);
-                // Copy dpath_tmp to dpath_string
-                strcpy(dpath_string, dpath_tmp);
-                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SET_DPATH_STATUS)) = GEMDOS_EOK;
+                DPRINTF("ERROR: File descriptor not found\n");
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, GEMDOS_EIHNDL);
             }
             else
             {
-                DPRINTF("Directory does not exist: %s\n", tmp_path);
-                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SET_DPATH_STATUS)) = GEMDOS_EDRIVE;
+                uint32_t writebuff_offset = file->offset;
+                UINT bytes_write = 0;
+                // Reposition the file pointer with FatFs
+                fr = f_lseek(&file->fobject, writebuff_offset);
+                if (fr != FR_OK)
+                {
+                    DPRINTF("ERROR: Could not change write offset of the file (%d)\r\n", fr);
+                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, GEMDOS_EINTRN);
+                }
+                else
+                {
+                    // Only write DEFAULT_FWRITE_BUFFER_SIZE bytes at a time
+                    uint16_t buff_size = writebuff_pending_bytes_to_write > DEFAULT_FWRITE_BUFFER_SIZE ? DEFAULT_FWRITE_BUFFER_SIZE : writebuff_pending_bytes_to_write;
+                    // Transform buffer's words from little endian to big endian inline
+                    uint16_t *target = payloadPtr;
+                    // Change the endianness of the bytes read
+                    swap_words(target, ((buff_size + 1) * 2) / 2);
+                    // Write the bytes
+                    DPRINTF("Write x%x bytes from the file at offset x%x\n", buff_size, writebuff_offset);
+                    fr = f_write(&file->fobject, (void *)target, buff_size, &bytes_write);
+                    if (fr != FR_OK)
+                    {
+                        DPRINTF("ERROR: Could not write file (%d)\r\n", fr);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, GEMDOS_EINTRN);
+                    }
+                    else
+                    {
+                        // Calculate the checksum of the buffer
+                        uint8_t *target8 = (uint8_t *)target;
+                        uint32_t chk = 0;
+                        for (int i = 0; i < bytes_write; i++)
+                        {
+                            chk += target8[i];
+                        }
+                        DPRINTF("Checksum: x%x\n", chk);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_CHK, chk);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, bytes_write);
+                    }
+                }
             }
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-        if (reentry_lock != 0xFFFF)
+        case GEMDRVEMUL_WRITE_BUFF_CHECK:
         {
-            //            DPRINTF("Reentry lock: %x\n", reentry_lock);
-            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_REENTRY_TRAP)) = 0xFFFF * reentry_lock;
-            reentry_lock = 0xFFFF;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            uint16_t writebuff_fd = payloadPtr[0];                                              // d3 register
+            payloadPtr += 2;                                                                    // Skip two words
+            uint32_t writebuff_forward_bytes = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d4 register constains the number of bytes to forward the offset
+            DPRINTF("Write buffering confirm fd: x%x, forward: x%08x\n", writebuff_fd, writebuff_forward_bytes);
+            // Obtain the file descriptor
+            FileDescriptors *file = get_file_by_fdesc(fdescriptors, writebuff_fd);
+            if (file == NULL)
+            {
+                DPRINTF("ERROR: File descriptor not found\n");
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_CONFIRM_STATUS, GEMDOS_EIHNDL);
+            }
+            else
+            {
+                // Update the offset of the file
+                file->offset += writebuff_forward_bytes;
+                uint32_t current_offset = file->offset;
+                DPRINTF("New offset: x%x after writing x%x bytes\n", current_offset, writebuff_forward_bytes);
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_CONFIRM_STATUS, GEMDOS_EOK);
+            }
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (pexec_call)
+        case GEMDRVEMUL_PEXEC_CALL:
         {
+            uint16_t pexec_mode = payloadPtr[0];                                         // d3 register
+            payloadPtr += 2;                                                             // Skip 2 words
+            uint32_t pexec_stack_addr = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d4 register
+            payloadPtr += 2;                                                             // Skip 2 words
+            uint32_t pexec_fname = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];      // d5 register
+            payloadPtr += 2;                                                             // Skip 2 words
+            uint32_t pexec_cmdline = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];    // d6 register
+            payloadPtr += 2;                                                             // Skip 2 words
+            uint32_t pexec_envstr = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];     // d7 register
             DPRINTF("Pexec mode: %x\n", pexec_mode);
-
-            // Obtain the fname string and keep it in memory
-            // concatenated path and filename
-            get_local_full_pathname(pexec_filename);
-            DPRINTF("Execute file: %s\n", pexec_filename);
-            pexec_call = false;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            DPRINTF("Pexec stack addr: %x\n", pexec_stack_addr);
+            DPRINTF("Pexec fname: %x\n", pexec_fname);
+            DPRINTF("Pexec cmdline: %x\n", pexec_cmdline);
+            DPRINTF("Pexec envstr: %x\n", pexec_envstr);
+            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PEXEC_MODE)) = pexec_mode;
+            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_PEXEC_STACK_ADDR, pexec_stack_addr);
+            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_PEXEC_FNAME, pexec_fname);
+            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_PEXEC_CMDLINE, pexec_cmdline);
+            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_PEXEC_ENVSTR, pexec_envstr);
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (save_basepage)
+        case GEMDRVEMUL_SAVE_BASEPAGE:
         {
-            // Copy the from the shared memory the basepage to pexec_pd
+            payloadPtr += 6; // Skip eight words
+            // Copy the from the shared memory the basepagea está to pexec_pd
             DPRINTF("Saving basepage\n");
             PD *origin = (PD *)(payloadPtr);
             // Reserve and copy the memory from origin to pexec_pd
@@ -1350,12 +1863,13 @@ int init_gemdrvemul(bool safe_config_reboot)
             DPRINTF("pexec_pd->p_uftsize: %x\n", SWAP_LONGWORD(pexec_pd->p_uftsize));
             DPRINTF("pexec_pd->p_uft: %x\n", SWAP_LONGWORD(pexec_pd->p_uft));
             DPRINTF("pexec_pd->p_cmdlin: %x\n", SWAP_LONGWORD(pexec_pd->p_cmdlin));
-            save_basepage = false;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
         }
-
-        if (save_exec_header)
+        case GEMDRVEMUL_SAVE_EXEC_HEADER:
         {
+            payloadPtr += 6; // Skip eight words
             // Copy the from the shared memory the basepage to pexec_exec_header
             DPRINTF("Saving exec header\n");
             ExecHeader *origin = (ExecHeader *)(payloadPtr);
@@ -1373,8 +1887,31 @@ int init_gemdrvemul(bool safe_config_reboot)
             DPRINTF("pexec_exec->reserved1: %x\n", (uint32_t)(pexec_exec_header->reserved1_h << 16 | pexec_exec_header->reserved1_l));
             DPRINTF("pexec_exec->prgflags: %x\n", (uint32_t)(pexec_exec_header->prgflags_h << 16 | pexec_exec_header->prgflags_l));
             DPRINTF("pexec_exec->absflag: %x\n", pexec_exec_header->absflag);
-            save_exec_header = false;
-            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        default:
+        {
+            if (active_command_id != 0xFFFF)
+            {
+                DPRINTF("ERROR: Unknown command: %x\n", active_command_id);
+                uint32_t d3 = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+                DPRINTF("DEBUG: %x\n", d3);
+                payloadPtr += 2;
+                uint32_t d4 = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+                DPRINTF("DEBUG: %x\n", d4);
+                payloadPtr += 2;
+                uint32_t d5 = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
+                DPRINTF("DEBUG: %x\n", d5);
+                payloadPtr += 2;
+                uint8_t *payloadShowBytesPtr = (uint8_t *)payloadPtr;
+                print_payload(payloadShowBytesPtr);
+                write_random_token(memory_shared_address);
+                active_command_id = 0xFFFF;
+                break;
+            }
+        }
         }
 
         // If SELECT button is pressed, launch the configurator

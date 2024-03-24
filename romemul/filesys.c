@@ -1462,7 +1462,6 @@ void shorten_fname(const char *originalName, char shortenedName[14])
     char extPart[5];  // dot + 3 chars for extension + null terminator
     const char *dot;
 
-    DPRINTF("Original file name: %s\n", originalName);
     // Initialize the shortenedName array
     memset(shortenedName, 0, 14);
 
@@ -1508,7 +1507,7 @@ void shorten_fname(const char *originalName, char shortenedName[14])
         strncpy(shortenedName, originalName, 8);
         shortenedName[8] = '\0'; // Null-terminate
     }
-    DPRINTF("Shortened file name: %s\n", shortenedName);
+    //    DPRINTF("Original file name: %s, Shortened file name: %s\n", originalName, shortenedName);
 }
 
 /**
@@ -1539,4 +1538,205 @@ void remove_dup_slashes(char *str)
             p--; // Adjust pointer to recheck this position after removal
         }
     }
+}
+
+/**
+ * @brief Converts FATFS attributes to ST attributes.
+ *
+ * This function takes FATFS attributes as input and converts them to ST attributes.
+ * The conversion is done by checking each bit of the FAT attributes and setting
+ * the corresponding bit in the ST attributes if it is set in the FATFS attributes.
+ *
+ * @param fat_attribs The FATFS attributes to be converted.
+ * @return The converted ST attributes.
+ */
+uint8_t attribs_fat2st(uint8_t fat_attribs)
+{
+    uint8_t st_attribs = 0;
+
+    if (fat_attribs & AM_RDO)
+    {
+        st_attribs |= FS_ST_READONLY;
+    }
+    if (fat_attribs & AM_HID)
+    {
+        st_attribs |= FS_ST_HIDDEN;
+    }
+    if (fat_attribs & AM_SYS)
+    {
+        st_attribs |= FS_ST_SYSTEM;
+    }
+    if (fat_attribs & AM_DIR)
+    {
+        st_attribs |= FS_ST_FOLDER;
+    }
+    if (fat_attribs & AM_ARC)
+    {
+        st_attribs |= FS_ST_ARCH;
+    }
+    return st_attribs;
+}
+
+/**
+ * @brief Converts ST attributes to FATFS attributes.
+ *
+ * This function takes ST attributes as input and converts them to FATFS attributes.
+ * The conversion is done by checking each bit of the ST attributes and setting
+ * the corresponding bit in the FATFS attributes if it is set in the ST attributes.
+ *
+ * @param st_attribs The ST attributes to be converted.
+ * @return The converted FATFS attributes.
+ */
+uint8_t attribs_st2fat(uint8_t st_attribs)
+
+{
+    uint8_t fat_attribs = 0;
+
+    if (st_attribs & FS_ST_READONLY)
+    {
+        fat_attribs |= AM_RDO;
+    }
+    if (st_attribs & FS_ST_HIDDEN)
+    {
+        fat_attribs |= AM_HID;
+    }
+    if (st_attribs & FS_ST_SYSTEM)
+    {
+        fat_attribs |= AM_SYS;
+    }
+    if (st_attribs & FS_ST_FOLDER)
+    {
+        fat_attribs |= AM_DIR;
+    }
+    if (st_attribs & FS_ST_ARCH)
+    {
+        fat_attribs |= AM_ARC;
+    }
+    return fat_attribs;
+}
+
+/**
+ * @brief Converts ST attributes to a string representation.
+ *
+ * This function takes ST attributes as input and converts them to a string representation.
+ * The conversion is done by checking each bit of the ST attributes and setting
+ * the corresponding character in the string if it is set in the ST attributes.
+ *
+ * @param attribs_str The string to store the representation. It should be at least 6 characters long.
+ * @param st_attribs The ST attributes to be converted.
+ */
+void get_attribs_st_str(char *attribs_str, uint8_t st_attribs)
+{
+    strcpy(attribs_str, "------");
+    if (st_attribs & FS_ST_READONLY)
+    {
+        attribs_str[0] = 'R';
+    }
+    if (st_attribs & FS_ST_HIDDEN)
+    {
+        attribs_str[1] = 'H';
+    }
+    if (st_attribs & FS_ST_SYSTEM)
+    {
+        attribs_str[2] = 'S';
+    }
+    if (st_attribs & FS_ST_LABEL)
+    {
+        attribs_str[3] = 'L';
+    }
+    if (st_attribs & FS_ST_FOLDER)
+    {
+        attribs_str[4] = 'D';
+    }
+    if (st_attribs & FS_ST_ARCH)
+    {
+        attribs_str[5] = 'A';
+    }
+    return;
+}
+
+/**
+ * @brief Converts a filename to uppercase.
+ *
+ * This function takes a filename as input and converts all its characters to uppercase.
+ * The converted filename is stored in a separate string. The original filename remains unchanged.
+ * The function ensures that the converted filename is null-terminated.
+ *
+ * @param originalName The original filename to be converted. It should be a null-terminated string.
+ * @param upperName The string to store the converted filename. It should be at least 14 characters long.
+ */
+void upper_fname(const char *originalName, char upperName[14])
+{
+    int i = 0;
+    while (originalName[i] != '\0' && i < 13)
+    {
+        upperName[i] = toupper(originalName[i]);
+        i++;
+    }
+    upperName[i] = '\0'; // Null terminate the string
+}
+
+/**
+ * @brief Filters a filename.
+ *
+ * This function takes a filename as input and filters it by removing non-alphanumeric characters.
+ * The filtered filename is stored in a separate string. The original filename remains unchanged.
+ * The function ensures that the filtered filename is null-terminated.
+ *
+ * @param originalName The original filename to be filtered. It should be a null-terminated string.
+ * @param filteredName The string to store the filtered filename. It should be at least 14 characters long.
+ */
+void filter_fname(const char *originalName, char filteredName[14])
+
+{
+    int i = 0, j = 0;
+    while (originalName[i] != '\0' && j < 13)
+    {
+        // Check for alphanumeric characters
+        if (isalnum((unsigned char)originalName[i]))
+        {
+            filteredName[j++] = originalName[i];
+        }
+        else
+        {
+            // Check for specific symbols
+            // Ugly as HELL, but not using regular expressions
+            switch (originalName[i])
+            {
+            case '_':
+            case '!':
+            case '@':
+            case '#':
+            case '$':
+            case '%':
+            case '^':
+            case '&':
+            case '(':
+            case ')':
+            case '+':
+            case '-':
+            case '=':
+            case '~':
+            case '`':
+            case ';':
+            case '\'':
+            case ',':
+            case '.':
+            case '<':
+            case '>':
+            case '|':
+            case '[':
+            case ']':
+            case '{':
+            case '}':
+                filteredName[j++] = originalName[i];
+                break;
+            default:
+                // Ignore any other characters
+                break;
+            }
+        }
+        i++;
+    }
+    filteredName[j] = '\0'; // Null-terminate the filtered name
 }

@@ -23,6 +23,13 @@
 
 #define STORAGE_POLL_INTERVAL 30000
 
+#define FS_ST_READONLY 0x1 // Read only
+#define FS_ST_HIDDEN 0x2   // Hidden
+#define FS_ST_SYSTEM 0x4   // System
+#define FS_ST_LABEL 0x8    // Volume label
+#define FS_ST_FOLDER 0x10  // Directory
+#define FS_ST_ARCH 0x20    // Archive
+
 #define bswap_16(x) (((x) >> 8) | (((x) & 0xFF) << 8))
 
 typedef enum
@@ -92,5 +99,10 @@ void split_fullpath(const char *fullPath, char *drive, char *folders, char *file
 void back_2_forwardslash(char *path);
 void shorten_fname(const char *originalName, char shortenedName[12]);
 void remove_dup_slashes(char *str);
+uint8_t attribs_st2fat(uint8_t st_attribs);
+uint8_t attribs_fat2st(uint8_t fat_attribs);
+void get_attribs_st_str(char attribs_str[6], uint8_t st_attribs);
+void upper_fname(const char *originalName, char upperName[14]);
+void filter_fname(const char *originalName, char filteredName[14]);
 
 #endif // FILESYS_H

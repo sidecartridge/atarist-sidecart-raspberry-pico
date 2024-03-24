@@ -115,7 +115,7 @@ int main()
                 if (gpio_get(5) != 0)
                 {
                     select_button_action(safe_config_reboot, write_config_only_once);
-                    // Write config only once to avoid hitting the flash too much 
+                    // Write config only once to avoid hitting the flash too much
                     write_config_only_once = false;
                 }
             }

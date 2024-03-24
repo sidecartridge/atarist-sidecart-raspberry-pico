@@ -4,6 +4,9 @@
 git submodule init
 git submodule update --init --recursive
 
+# This is a dirty hack to guarantee that I can use the fatfs-sdk submodule
+sed -i.bak 's/#define FF_USE_CHMOD[[:space:]]*0/#define FF_USE_CHMOD 1/' fatfs-sdk/src/ff15/source/ffconf.h && mv fatfs-sdk/src/ff15/source/ffconf.h.bak .
+
 # Set the environment variables of the SDKs
 export FATFS_SDK_PATH=$PWD/fatfs-sdk
 export PICO_SDK_PATH=$PWD/pico-sdk

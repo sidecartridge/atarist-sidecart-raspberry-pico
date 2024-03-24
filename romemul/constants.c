@@ -20,13 +20,15 @@ const uint8_t ROM_BANKS = 2;                                                    
 const uint32_t FLASH_ROM_LOAD_OFFSET = 0xE0000;                                 // Offset start in FLASH reserved for ROMs. Survives a reset or poweroff.
 const uint32_t FLASH_ROM4_LOAD_OFFSET = FLASH_ROM_LOAD_OFFSET;                  // First 64KB block
 const uint32_t FLASH_ROM3_LOAD_OFFSET = FLASH_ROM_LOAD_OFFSET + 0x10000;        // Second 64KB block
+const uint32_t ROM_SIZE_BYTES = 0x10000;                                        // 64KBytes
+const uint32_t ROM_SIZE_WORDS = ROM_SIZE_BYTES / 2;                             // 32KWords
+const uint32_t ROM_SIZE_LONGWORDS = ROM_SIZE_BYTES / 4;                         // 16KLongWords
 const uint32_t ROM_IN_RAM_ADDRESS = 0x20020000;                                 // Address in RAM where the ROMs are loaded. Not survive a reset or poweroff.
 const uint32_t ROMS_START_ADDRESS = ROM_IN_RAM_ADDRESS;                         // Address in RAM where the ROMs are loaded. Not survive a reset or poweroff.
 const uint32_t ROM4_START_ADDRESS = ROMS_START_ADDRESS;                         // First 64KB block of ROM in rp2040 RAM. Not survive a reset or poweroff.
 const uint32_t ROM3_START_ADDRESS = ROM_IN_RAM_ADDRESS + 0x10000;               // Second 64KB block of ROM in rp2040 RAM. Not survive a reset or poweroff.
-const uint32_t ROM_SIZE_BYTES = 0x10000;                                        // 64KBytes
-const uint32_t ROM_SIZE_WORDS = ROM_SIZE_BYTES / 2;                             // 32KWords
-const uint32_t ROM_SIZE_LONGWORDS = ROM_SIZE_BYTES / 4;                         // 16KLongWords
+const uint32_t ROM4_END_ADDRESS = ROM4_START_ADDRESS + ROM_SIZE_BYTES;          // End address of the ROM4
+const uint32_t ROM3_END_ADDRESS = ROM3_START_ADDRESS + ROM_SIZE_BYTES;          // End address of the ROM3
 const uint32_t CONFIG_FLASH_SIZE = 4096;                                        // Size of your reserved flash memory 4Kbytes
 const uint32_t CONFIG_FLASH_OFFSET = FLASH_ROM_LOAD_OFFSET - CONFIG_FLASH_SIZE; // Offset FLASH where the config is stored. Survives a reset or poweroff.
 const uint32_t CONFIG_VERSION = 0x00000001;                                     // Version of the config. Used to check if the config is compatible with the current code.
@@ -145,4 +147,60 @@ const char *GEMDOS_CALLS[93] = {
     "",         // 0x5A
     "",         // 0x5B
     "Flock",    // 0x5C
+};
+
+const uint8_t BLACKLISTED_GEMDOS_CALLS[52] = {
+    //    0x00, // "Pterm0",
+    0x01, // "Conin"
+    0x02, // "Cconout"
+    0x03, // "Cauxin"
+    0x04, // "Cauxout"
+    0x05, // "Cprnout"
+    0x06, // "Crawio"
+    0x07, // "Crawcin"
+    0x08, // "Cnecin"
+    0x09, // "Cconws"
+    0x0A, // "Cconrs"
+    0x0B, // "Cconis"
+    //    0x0E, // "Dsetdrv"
+    0x10, // "Cconos"
+    0x11, // "Cprnos"
+    0x12, // "Cauxis"
+    0x13, // "Cauxos"
+    //    0x14, // "Maddalt"
+    //    0x1A, // "Fsetdta"
+    //    0x20, // "Super"
+    //    0x2A, // "Tgetdate"
+    //    0x2B, // "Tsetdate"
+    //    0x2C, // "Tgettime"
+    //    0x2D, // "Tsettime"
+    //    0x2F, // "Fgetdta"
+    //    0x30, // "Sversion"
+    //    0x31, // "Ptermres"
+    //    0x36, // "Dfree"
+    //    0x39, // "Dcreate"
+    //    0x3A, // "Ddelete"
+    //    0x3B, // "Dsetpath"
+    //    0x3C, // "Fcreate"
+    //    0x3D, // "Fopen"
+    //    0x3E, // "Fclose"
+    //    0x3F, // "Fread"
+    //    0x40, // "Fwrite"
+    //    0x41, // "Fdelete"
+    //    0x42, // "Fseek"
+    //    0x43, // "Fattrib"
+    //    0x44, // "Mxalloc"
+    //    0x45, // "Fdup"
+    //    0x46, // "Fforce"
+    //    0x47, // "Dgetpath"
+    //    0x48, // "Malloc"
+    //    0x49, // "Mfree"
+    //    0x4A, // "Mshrink"
+    //    0x4B, // "Pexec"
+    //    0x4C, // "Pterm"
+    //    0x4E, // "Fsfirst"
+    //    0x4F, // "Fsnext"
+    //    0x56, // "Frename"
+    //    0x57, // "Fdatime"
+    //    0x5C, // "Flock"
 };
