@@ -1128,7 +1128,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                     }
                     else
                     {
-                        DPRINTF("ERROR: Internal error\n");
+                        DPRINTF("ERROR: Internal error: %d\n", fr);
                         *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DDELETE_STATUS)) = GEMDOS_EINTRN;
                     }
                 }
@@ -1420,6 +1420,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             get_local_full_pathname(tmp_filepath);
             DPRINTF("Opening file: %s with mode: %x\n", tmp_filepath, fopen_mode);
             // Convert the fopen_mode to FatFs mode
+            DPRINTF("Fopen mode: %x\n", fopen_mode);
             BYTE fatfs_open_mode = 0;
             switch (fopen_mode)
             {
@@ -1791,6 +1792,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             }
             else
             {
+                DPRINTF("Modify file date and time: %s fd: %d\n", fd->fpath, fdatetime_fd);
                 if (fdatetime_flag == FDATETIME_INQUIRE)
                 {
                     FILINFO fno;
@@ -1823,12 +1825,13 @@ int init_gemdrvemul(bool safe_config_reboot)
                 }
                 else
                 {
-                    uint8_t hour = payloadPtr[0];
-                    uint8_t minute = payloadPtr[1];
-                    uint8_t second = payloadPtr[2];
-                    uint8_t year = payloadPtr[3];
-                    uint8_t month = payloadPtr[4];
-                    uint8_t day = payloadPtr[5];
+                    uint8_t hour = payloadPtr[2];
+                    uint8_t minute = payloadPtr[4];
+                    uint8_t second = payloadPtr[5];
+                    uint8_t year = payloadPtr[1];
+                    uint8_t month = payloadPtr[0];
+                    uint8_t day = payloadPtr[3];
+                    DPRINTF("Show in hex the values: %02x:%02x:%02x %02x/%02x/%02x\n", hour, minute, second, day, month, year);
                     DPRINTF("File date and time: %02d:%02d:%02d %02d/%02d/%02d\n", hour, minute, second * 2, day, month, year + 1980);
 
                     FILINFO fno;
@@ -1836,7 +1839,11 @@ int init_gemdrvemul(bool safe_config_reboot)
                     fno.fdate = (WORD)(((year) * 512U) | month * 32U | day);
                     fno.ftime = (WORD)(hour * 2048U | minute * 32U | second);
 
-                    FRESULT fr = f_utime(fd->fpath, &fno);
+                    // Shockinly I need to close the file to set the date and time!!!! WTF???
+                    FRESULT fr = f_close(&fd->fobject);
+                    fr = f_utime(fd->fpath, &fno);
+                    // Remove the file from the list of open files
+                    delete_file_by_fdesc(&fdescriptors, fdatetime_fd);
                     if (fr == FR_OK)
                     {
                         // File exists and date and time set
