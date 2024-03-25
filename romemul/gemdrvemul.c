@@ -15,7 +15,6 @@ static uint16_t *payloadPtr = NULL;
 static uint32_t random_token;
 
 static char *fullpath_a = NULL;
-static bool hd_folder_ready = false;
 static char *hd_folder = NULL;
 static bool debug = false;
 static char drive_letter = 'C';
@@ -557,7 +556,7 @@ static inline void __not_in_flash_func(handle_protocol_command)(const Transmissi
     if (active_command_id == 0xFFFF)
     {
         payloadPtr = (uint16_t *)protocol->payload + 2;
-        //        DPRINTF("Command %s(%i) received: %d\n", get_command_name(protocol->command_id), protocol->command_id, protocol->payload_size);
+        DPRINTF("Command %s(%i) received: %d\n", get_command_name(protocol->command_id), protocol->command_id, protocol->payload_size);
         generate_random_token_seed(protocol);
         active_command_id = protocol->command_id;
     }
@@ -566,6 +565,7 @@ static inline void __not_in_flash_func(handle_protocol_command)(const Transmissi
 // Interrupt handler callback for DMA completion
 void __not_in_flash_func(gemdrvemul_dma_irq_handler_lookup_callback)(void)
 {
+
     // Read the address to process
     uint32_t addr = (uint32_t)dma_hw->ch[lookup_data_rom_dma_channel].al3_read_addr_trig;
 
@@ -599,25 +599,19 @@ int init_gemdrvemul(bool safe_config_reboot)
 {
     FRESULT fr; /* FatFs function common result code */
     FATFS fs;
+    bool hd_folder_ready = false;
+    bool network_ready = false;
+
+    char *ntp_server_host = NULL;
+    int ntp_server_port = NTP_DEFAULT_PORT;
+    u_int16_t network_poll_counter = 0;
+
+    // Local wifi password in the local file
+    char *wifi_password_file_content = NULL;
 
     srand(time(0));
     printf("Initializing GEMDRIVE...\n"); // Print alwayse
 
-    // This code should be replaced by the initialization RTC code
-    datetime_t rtc_time = {2024, 03, 24, 0, 0, 0, 0};
-
-    // Start the RTC
-    rtc_init();
-    // Set the RTC with the received time
-    if (!rtc_set_datetime(&rtc_time))
-    {
-        DPRINTF("Cannot set internal RTC!\n");
-    }
-    else
-    {
-        DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
-                rtc_time.day, rtc_time.month, rtc_time.year, rtc_time.hour, rtc_time.min, rtc_time.sec);
-    }
     initializeDTAHashTable();
 
     dpath_string[0] = '\\'; // Set the root folder as default
@@ -629,6 +623,182 @@ int init_gemdrvemul(bool safe_config_reboot)
     DPRINTF("Waiting for commands...\n");
     uint32_t memory_shared_address = ROM3_START_ADDRESS; // Start of the shared memory buffer
     uint32_t memory_firmware_code = ROM4_START_ADDRESS;  // Start of the firmware code
+
+    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS)) = 0x0;
+    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = 0x0;
+
+    ConfigEntry *gemdrive_rtc = find_entry(PARAM_GEMDRIVE_RTC);
+    bool gemdrive_rtc_enabled = true;
+    if (gemdrive_rtc != NULL)
+    {
+        gemdrive_rtc_enabled = gemdrive_rtc->value[0] == 't' || gemdrive_rtc->value[0] == 'T';
+    }
+    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_ENABLED)) = gemdrive_rtc_enabled;
+    DPRINTF("Network enabled? %s\n", gemdrive_rtc_enabled ? "Yes" : "No");
+
+    ConfigEntry *gemdrive_timeout = find_entry(PARAM_GEMDRIVE_TIMEOUT_SEC);
+    uint32_t gemdrive_timeout_sec = 0;
+    if (gemdrive_timeout != NULL)
+    {
+        gemdrive_timeout_sec = atoi(gemdrive_timeout->value);
+    }
+    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_TIMEOUT_SEC, gemdrive_timeout_sec);
+    gemdrive_timeout_sec = gemdrive_timeout_sec * 0.7; // Adjust the timeout to 70% of the value
+    DPRINTF("Timeout in seconds: %d\n", gemdrive_timeout_sec);
+
+    // Only try to get the datetime from the network if the wifi is configured
+    if (gemdrive_rtc_enabled && strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
+    {
+        // Initialize SD card
+        if (!sd_init_driver())
+        {
+            DPRINTF("ERROR: Could not initialize SD card\r\n");
+        }
+        else
+        {
+            FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
+            if (err == FR_OK)
+            {
+                DPRINTF("Wifi password file found. Content: %s\n", wifi_password_file_content);
+            }
+            else
+            {
+                DPRINTF("Wifi password file not found.\n");
+            }
+        }
+
+        // Start the network.
+        network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+
+        // Start the internal RTC
+        rtc_init();
+
+        // Start the NTP client
+        ntp_init();
+
+        ntp_server_host = find_entry("RTC_NTP_SERVER_HOST")->value;
+        ntp_server_port = atoi(find_entry("RTC_NTP_SERVER_PORT")->value);
+
+        DPRINTF("NTP server host: %s\n", ntp_server_host);
+        DPRINTF("NTP server port: %d\n", ntp_server_port);
+
+        char *utc_offset_entry = find_entry("RTC_UTC_OFFSET")->value;
+        if (strlen(utc_offset_entry) > 0)
+        {
+            // The offset can be in decimal format
+            set_utc_offset_seconds((long)(atoi(utc_offset_entry) * 60 * 60));
+        }
+        DPRINTF("UTC offset: %ld\n", get_utc_offset_seconds());
+
+        get_net_time()->ntp_server_found = false;
+
+        network_ready = true;
+
+        // Wait until the RTC is set by the NTP server
+        while (gemdrive_timeout_sec > 0 && get_rtc_time()->year == 0)
+        {
+            tight_loop_contents();
+#if PICO_CYW43_ARCH_POLL
+            cyw43_arch_lwip_begin();
+            network_poll();
+            cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
+            cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+            cyw43_arch_lwip_begin();
+            cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+            cyw43_arch_lwip_end();
+#endif
+            sleep_ms(1000); // Wait 1 sec per test
+            if (network_poll_counter == 0)
+            {
+                if (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
+                {
+                    // Only display when changes status to avoid flooding the console
+                    ConnectionStatus previous_status = get_previous_connection_status();
+                    ConnectionStatus current_status = get_network_connection_status();
+                    if (current_status != previous_status)
+                    {
+                        DPRINTF("Network status: %d\n", current_status);
+                        DPRINTF("Network previous status: %d\n", previous_status);
+                        ConnectionData *connection_data = malloc(sizeof(ConnectionData));
+                        get_connection_data(connection_data);
+                        DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s\n",
+                                connection_data->ssid,
+                                connection_data->network_status,
+                                connection_data->ipv4_address,
+                                connection_data->ipv6_address,
+                                print_ipv4(get_gateway()),
+                                print_ipv4(get_netmask()),
+                                print_mac(get_mac_address()));
+                        free(connection_data);
+                        if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
+                        {
+                            DPRINTF("Connection failed. Retrying...\n");
+                            // Need to deinit and init again the full network stack to be able to scan again
+                            cyw43_arch_deinit();
+                            cyw43_arch_init();
+                            network_init();
+                            // Start the network.
+                            network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+                        }
+                    }
+                    // Get the IP address from the DNS server if the wifi is connected and no IP address is found yet
+                    if (get_rtc_time()->year == 0 && current_status == CONNECTED_WIFI_IP && !get_net_time()->ntp_server_found)
+                    {
+                        // Let's connect to ntp server
+                        DPRINTF("Querying the DNS...\n");
+                        err_t dns_ret = dns_gethostbyname(ntp_server_host, &get_net_time()->ntp_ipaddr, host_found_callback, get_net_time());
+                        if (dns_ret == ERR_ARG)
+                        {
+                            DPRINTF("Invalid DNS argument\n");
+                        }
+                        DPRINTF("DNS query done\n");
+                        sleep_ms(1000);
+                    }
+                    // If connected to the wifi then set the network status to 1, otherwise set it to 0
+                    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = (current_status == CONNECTED_WIFI_IP);
+                }
+            }
+            // If the NTP server is found, then send the NTP request and set the clock
+            if (get_net_time()->ntp_server_found)
+            {
+                DPRINTF("NTP server found. Connecting to NTP server...\n");
+                get_net_time()->ntp_server_found = false;
+                set_internal_rtc();
+            }
+            gemdrive_timeout_sec--;
+        }
+        if (gemdrive_timeout_sec > 0)
+        {
+            // Set the RTC time for the Atari ST to read
+            rtc_get_datetime(get_rtc_time());
+            uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS);
+            // Change order for the endianess
+            rtc_time_ptr[1] = 0x1b;
+            rtc_time_ptr[0] = add_bcd(to_bcd((get_rtc_time()->year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
+            rtc_time_ptr[3] = to_bcd(get_rtc_time()->month);
+            rtc_time_ptr[2] = to_bcd(get_rtc_time()->day);
+            rtc_time_ptr[5] = to_bcd(get_rtc_time()->hour);
+            rtc_time_ptr[4] = to_bcd(get_rtc_time()->min);
+            rtc_time_ptr[7] = to_bcd(get_rtc_time()->sec);
+            rtc_time_ptr[6] = 0x0;
+        }
+        else
+        {
+            DPRINTF("Timeout reached. RTC not set.\n");
+            // Just be sure to deinit the network stack
+            network_disconnect();
+            cyw43_arch_deinit();
+            DPRINTF("No wifi configured. Skipping network initialization.\n");
+        }
+    }
+    else
+    {
+        // Just be sure to deinit the network stack
+        network_disconnect();
+        cyw43_arch_deinit();
+        DPRINTF("No wifi configured. Skipping network initialization.\n");
+    }
 
     ConfigEntry *drive_letter_conf = find_entry(PARAM_GEMDRIVE_DRIVE);
     char drive_letter = 'C';
@@ -706,7 +876,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 if (!sd_init_driver())
                 {
                     DPRINTF("ERROR: Could not initialize SD card\r\n");
-                    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_SUCCESS)) = 0x0;
+                    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_STATUS)) = 0x0;
                 }
                 else
                 {
@@ -717,18 +887,18 @@ int init_gemdrvemul(bool safe_config_reboot)
                     if (!microsd_mounted)
                     {
                         DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
-                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_SUCCESS)) = 0x0;
+                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_STATUS)) = 0x0;
                     }
                     else
                     {
                         hd_folder = find_entry(PARAM_GEMDRIVE_FOLDERS)->value;
                         DPRINTF("Emulating GEMDRIVE in folder: %s\n", hd_folder);
                         hd_folder_ready = true;
-                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_SUCCESS)) = 0xFFFF;
+                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_STATUS)) = 0xFFFF;
                     }
                 }
             }
-            DPRINTF("PING received. Answering with: %d\n", *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_SUCCESS)));
+            DPRINTF("PING received. Answering with: %d\n", *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_STATUS)));
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
@@ -1913,7 +2083,6 @@ int init_gemdrvemul(bool safe_config_reboot)
             }
         }
         }
-
         // If SELECT button is pressed, launch the configurator
         if (gpio_get(5) != 0)
         {

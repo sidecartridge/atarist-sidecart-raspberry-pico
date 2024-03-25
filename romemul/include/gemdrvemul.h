@@ -17,6 +17,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "time.h"
+
 #include "pico/stdlib.h"
 #include "hardware/pio.h"
 #include "hardware/dma.h"
@@ -34,6 +36,7 @@
 #include "commands.h"
 #include "config.h"
 #include "filesys.h"
+#include "rtcemul.h"
 
 #define SWAP_LONGWORD(data) ((((uint32_t)data << 16) & 0xFFFF0000) | (((uint32_t)data >> 16) & 0xFFFF))
 
@@ -55,9 +58,13 @@
 
 #define GEMDRVEMUL_RANDOM_TOKEN (0x0)                                // Offset from 0x0000
 #define GEMDRVEMUL_RANDOM_TOKEN_SEED (GEMDRVEMUL_RANDOM_TOKEN + 4)   // random_token + 4 bytes
-#define GEMDRVEMUL_PING_SUCCESS (GEMDRVEMUL_RANDOM_TOKEN_SEED + 4)   // random_token_seed + 4 bytes
-#define GEMDRVEMUL_OLD_GEMDOS_TRAP (GEMDRVEMUL_PING_SUCCESS + 2)     // ping_success + 2 bytes
-#define GEMDRVEMUL_REENTRY_TRAP (GEMDRVEMUL_OLD_GEMDOS_TRAP + 2)     // old_gemdos_trap + 2 bytes
+#define GEMDRVEMUL_TIMEOUT_SEC (GEMDRVEMUL_RANDOM_TOKEN_SEED + 4)    // random_token_seed + 4 bytes
+#define GEMDRVEMUL_PING_STATUS (GEMDRVEMUL_TIMEOUT_SEC + 4)          // timeout_sec + 4 bytes
+#define GEMDRVEMUL_RTC_STATUS (GEMDRVEMUL_PING_STATUS + 4)           // ping status + 4 bytes
+#define GEMDRVEMUL_NETWORK_STATUS (GEMDRVEMUL_RTC_STATUS + 4)        // rtc status + 4 bytes
+#define GEMDRVEMUL_NETWORK_ENABLED (GEMDRVEMUL_NETWORK_STATUS + 4)   // network status + 4 bytes
+#define GEMDRVEMUL_OLD_GEMDOS_TRAP (GEMDRVEMUL_NETWORK_ENABLED + 4)  // network enabled + 4 bytes
+#define GEMDRVEMUL_REENTRY_TRAP (GEMDRVEMUL_OLD_GEMDOS_TRAP + 4)     // old_gemdos_trap + 4 bytes
 #define GEMDRVEMUL_DEFAULT_PATH (GEMDRVEMUL_REENTRY_TRAP + 4)        // reentry_trap file + 4 bytes
 #define GEMDRVEMUL_DTA_F_FOUND (GEMDRVEMUL_DEFAULT_PATH + 128)       // default path + 128 bytes
 #define GEMDRVEMUL_DTA_TRANSFER (GEMDRVEMUL_DTA_F_FOUND + 4)         // dta found + 4

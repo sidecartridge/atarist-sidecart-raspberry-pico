@@ -1,5 +1,6 @@
 #include "include/commands.h"
 
+#if defined(_DEBUG) && (_DEBUG != 0)
 const CommandName commandStr[] = {
     {DOWNLOAD_ROM, "DOWNLOAD_ROM"},
     {LOAD_ROM, "LOAD_ROM"},
@@ -70,3 +71,4 @@ const CommandName commandStr[] = {
     {GEMDRVEMUL_DTA_RELEASE_CALL, "GEMDRVEMUL_DTA_RELEASE_CALL"}};
 
 const int numCommands = sizeof(commandStr) / sizeof(commandStr[0]);
+#endif

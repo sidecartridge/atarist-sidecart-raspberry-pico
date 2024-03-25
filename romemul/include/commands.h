@@ -59,6 +59,10 @@
 #define GEMDRVEMUL_SHOW_VECTOR_CALL (APP_GEMDRVEMUL << 8 | 2)  // Show the vector call of the GEMDRIVE emulator
 #define GEMDRVEMUL_REENTRY_LOCK (APP_GEMDRVEMUL << 8 | 3)      // Lock the reentry of the GEMDRIVE emulator
 #define GEMDRVEMUL_REENTRY_UNLOCK (APP_GEMDRVEMUL << 8 | 5)    // Unlock the reentry of the GEMDRIVE emulator
+#define GEMDRVEMUL_RTC_START (APP_GEMDRVEMUL << 8 | 6)         // Start RTC emulator
+#define GEMDRVEMUL_RTC_STOP (APP_GEMDRVEMUL << 8 | 7)          // Stop RTC emulator
+#define GEMDRVEMUL_NETWORK_START (APP_GEMDRVEMUL << 8 | 8)     // Start the network emulator
+#define GEMDRVEMUL_NETWORK_STOP (APP_GEMDRVEMUL << 8 | 9)      // Stop the network emulator
 #define GEMDRVEMUL_DGETDRV_CALL (APP_GEMDRVEMUL << 8 | 0x19)   // Show the Dgetdrv call
 #define GEMDRVEMUL_FSETDTA_CALL (APP_GEMDRVEMUL << 8 | 0x1A)   // Show the Fsetdta call
 #define GEMDRVEMUL_DFREE_CALL (APP_GEMDRVEMUL << 8 | 0x36)     // Show the Dfree call

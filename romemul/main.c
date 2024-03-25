@@ -196,6 +196,8 @@ int main()
             // and start the state machine
             init_romemul(NULL, gemdrvemul_dma_irq_handler_lookup_callback, false);
 
+            network_init();
+
             DPRINTF("Ready to accept commands.\n");
 
             // The "H" character stands for "HARDISK"
