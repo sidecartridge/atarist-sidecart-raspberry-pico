@@ -633,6 +633,10 @@ int init_gemdrvemul(bool safe_config_reboot)
     {
         gemdrive_rtc_enabled = gemdrive_rtc->value[0] == 't' || gemdrive_rtc->value[0] == 'T';
     }
+#if defined(_DEBUG) && (_DEBUG != 0)
+    DPRINTF("RTC DISABLED FOR DEBUGGING\n");
+    gemdrive_rtc_enabled = false;
+#endif
     *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_ENABLED)) = gemdrive_rtc_enabled;
     DPRINTF("Network enabled? %s\n", gemdrive_rtc_enabled ? "Yes" : "No");
 
@@ -1212,8 +1216,37 @@ int init_gemdrvemul(bool safe_config_reboot)
             FILINFO *fno; /* File information */
             dj = (DIR *)malloc(sizeof(DIR));
             fno = (FILINFO *)malloc(sizeof(FILINFO));
-            fr = f_findfirst(dj, fno, internal_path, pattern);
-            if (fr == FR_OK && fno->fname[0] && (!(fno->fname[0] == '.' || fno->fname[1] == '_')))
+
+            char raw_filename[2] = "._";
+            fr = FR_OK;
+            bool first_time = true;
+            while (fr == FR_OK && (raw_filename[0] == '.' || raw_filename[1] == '_'))
+            {
+                if (first_time)
+                {
+                    first_time = false;
+                    fr = f_findfirst(dj, fno, internal_path, pattern);
+                }
+                else
+                {
+                    fr = f_findnext(dj, fno);
+                }
+                if (fno->fname[0])
+                {
+                    if (fr == FR_OK)
+                    {
+                        raw_filename[0] = fno->fname[0];
+                        raw_filename[1] = fno->fname[1];
+                    }
+                }
+                else
+                {
+                    raw_filename[0] = 'x'; // Force exit, no more elements
+                    raw_filename[1] = 'x'; // Force exit, no more elements
+                }
+            }
+
+            if (fr == FR_OK && fno->fname[0])
             {
                 uint8_t attribs_conv_st = attribs_fat2st(fno->fattrib);
                 if (!(attribs & FS_ST_LABEL))
