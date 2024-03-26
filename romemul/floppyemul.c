@@ -127,8 +127,6 @@ static int __not_in_flash_func(create_BPB(FRESULT *fr, FIL *fsrc))
 
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
 {
-    ConfigEntry *entry = NULL;
-    uint16_t value_payload = 0;
     // Handle the protocol
     switch (protocol->command_id)
     {
@@ -224,6 +222,28 @@ int init_floppyemul(bool safe_config_reboot)
     DPRINTF("Waiting for commands...\n");
     uint32_t memory_shared_address = ROM3_START_ADDRESS; // Start of the shared memory buffer
     uint32_t memory_code_address = ROM4_START_ADDRESS;   // Start of the code memory
+
+    ConfigEntry *xbios_enabled = find_entry(PARAM_FLOPPY_XBIOS_ENABLED);
+    bool floppy_xbios_enabled = true;
+    if (xbios_enabled != NULL)
+    {
+        floppy_xbios_enabled = (xbios_enabled->value[0] == 't' || xbios_enabled->value[0] == 'T');
+    }
+    ConfigEntry *boot_enabled = find_entry(PARAM_FLOPPY_BOOT_ENABLED);
+    bool floppy_boot_enabled = true;
+    if (boot_enabled != NULL)
+    {
+        floppy_boot_enabled = (boot_enabled->value[0] == 't' || boot_enabled->value[0] == 'T');
+    }
+    ConfigEntry *buffer_type = find_entry(PARAM_FLOPPY_BUFFER_TYPE);
+    uint32_t buffer_type_value = 0;
+    if (buffer_type != NULL)
+    {
+        buffer_type_value = atoi(buffer_type->value);
+    }
+    *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_BOOT_SECTOR_ENABLED)) = (uint32_t)floppy_boot_enabled; // 1: Boot sector enabled, 0: Boot sector disabled
+    *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_BUFFER_TYPE)) = buffer_type_value;                     // 0: _diskbuff, 1: heap
+    *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_XBIOS_ENABLED)) = (uint32_t)floppy_xbios_enabled;      // 1: XBIOS enabled, 0: XBIOS disabled
 
     bool error = false;
     bool show_blink = true;
