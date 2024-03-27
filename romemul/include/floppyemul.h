@@ -33,17 +33,20 @@
 #include "commands.h"
 #include "config.h"
 
-#define FLOPPYEMUL_RANDOM_TOKEN (0x0)                              // Offset from 0x0000
-#define FLOPPYEMUL_RANDOM_TOKEN_SEED (FLOPPYEMUL_RANDOM_TOKEN + 4) // random_token + 4 bytes
-#define FLOPPYEMUL_BPB_DATA (FLOPPYEMUL_RANDOM_TOKEN_SEED + 4)     // FLOPPYEMUL_RANDOM_TOKEN_SEED + 4 bytes
-#define FLOPPYEMUL_SECPCYL (FLOPPYEMUL_BPB_DATA + 22)              // BPB_data + 22 bytes
-#define FLOPPYEMUL_SECPTRACK (FLOPPYEMUL_SECPCYL + 2)              // secpcyl + 2 bytes
-#define FLOPPYEMUL_DISK_NUMBER (FLOPPYEMUL_SECPTRACK + 8)          // BTB + 2 bytes
-#define FLOPPYEMUL_OLD_XBIOS_TRAP (FLOPPYEMUL_DISK_NUMBER + 2)     // disk_number + 2 bytes
-#define FLOPPYEMUL_OLD_HDV_BPB (FLOPPYEMUL_OLD_XBIOS_TRAP + 4)     // old_XBIOS_trap + 4 bytes
-#define FLOPPYEMUL_OLD_HDV_RW (FLOPPYEMUL_OLD_HDV_BPB + 4)         // old_hdv_bpb + 4 bytes
-#define FLOPPYEMUL_OLD_HDV_MEDIACH (FLOPPYEMUL_OLD_HDV_RW + 4)     // old_hdv_rw + 4 bytes
-#define FLOPPYEMUL_HARDWARE_TYPE (FLOPPYEMUL_OLD_HDV_MEDIACH + 4)  // old_hdv_mediach + 4 bytes
+#define FLOPPYEMUL_RANDOM_TOKEN (0x0)                                     // Offset from 0x0000
+#define FLOPPYEMUL_RANDOM_TOKEN_SEED (FLOPPYEMUL_RANDOM_TOKEN + 4)        // random_token + 4 bytes
+#define FLOPPYEMUL_BOOT_SECTOR_ENABLED (FLOPPYEMUL_RANDOM_TOKEN_SEED + 4) // random_token_seed + 4 bytes
+#define FLOPPYEMUL_BUFFER_TYPE (FLOPPYEMUL_BOOT_SECTOR_ENABLED + 4)       // boot_sector_enabled + 4 byte
+#define FLOPPYEMUL_XBIOS_ENABLED (FLOPPYEMUL_BUFFER_TYPE + 4)             // buffer_type + 4 bytes
+#define FLOPPYEMUL_BPB_DATA (FLOPPYEMUL_XBIOS_ENABLED + 4)                // xbios_enabled + 4 bytes
+#define FLOPPYEMUL_SECPCYL (FLOPPYEMUL_BPB_DATA + 22)                     // BPB_data + 22 bytes
+#define FLOPPYEMUL_SECPTRACK (FLOPPYEMUL_SECPCYL + 2)                     // secpcyl + 2 bytes
+#define FLOPPYEMUL_DISK_NUMBER (FLOPPYEMUL_SECPTRACK + 8)                 // BTB + 2 bytes
+#define FLOPPYEMUL_OLD_XBIOS_TRAP (FLOPPYEMUL_DISK_NUMBER + 2)            // disk_number + 2 bytes
+#define FLOPPYEMUL_OLD_HDV_BPB (FLOPPYEMUL_OLD_XBIOS_TRAP + 4)            // old_XBIOS_trap + 4 bytes
+#define FLOPPYEMUL_OLD_HDV_RW (FLOPPYEMUL_OLD_HDV_BPB + 4)                // old_hdv_bpb + 4 bytes
+#define FLOPPYEMUL_OLD_HDV_MEDIACH (FLOPPYEMUL_OLD_HDV_RW + 4)            // old_hdv_rw + 4 bytes
+#define FLOPPYEMUL_HARDWARE_TYPE (FLOPPYEMUL_OLD_HDV_MEDIACH + 4)         // old_hdv_mediach + 4 bytes
 
 #define FLOPPYEMUL_IMAGE (FLOPPYEMUL_RANDOM_TOKEN + 0x1000) // random_token + 0x1000 bytes
 

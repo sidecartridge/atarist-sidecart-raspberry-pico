@@ -25,7 +25,10 @@
 #include "include/network.h"
 
 // sync values here as well : atarist-sidecart-firmware/configurator/src/include/config.h
-#define MAX_ENTRIES 27
+// Warning. There will be an issue when reaching the maximum number of entries for 4Kbytes of flash memory
+// The maximum number of entries is 46
+// Change the memory size of the config structure to 8Kbytes when reaching the maximum number of entries
+#define MAX_ENTRIES 31
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
@@ -35,7 +38,10 @@
 #define PARAM_GEMDRIVE_FOLDERS "GEMDRIVE_FOLDERS"
 #define PARAM_GEMDRIVE_RTC "GEMDRIVE_RTC"
 #define PARAM_GEMDRIVE_TIMEOUT_SEC "GEMDRIVE_TIMEOUT_SEC"
+#define PARAM_FLOPPY_BOOT_ENABLED "FLOPPY_BOOT_ENABLED"
+#define PARAM_FLOPPY_BUFFER_TYPE "FLOPPY_BUFFER_TYPE"
 #define PARAM_FLOPPY_DB_URL "FLOPPY_DB_URL"
+#define PARAM_FLOPPY_XBIOS_ENABLED "FLOPPY_XBIOS_ENABLED"
 #define PARAM_LASTEST_RELEASE_URL "LASTEST_RELEASE_URL"
 #define PARAM_MENU_REFRESH_SEC "MENU_REFRESH_SEC"
 #define PARAM_NETWORK_STATUS_SEC "NETWORK_STATUS_SEC"

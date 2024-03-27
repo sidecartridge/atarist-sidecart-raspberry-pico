@@ -33,7 +33,7 @@ extern const uint32_t RP2040_CLOCK_FREQ_KHZ;
 // Frequency constants.
 #define SAMPLE_DIV_FREQ (1.f) // Sample frequency division factor.
 // #define RP2040_CLOCK_FREQ_KHZ (125000 + 35000) // Clock frequency in KHz (160MHz).
-#define RP2040_CLOCK_FREQ_KHZ (125000 + 55000) // Clock frequency in KHz (160MHz).
+#define RP2040_CLOCK_FREQ_KHZ (125000 + 55000) // Clock frequency in KHz (180MHz).
 
 // Voltage constants.
 #define RP2040_VOLTAGE VREG_VOLTAGE_1_10 // Voltage in 1.10 Volts.

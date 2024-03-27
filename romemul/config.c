@@ -7,9 +7,12 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {"DELAY_ROM_EMULATION", TYPE_BOOL, "false"},
     {PARAM_DOWNLOAD_TIMEOUT_SEC, TYPE_INT, "60"},
     {"FLOPPIES_FOLDER", TYPE_STRING, "/floppies"},
+    {PARAM_FLOPPY_BOOT_ENABLED, TYPE_BOOL, "true"},
+    {PARAM_FLOPPY_BUFFER_TYPE, TYPE_INT, "0"},
     {PARAM_FLOPPY_DB_URL, TYPE_STRING, "http://ataristdb.sidecartridge.com"},
     {"FLOPPY_IMAGE_A", TYPE_STRING, ""},
     {"FLOPPY_IMAGE_B", TYPE_STRING, ""},
+    {PARAM_FLOPPY_XBIOS_ENABLED, TYPE_BOOL, "true"},
     {PARAM_GEMDRIVE_BUFF_TYPE, TYPE_INT, "0"},
     {PARAM_GEMDRIVE_DRIVE, TYPE_STRING, "C"},
     {PARAM_GEMDRIVE_FOLDERS, TYPE_STRING, "/hd"},
@@ -53,8 +56,19 @@ static void load_default_entries()
 
     for (size_t i = 0; i < MAX_ENTRIES; i++)
     {
-        configData.entries[i] = defaultEntries[i];
+        if (strlen(defaultEntries[i].key) > (MAX_KEY_LENGTH - 1))
+        {
+            DPRINTF("WARNING: MAX_KEY_LENGTH is %d but key %s is %d characters long.\n", MAX_KEY_LENGTH, defaultEntries[i].key, strlen(defaultEntries[i].key));
+        }
+        ConfigEntry tmpEntry = defaultEntries[i];
+        //        tmpEntry.key[MAX_KEY_LENGTH - 1] = '\0'; // Ensure null-termination
+        configData.entries[i] = tmpEntry;
         configData.count++;
+    }
+
+    if (configData.count != MAX_ENTRIES)
+    {
+        DPRINTF("WARNING: MAX_ENTRIES is %d but %d entries were loaded.\n", MAX_ENTRIES, configData.count);
     }
 }
 
@@ -116,7 +130,9 @@ void load_all_entries()
         }
 
         // Check if this key already exists in our loaded default entries
-        ConfigEntry *existingEntry = find_entry(entry.key);
+        char keyStr[MAX_KEY_LENGTH + 1] = {0};
+        strncpy(keyStr, entry.key, MAX_KEY_LENGTH);
+        ConfigEntry *existingEntry = find_entry(keyStr);
         if (existingEntry)
         {
             *existingEntry = entry;
@@ -131,11 +147,12 @@ ConfigEntry *find_entry(const char key[MAX_KEY_LENGTH])
 {
     for (size_t i = 0; i < configData.count; i++)
     {
-        if (strcmp(configData.entries[i].key, key) == 0)
+        if (strncmp(configData.entries[i].key, key, MAX_KEY_LENGTH) == 0)
         {
             return &configData.entries[i];
         }
     }
+    DPRINTF("Key %s not found.\n", key);
     return NULL;
 }
 
@@ -157,7 +174,7 @@ static int add_entry(const char key[MAX_KEY_LENGTH], DataType dataType, char val
     // Check if the key already exists
     for (size_t i = 0; i < configData.count; i++)
     {
-        if (strcmp(configData.entries[i].key, key) == 0)
+        if (strncmp(configData.entries[i].key, key, MAX_KEY_LENGTH) == 0)
         {
             // Key already exists. Update its value and dataType
             configData.entries[i].dataType = dataType;
@@ -168,8 +185,11 @@ static int add_entry(const char key[MAX_KEY_LENGTH], DataType dataType, char val
     }
 
     // If key doesn't exist, add a new entry
-    strncpy(configData.entries[configData.count].key, key, MAX_KEY_LENGTH - 1);
-    configData.entries[configData.count].key[MAX_KEY_LENGTH - 1] = '\0'; // Null terminate just in case
+    strncpy(configData.entries[configData.count].key, key, MAX_KEY_LENGTH);
+    if (strlen(configData.entries[configData.count].key) < MAX_KEY_LENGTH)
+    {
+        configData.entries[configData.count].key[strlen(configData.entries[configData.count].key)] = '\0'; // Null terminate just in case
+    }
     configData.entries[configData.count].dataType = dataType;
     strncpy(configData.entries[configData.count].value, value, MAX_STRING_VALUE_LENGTH - 1);
     configData.entries[configData.count].value[MAX_STRING_VALUE_LENGTH - 1] = '\0'; // Ensure null-termination
@@ -236,8 +256,6 @@ int put_integer(const char key[MAX_KEY_LENGTH], int value)
 int write_all_entries()
 {
 
-    uint32_t ints = save_and_disable_interrupts();
-
     uint8_t *address = (uint8_t *)(CONFIG_FLASH_OFFSET + XIP_BASE);
 
     // Ensure we don't exceed the reserved space
@@ -245,6 +263,13 @@ int write_all_entries()
     {
         return -1; // Error: Config size exceeds reserved space
     }
+    print_config_table();
+    DPRINTF("Writing %d entries to FLASH.\n", configData.count);
+    DPRINTF("Size of ConfigData: %d\n", sizeof(ConfigData));
+    DPRINTF("Size of ConfigEntry: %d\n", sizeof(ConfigEntry));
+    DPRINTF("Size of entries: %d\n", configData.count * sizeof(ConfigEntry));
+
+    uint32_t ints = save_and_disable_interrupts();
 
     // Erase the content before writing the configuration
     // overwriting it's not enough
@@ -289,9 +314,9 @@ size_t get_config_size()
 
 void print_config_table()
 {
-    DPRINTF("+--------------------------------+--------------------------------+----------+\n");
-    DPRINTF("|              Key               |             Value              |   Type   |\n");
-    DPRINTF("+--------------------------------+--------------------------------+----------+\n");
+    DPRINTF("+----------------------+--------------------------------+----------+\n");
+    DPRINTF("|         Key          |             Value              |   Type   |\n");
+    DPRINTF("+----------------------+--------------------------------+----------+\n");
 
     for (size_t i = 0; i < configData.count; i++)
     {
@@ -325,8 +350,9 @@ void print_config_table()
             typeStr = "UNKNOWN";
             break;
         }
-
-        DPRINTF("| %-30s | %-30s | %-8s |\n", configData.entries[i].key, valueStr, typeStr);
+        char keyStr[21] = {0};
+        strncpy(keyStr, configData.entries[i].key, MAX_KEY_LENGTH);
+        DPRINTF("| %-20s | %-30s | %-8s |\n", keyStr, valueStr, typeStr);
     }
 
     DPRINTF("+--------------------------------+--------------------------------+----------+\n");

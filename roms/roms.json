@@ -283,6 +283,15 @@
         "size_kb": 128
     },
     {
+        "url": "http://roms.sidecartridge.com/etoscart-1.3.0.img",
+        "name": "EmuTOS 1.3",
+        "description": "EmuTOS is a TOS compatible operating system for Atari ST series computers, and more. It is made from Digital Research's GPLed original sources and is a free and open source alternative to Atari proprietary ROMs.",
+        "tags": [
+            "os"
+        ],
+        "size_kb": 128
+    },
+    {
         "url": "http://roms.sidecartridge.com/MegaSTE%20Diagnostic%20v1.5.bin",
         "name": "MegaSTE Diagnostic v1.5",
         "description": "A diagnostic tool tailored for the Atari MegaSTE computer series.",
