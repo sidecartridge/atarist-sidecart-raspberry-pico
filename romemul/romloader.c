@@ -67,6 +67,9 @@ static FloppyImageHeader floppy_header = {0};
 // RTC boot variables
 static bool rtc_boot = false;
 
+// Config call
+static bool get_config_call = false;
+
 // Custom case-insensitive comparison function
 static int compare_strings(const void *a, const void *b)
 {
@@ -132,56 +135,57 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         // Get the list of parameters in the device
         DPRINTF("Command GET_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        memcpy(memory_area + RANDOM_SEED_SIZE, &configData, sizeof(configData));
-
-        // Swap the keys and values section bytes in the words
-        // The endians conversions should be done always in the rp2040 side to relief
-        // the ST side from this task
-        uint16_t *dest_ptr = (uint16_t *)(memory_area + sizeof(__uint32_t) + RANDOM_SEED_SIZE); // Bypass magic number and random size
-        for (int i = 0; i < configData.count; i++)
-        {
-            swap_data(dest_ptr);
-            dest_ptr += sizeof(ConfigEntry) / 2;
-        }
-        *((volatile uint32_t *)(memory_area)) = random_token;
+        get_config_call = true; // now the active loop should stop and get the config
         break;
     case PUT_CONFIG_STRING:
+    {
         // Put a configuration string parameter in the device
         DPRINTF("Command PUT_CONFIG_STRING (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         entry = malloc(sizeof(ConfigEntry));
         memcpy(entry, protocol->payload + RANDOM_SEED_SIZE, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
-        DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
-        put_string(entry->key, entry->value);
-        if (!strcmp(entry->key, PARAM_WIFI_COUNTRY))
+        char keyStr[MAX_KEY_LENGTH + 1] = {0};
+        strncpy(keyStr, entry->key, MAX_KEY_LENGTH);
+        DPRINTF("Key:%s - Value: %s\n", keyStr, entry->value);
+        put_string(keyStr, entry->value);
+        if (!strcmp(keyStr, PARAM_WIFI_COUNTRY))
         {
             restart_network = true;
         }
         *((volatile uint32_t *)(memory_area)) = random_token;
         break;
+    }
     case PUT_CONFIG_INTEGER:
+    {
         // Put a configuration integer parameter in the device
         DPRINTF("Command PUT_CONFIG_INTEGER (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         entry = malloc(sizeof(ConfigEntry));
         memcpy(entry, protocol->payload + RANDOM_SEED_SIZE, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
-        DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
-        put_integer(entry->key, atoi(entry->value));
+        char keyStr[MAX_KEY_LENGTH + 1] = {0};
+        strncpy(keyStr, entry->key, MAX_KEY_LENGTH);
+        DPRINTF("Key:%s - Value: %s\n", keyStr, entry->value);
+        put_integer(keyStr, atoi(entry->value));
         *((volatile uint32_t *)(memory_area)) = random_token;
         break;
+    }
     case PUT_CONFIG_BOOL:
+    {
         // Put a configuration boolean parameter in the device
         DPRINTF("Command PUT_CONFIG_BOOL (6) received: %d\n", protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         entry = malloc(sizeof(ConfigEntry));
         memcpy(entry, protocol->payload + RANDOM_SEED_SIZE, sizeof(ConfigEntry));
         swap_data((__uint16_t *)entry);
-        DPRINTF("Key:%s - Value: %s\n", entry->key, entry->value);
-        put_bool(entry->key, (strcmp(entry->value, "true") == 0) ? true : false);
+        char keyStr[MAX_KEY_LENGTH + 1] = {0};
+        strncpy(keyStr, entry->key, MAX_KEY_LENGTH);
+        DPRINTF("Key:%s - Value: %s\n", keyStr, entry->value);
+        put_bool(keyStr, (strcmp(entry->value, "true") == 0) ? true : false);
         *((volatile uint32_t *)(memory_area)) = random_token;
         break;
+    }
     case SAVE_CONFIG:
         // Save the current configuration in the FLASH of the device
         DPRINTF("Command SAVE_CONFIG (%i) received: %d\n", protocol->command_id, protocol->payload_size);
@@ -393,9 +397,6 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
 // Interrupt handler callback for DMA completion
 void __not_in_flash_func(dma_irq_handler_lookup_callback)(void)
 {
-    // Clear the interrupt request for the channel
-    dma_hw->ints1 = 1u << lookup_data_rom_dma_channel;
-
     // Read the address to process
     uint32_t addr = (uint32_t)dma_hw->ch[lookup_data_rom_dma_channel].al3_read_addr_trig;
 
@@ -405,6 +406,9 @@ void __not_in_flash_func(dma_irq_handler_lookup_callback)(void)
     {
         parse_protocol((uint16_t)(addr & 0xFFFF), handle_protocol_command);
     }
+
+    // Clear the interrupt request for the channel
+    dma_hw->ints1 = 1u << lookup_data_rom_dma_channel;
 }
 
 int delete_FLASH(void)
@@ -538,7 +542,6 @@ int init_firmware()
     while ((rom_file_selected < 0) &&
            (rom_network_selected < 0) &&
            (floppy_file_selected < 0) &&
-           (floppy_image_selected < 0) &&
            (!reset_default) && (!rtc_boot) &&
            (rom_rescue_mode_file_content == NULL))
     {
@@ -556,9 +559,13 @@ int init_firmware()
 #endif
         if ((time_us_64() - wifi_scan_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
         {
-            network_scan();
-            wifi_scan_poll_counter = get_wifi_scan_poll_secs();
-            wifi_scan_poll_counter_mcs = time_us_64();
+            if (get_network_connection_status() == DISCONNECTED)
+            {
+                DPRINTF("Wifi scan polling...\n");
+                network_scan();
+                wifi_scan_poll_counter = get_wifi_scan_poll_secs();
+                wifi_scan_poll_counter_mcs = time_us_64();
+            }
         }
         if (wifi_auth != NULL)
         {
@@ -665,7 +672,23 @@ int init_firmware()
             sd_data->sd_free_space = (sd_data->sd_free_space >> 16) | (sd_data->sd_free_space << 16);
             sd_data->sd_size = (sd_data->sd_size >> 16) | (sd_data->sd_size << 16);
         }
+        if (get_config_call)
+        {
+            get_config_call = false;
+            memcpy(memory_area + RANDOM_SEED_SIZE, &configData, sizeof(configData));
 
+            // Swap the keys and values section bytes in the words
+            // The endians conversions should be done always in the rp2040 side to relief
+            // the ST side from this task
+            uint16_t *dest_ptr = (uint16_t *)(memory_area + sizeof(__uint32_t) + RANDOM_SEED_SIZE); // Bypass magic number and random size
+            DPRINTF("ConfigData count: %d\n", configData.count);
+            for (int i = 0; i < configData.count; i++)
+            {
+                swap_data(dest_ptr);
+                dest_ptr += sizeof(ConfigEntry) / 2;
+            }
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
         if (persist_config)
         {
             persist_config = false;
@@ -928,6 +951,82 @@ int init_firmware()
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
+        if (floppy_image_selected > 0)
+        {
+            char *extract_filename(char *path)
+            {
+                char *last_slash = strrchr(path, '/'); // Find the last occurrence of '/'
+
+                // If '/' was found, return the string after it
+                if (last_slash && *(last_slash + 1))
+                {
+                    return last_slash + 1;
+                }
+                return path; // Return the original path if '/' wasn't found
+            }
+            DPRINTF("Floppy image selected to download: %d\n", floppy_image_selected);
+            FloppyImageInfo remote = *floppy_images_files;
+            for (int i = 0; i < floppy_image_selected - 1; i++)
+            {
+                remote = *(FloppyImageInfo *)remote.next;
+            }
+            char *remote_name = remote.name;
+            char *remote_uri = remote.url;
+
+            char full_url[512];
+            // Get the URL from the configuration
+            char *base_url = find_entry("FLOPPY_DB_URL")->value;
+
+            char *dest_filename = extract_filename(remote.url);
+            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+
+            if (strncmp(remote_uri, "http", 4) == 0)
+            { // Check if remote_uri starts with "http"
+                strcpy(full_url, remote_uri);
+            }
+            else
+            {
+                // Use sprintf to format and concatenate strings
+                sprintf(full_url, "%s/%s", base_url, remote_uri);
+            }
+
+            DPRINTF("Full URL: %s\n", full_url);
+            DPRINTF("Remote name: %s\n", remote_name);
+            DPRINTF("Name in folder: %s\n", dest_filename);
+            DPRINTF("Directory: %s\n", dir);
+
+            if (directory_exists(dir))
+            {
+                // Directory exists
+                DPRINTF("Directory exists: %s\n", dir);
+
+                err_t err = download_floppy(&full_url[0], dir, dest_filename, true);
+
+                if (err != ERR_OK)
+                {
+                    floppy_image_selected_status = 3; // Error: Failed downloading file
+                    DPRINTF("Download floppy error: %d\n", err);
+                }
+                else
+                {
+                    put_string("FLOPPY_IMAGE_A", dest_filename);
+                    // put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
+                    // write_all_entries();
+                }
+            }
+            else
+            {
+                floppy_image_selected_status = 2; // Error: Directory does not exist
+                DPRINTF("Directory does not exist: %s\n", dir);
+            }
+
+            floppy_image_selected = -1;
+            *((volatile uint16_t *)(memory_area + 4)) = floppy_image_selected_status;
+
+            DPRINTF("Random token: %x\n", random_token);
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
+
         // Increase the counter and reset it if it reaches the limit
         network_poll_counter >= network_status_polling_ms ? network_poll_counter = 0 : network_poll_counter++;
         storage_poll_counter >= STORAGE_POLL_INTERVAL ? storage_poll_counter = 0 : storage_poll_counter++;
@@ -1078,82 +1177,6 @@ int init_firmware()
         *((volatile uint32_t *)(memory_area)) = random_token;
     }
 
-    if (floppy_image_selected > 0)
-    {
-        char *extract_filename(char *path)
-        {
-            char *last_slash = strrchr(path, '/'); // Find the last occurrence of '/'
-
-            // If '/' was found, return the string after it
-            if (last_slash && *(last_slash + 1))
-            {
-                return last_slash + 1;
-            }
-            return path; // Return the original path if '/' wasn't found
-        }
-        DPRINTF("Floppy image selected to download: %d\n", floppy_image_selected);
-        FloppyImageInfo remote = *floppy_images_files;
-        for (int i = 0; i < floppy_image_selected - 1; i++)
-        {
-            remote = *(FloppyImageInfo *)remote.next;
-        }
-        char *remote_name = remote.name;
-        char *remote_uri = remote.url;
-
-        char full_url[512];
-        // Get the URL from the configuration
-        char *base_url = find_entry("FLOPPY_DB_URL")->value;
-
-        char *dest_filename = extract_filename(remote.url);
-        char *dir = find_entry("FLOPPIES_FOLDER")->value;
-
-        if (strncmp(remote_uri, "http", 4) == 0)
-        { // Check if remote_uri starts with "http"
-            strcpy(full_url, remote_uri);
-        }
-        else
-        {
-            // Use sprintf to format and concatenate strings
-            sprintf(full_url, "%s/%s", base_url, remote_uri);
-        }
-
-        DPRINTF("Full URL: %s\n", full_url);
-        DPRINTF("Remote name: %s\n", remote_name);
-        DPRINTF("Name in folder: %s\n", dest_filename);
-        DPRINTF("Directory: %s\n", dir);
-
-        if (directory_exists(dir))
-        {
-            // Directory exists
-            DPRINTF("Directory exists: %s\n", dir);
-
-            err_t err = download_floppy(&full_url[0], dir, dest_filename, true);
-
-            if (err != ERR_OK)
-            {
-                floppy_image_selected = 0;
-                floppy_image_selected_status = 3; // Error: Failed downloading file
-                DPRINTF("Download floppy error: %d\n", err);
-            }
-            else
-            {
-                put_string("FLOPPY_IMAGE_A", dest_filename);
-                put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
-                write_all_entries();
-            }
-        }
-        else
-        {
-            floppy_image_selected_status = 2; // Error: Directory does not exist
-            floppy_image_selected = 0;
-            DPRINTF("Directory does not exist: %s\n", dir);
-        }
-
-        *((volatile uint16_t *)(memory_area + 4)) = floppy_image_selected_status;
-
-        DPRINTF("Random token: %x\n", random_token);
-        *((volatile uint32_t *)(memory_area)) = random_token;
-    }
     if (rtc_boot)
     {
         DPRINTF("Boot the RTC emulator.\n");
