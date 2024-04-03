@@ -832,20 +832,55 @@ uint32_t calculate_folder_count(const char *path)
     return totalSize;
 }
 
-void get_sdcard_data(FATFS *fs, SdCardData *sd_data, bool microsd_mounted)
+/**
+ * @brief Checks if the SD card is mounted.
+ *
+ * This function attempts to mount the filesystem on the SD card and checks if the operation was successful.
+ * If the filesystem could not be mounted, an error message is printed.
+ *
+ * @param fs_ptr A pointer to the FATFS structure.
+ *
+ * @return The function returns true if the SD card is mounted, and false otherwise.
+ *
+ * Usage:
+ *     FATFS fs;
+ *     bool isMounted = is_sdcard_mounted(&fs);
+ *     if (isMounted) {
+ *         printf("SD card is mounted.\n");
+ *     } else {
+ *         printf("SD card is not mounted.\n");
+ *     }
+ */
+bool is_sdcard_mounted(FATFS *fs_ptr)
+{
+    // Mount drive
+    FRESULT fr = f_mount(fs_ptr, "0:", 1);
+    bool sd_card_mounted = (fr == FR_OK);
+    if (!sd_card_mounted)
+    {
+        DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
+    }
+
+    return sd_card_mounted;
+}
+
+void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_src)
 {
 
-    sd_data->status = microsd_mounted ? SD_CARD_MOUNTED : SD_CARD_NOT_MOUNTED; // SD card status
-    strncpy(sd_data->floppies_folder, find_entry("FLOPPIES_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
+    bool is_card_mounted = is_sdcard_mounted(fs);
+
+    sd_data->status = is_card_mounted ? SD_CARD_MOUNTED : SD_CARD_NOT_MOUNTED; // SD card status
+    strncpy(sd_data->floppies_folder, find_entry(PARAM_FLOPPIES_FOLDER)->value, MAX_FOLDER_LENGTH - 1);
     sd_data->floppies_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
-    strncpy(sd_data->roms_folder, find_entry("ROMS_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
+    strncpy(sd_data->roms_folder, find_entry(PARAM_ROMS_FOLDER)->value, MAX_FOLDER_LENGTH - 1);
     sd_data->roms_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
-    strncpy(sd_data->harddisks_folder, "/harddisks", MAX_FOLDER_LENGTH - 1);
+    strncpy(sd_data->harddisks_folder, find_entry(PARAM_GEMDRIVE_FOLDERS)->value, MAX_FOLDER_LENGTH - 1);
     sd_data->harddisks_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
-    if (microsd_mounted)
+
+    if (is_card_mounted)
     {
         sd_data->floppies_folder_status = directory_exists(sd_data->floppies_folder) ? FLOPPIES_FOLDER_OK : FLOPPIES_FOLDER_NOTFOUND;
         sd_data->roms_folder_status = directory_exists(sd_data->roms_folder) ? ROMS_FOLDER_OK : ROMS_FOLDER_NOTFOUND;
@@ -857,9 +892,33 @@ void get_sdcard_data(FATFS *fs, SdCardData *sd_data, bool microsd_mounted)
         sd_data->sd_size = total;
         sd_data->sd_free_space = freeSpace;
 
-        sd_data->roms_folder_count = calculate_folder_count(sd_data->roms_folder);
-        sd_data->floppies_folder_count = calculate_folder_count(sd_data->floppies_folder);
-        sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);
+        if (sd_data_src && sd_data_src->roms_folder_count == 0)
+        {
+            // If the ROMs folder count is zero, recalculate the folder count
+            sd_data->roms_folder_count = calculate_folder_count(sd_data->roms_folder);
+        }
+        else
+        {
+            sd_data->roms_folder_count = sd_data_src->roms_folder_count;
+        }
+        if (sd_data_src && sd_data_src->floppies_folder_count == 0)
+        {
+            // If the floppies folder count is zero, recalculate the folder count
+            sd_data->floppies_folder_count = calculate_folder_count(sd_data->floppies_folder);
+        }
+        else
+        {
+            sd_data->floppies_folder_count = sd_data_src->floppies_folder_count;
+        }
+        if (sd_data_src && sd_data_src->harddisks_folder_count == 0)
+        {
+            // If the harddisks folder count is zero, recalculate the folder count
+            sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);
+        }
+        else
+        {
+            sd_data->harddisks_folder_count = sd_data_src->harddisks_folder_count;
+        }
     }
     else
     {
@@ -1392,8 +1451,9 @@ void split_fullpath(const char *fullPath, char *drive, char *folders, char *file
         fullPath = driveEnd + 1;               // Adjust fullPath to point after the drive letter
     }
 
-    // Find the last '\\' to separate folders and file pattern
-    pathEnd = strrchr(fullPath, '\\');
+    // Find the last '\\' or '/' to separate folders and file pattern
+    char slash = fullPath[strcspn(fullPath, "\\/")] == '\\' ? '\\' : '/';
+    pathEnd = strrchr(fullPath, slash);
     if (pathEnd != NULL)
     {
         strncpy(folders, fullPath, pathEnd - fullPath + 1);
@@ -1402,7 +1462,7 @@ void split_fullpath(const char *fullPath, char *drive, char *folders, char *file
     }
     else
     {
-        // If there's no '\\', then the entire path is considered the file pattern
+        // If there's no '\\' or '/', then the entire path is considered the file pattern
         strcpy(filePattern, fullPath);
     }
 }
