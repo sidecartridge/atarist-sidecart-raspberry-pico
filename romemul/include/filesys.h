@@ -88,7 +88,8 @@ FRESULT copy_file(const char *folder, const char *src_filename, const char *dest
 int directory_exists(const char *dir);
 void get_card_info(FATFS *fs_ptr, uint32_t *totalSize_MB, uint32_t *freeSpace_MB);
 uint32_t calculate_folder_count(const char *path);
-void get_sdcard_data(FATFS *fs, SdCardData *sd_data, bool microsd_mounted);
+void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_src);
+bool is_sdcard_mounted(FATFS *fs_ptr);
 char **show_dir_files(const char *dir, int *num_files);
 void release_memory_files(char **files, int num_files);
 int load_rom_from_fs(char *path, char *filename, uint32_t rom_load_offset);
