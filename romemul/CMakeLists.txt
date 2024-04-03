@@ -123,7 +123,7 @@ if(NOT RELEASE_DATE)
 endif()
 
 if (NOT _DEBUG)
-        set(_DEBUG 1)
+        set(_DEBUG 0)
 endif()
 
 
