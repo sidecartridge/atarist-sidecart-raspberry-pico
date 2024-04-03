@@ -31,8 +31,8 @@ extern const float SAMPLE_DIV_FREQ;
 extern const uint32_t RP2040_CLOCK_FREQ_KHZ;
 
 // Frequency constants.
-#define SAMPLE_DIV_FREQ (1.f)                  // Sample frequency division factor.
-#define RP2040_CLOCK_FREQ_KHZ (125000 + 55000) // Clock frequency in KHz (180MHz).
+#define SAMPLE_DIV_FREQ (1.f) // Sample frequency division factor.
+#define RP2040_CLOCK_FREQ_KHZ (125000 + 100000) // Clock frequency in KHz (200MHz).
 
 // Voltage constants.
 #define RP2040_VOLTAGE VREG_VOLTAGE_1_10 // Voltage in 1.10 Volts.
@@ -71,6 +71,8 @@ extern const uint32_t ROM_IN_RAM_ADDRESS;
 extern const uint32_t ROMS_START_ADDRESS;
 extern const uint32_t ROM4_START_ADDRESS;
 extern const uint32_t ROM3_START_ADDRESS;
+extern const uint32_t ROM4_END_ADDRESS;
+extern const uint32_t ROM3_END_ADDRESS;
 extern const uint32_t ROM_SIZE_BYTES;
 extern const uint32_t ROM_SIZE_WORDS;
 extern const uint32_t ROM_SIZE_LONGWORDS;
@@ -79,6 +81,10 @@ extern const uint32_t CONFIG_FLASH_SIZE;
 extern const uint32_t CONFIG_VERSION;
 extern const uint32_t CONFIG_MAGIC;
 extern const uint32_t NETWORK_MAGIC;
+
+// Atari ST constants.
+extern const uint32_t ATARI_ROM4_START_ADDRESS;
+extern const uint32_t ATARI_ROM3_START_ADDRESS;
 
 // Configurator constants.
 extern const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES;
@@ -104,3 +110,6 @@ typedef struct
 } MorseCode;
 
 extern MorseCode morseAlphabet[]; // This is a declaration, not a definition.
+
+extern const char *GEMDOS_CALLS[];
+extern const uint8_t BLACKLISTED_GEMDOS_CALLS[52];

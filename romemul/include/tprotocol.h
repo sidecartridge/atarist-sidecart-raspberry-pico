@@ -18,7 +18,7 @@
 
 #define PROTOCOL_HEADER 0xABCD
 #define PROTOCOL_READ_RESTART_MICROSECONDS 10000
-#define MAX_PROTOCOL_PAYLOAD_SIZE 1024
+#define MAX_PROTOCOL_PAYLOAD_SIZE 2048 + 64 // 1024 bytes of payload plus 64 bytes of overhead for safety
 
 #define SHOW_COMMANDS 0 // Set to 1 to show commands received
 

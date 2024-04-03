@@ -38,6 +38,26 @@ static bool microsd_mounted = false;
 // Local wifi password in the local file
 static char *wifi_password_file_content = NULL;
 
+datetime_t *get_rtc_time()
+{
+    return &rtc_time;
+}
+
+NTP_TIME *get_net_time()
+{
+    return &net_time;
+}
+
+long get_utc_offset_seconds()
+{
+    return utc_offset_seconds;
+}
+
+void set_utc_offset_seconds(long offset)
+{
+    utc_offset_seconds = offset;
+}
+
 static uint16_t rtc_get_raw_time()
 {
     // Ensure the values fit into the designated bit sizes
@@ -66,7 +86,7 @@ static uint16_t rtc_get_raw_date()
     return bit_date;
 }
 
-static void host_found_callback(const char *name, const ip_addr_t *ipaddr, void *arg)
+void host_found_callback(const char *name, const ip_addr_t *ipaddr, void *arg)
 {
     if (name == NULL)
     {
@@ -169,7 +189,7 @@ static void ntp_recv_callback(void *arg, struct udp_pcb *pcb, struct pbuf *p, co
     pbuf_free(p);
 }
 
-static void ntp_init()
+void ntp_init()
 {
     // Attempt to allocate a new UDP control block.
     net_time.ntp_pcb = udp_new_ip_type(IPADDR_TYPE_ANY);
@@ -187,7 +207,7 @@ static void ntp_init()
     DPRINTF("NTP UDP control block initialized and callback set.\n");
 }
 
-static void set_internal_rtc()
+void set_internal_rtc()
 {
     // Begin LwIP operation
     cyw43_arch_lwip_begin();
@@ -256,13 +276,13 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
 }
 
 // Function to convert a binary number to BCD format
-static inline uint8_t to_bcd(uint8_t val)
+inline uint8_t to_bcd(uint8_t val)
 {
     return ((val / 10) << 4) | (val % 10);
 }
 
 // Function to add two BCD values
-static inline uint8_t add_bcd(uint8_t bcd1, uint8_t bcd2)
+inline uint8_t add_bcd(uint8_t bcd1, uint8_t bcd2)
 {
     uint8_t low_nibble = (bcd1 & 0x0F) + (bcd2 & 0x0F);
     uint8_t high_nibble = (bcd1 & 0xF0) + (bcd2 & 0xF0);
@@ -651,7 +671,7 @@ int init_rtcemul(bool safe_config_reboot)
         }
 
         // Increase the counter and reset it if it reaches the limit
-        network_poll_counter >= (NETWORK_POLL_INTERVAL*1000) ? network_poll_counter = 0 : network_poll_counter++;
+        network_poll_counter >= (NETWORK_POLL_INTERVAL * 1000) ? network_poll_counter = 0 : network_poll_counter++;
     }
 
     blink_error();

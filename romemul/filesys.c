@@ -832,20 +832,55 @@ uint32_t calculate_folder_count(const char *path)
     return totalSize;
 }
 
-void get_sdcard_data(FATFS *fs, SdCardData *sd_data, bool microsd_mounted)
+/**
+ * @brief Checks if the SD card is mounted.
+ *
+ * This function attempts to mount the filesystem on the SD card and checks if the operation was successful.
+ * If the filesystem could not be mounted, an error message is printed.
+ *
+ * @param fs_ptr A pointer to the FATFS structure.
+ *
+ * @return The function returns true if the SD card is mounted, and false otherwise.
+ *
+ * Usage:
+ *     FATFS fs;
+ *     bool isMounted = is_sdcard_mounted(&fs);
+ *     if (isMounted) {
+ *         printf("SD card is mounted.\n");
+ *     } else {
+ *         printf("SD card is not mounted.\n");
+ *     }
+ */
+bool is_sdcard_mounted(FATFS *fs_ptr)
+{
+    // Mount drive
+    FRESULT fr = f_mount(fs_ptr, "0:", 1);
+    bool sd_card_mounted = (fr == FR_OK);
+    if (!sd_card_mounted)
+    {
+        DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
+    }
+
+    return sd_card_mounted;
+}
+
+void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_src)
 {
 
-    sd_data->status = microsd_mounted ? SD_CARD_MOUNTED : SD_CARD_NOT_MOUNTED; // SD card status
-    strncpy(sd_data->floppies_folder, find_entry("FLOPPIES_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
+    bool is_card_mounted = is_sdcard_mounted(fs);
+
+    sd_data->status = is_card_mounted ? SD_CARD_MOUNTED : SD_CARD_NOT_MOUNTED; // SD card status
+    strncpy(sd_data->floppies_folder, find_entry(PARAM_FLOPPIES_FOLDER)->value, MAX_FOLDER_LENGTH - 1);
     sd_data->floppies_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
-    strncpy(sd_data->roms_folder, find_entry("ROMS_FOLDER")->value, MAX_FOLDER_LENGTH - 1);
+    strncpy(sd_data->roms_folder, find_entry(PARAM_ROMS_FOLDER)->value, MAX_FOLDER_LENGTH - 1);
     sd_data->roms_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
-    strncpy(sd_data->harddisks_folder, "/harddisks", MAX_FOLDER_LENGTH - 1);
+    strncpy(sd_data->harddisks_folder, find_entry(PARAM_GEMDRIVE_FOLDERS)->value, MAX_FOLDER_LENGTH - 1);
     sd_data->harddisks_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
-    if (microsd_mounted)
+
+    if (is_card_mounted)
     {
         sd_data->floppies_folder_status = directory_exists(sd_data->floppies_folder) ? FLOPPIES_FOLDER_OK : FLOPPIES_FOLDER_NOTFOUND;
         sd_data->roms_folder_status = directory_exists(sd_data->roms_folder) ? ROMS_FOLDER_OK : ROMS_FOLDER_NOTFOUND;
@@ -857,9 +892,33 @@ void get_sdcard_data(FATFS *fs, SdCardData *sd_data, bool microsd_mounted)
         sd_data->sd_size = total;
         sd_data->sd_free_space = freeSpace;
 
-        sd_data->roms_folder_count = calculate_folder_count(sd_data->roms_folder);
-        sd_data->floppies_folder_count = calculate_folder_count(sd_data->floppies_folder);
-        sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);
+        if (sd_data_src && sd_data_src->roms_folder_count == 0)
+        {
+            // If the ROMs folder count is zero, recalculate the folder count
+            sd_data->roms_folder_count = calculate_folder_count(sd_data->roms_folder);
+        }
+        else
+        {
+            sd_data->roms_folder_count = sd_data_src->roms_folder_count;
+        }
+        if (sd_data_src && sd_data_src->floppies_folder_count == 0)
+        {
+            // If the floppies folder count is zero, recalculate the folder count
+            sd_data->floppies_folder_count = calculate_folder_count(sd_data->floppies_folder);
+        }
+        else
+        {
+            sd_data->floppies_folder_count = sd_data_src->floppies_folder_count;
+        }
+        if (sd_data_src && sd_data_src->harddisks_folder_count == 0)
+        {
+            // If the harddisks folder count is zero, recalculate the folder count
+            sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);
+        }
+        else
+        {
+            sd_data->harddisks_folder_count = sd_data_src->harddisks_folder_count;
+        }
     }
     else
     {
@@ -1353,4 +1412,391 @@ FRESULT read_and_trim_file(const char *path, char **content)
     f_close(&fil);
     DPRINTF("File content: '%s'\n", *content);
     return FR_OK;
+}
+/**
+ * @brief Splits a full path into its drive letter, folder path, and file pattern components.
+ *
+ * This function takes a full path that includes a drive letter, a path of folders, and a file pattern,
+ * and splits it into three separate components. The drive letter is identified by the colon following it,
+ * the folder path is the part of the path before the file pattern, and the file pattern is the last segment
+ * of the path. The function handles various cases, including paths without a drive letter or folder path.
+ *
+ * @param fullPath A string representing the full path to split. It should include the drive letter, folder path,
+ *                 and file pattern. Example: "C:\\Users\\Public\\Documents\\*.txt".
+ * @param drive A pointer to a character array where the extracted drive letter will be stored.
+ * @param folders A pointer to a character array where the extracted folder path will be stored.
+ * @param filePattern A pointer to a character array where the extracted file pattern will be stored.
+ *
+ * Example usage:
+ *     char drive[10], folders[256], filePattern[100];
+ *     split_fullpath("C:\\Users\\Public\\Documents\\*.txt", drive, folders, filePattern);
+ *     // `drive`, `folders`, and `filePattern` now contain the respective components of the path.
+ */
+void split_fullpath(const char *fullPath, char *drive, char *folders, char *filePattern)
+{
+    const char *driveEnd;
+    const char *pathEnd;
+
+    // Initialize the output strings
+    drive[0] = '\0';
+    folders[0] = '\0';
+    filePattern[0] = '\0';
+
+    // Find the position of the first ':' to identify the drive
+    driveEnd = strchr(fullPath, ':');
+    if (driveEnd != NULL)
+    {
+        strncpy(drive, fullPath, driveEnd - fullPath + 1);
+        drive[driveEnd - fullPath + 1] = '\0'; // Null-terminate the drive string
+        fullPath = driveEnd + 1;               // Adjust fullPath to point after the drive letter
+    }
+
+    // Find the last '\\' or '/' to separate folders and file pattern
+    char slash = fullPath[strcspn(fullPath, "\\/")] == '\\' ? '\\' : '/';
+    pathEnd = strrchr(fullPath, slash);
+    if (pathEnd != NULL)
+    {
+        strncpy(folders, fullPath, pathEnd - fullPath + 1);
+        folders[pathEnd - fullPath + 1] = '\0'; // Null-terminate the folders string
+        strcpy(filePattern, pathEnd + 1);       // Copy the file pattern
+    }
+    else
+    {
+        // If there's no '\\' or '/', then the entire path is considered the file pattern
+        strcpy(filePattern, fullPath);
+    }
+}
+
+/**
+ * @brief Converts all backslash characters to forward slashes in a given string.
+ *
+ * This function iterates through the characters of the provided string and replaces
+ * each backslash ('\\') character with a forward slash ('/'). This is typically used
+ * to convert file paths from Windows-style to Unix-style. The function operates in place,
+ * modifying the original string. It is safe to use with strings that do not contain
+ * backslashes, as the function will simply leave them unchanged.
+ *
+ * @param path A pointer to a character array (string) that will be modified in place.
+ *             The array should be null-terminated.
+ *
+ * Example usage:
+ *     char path[] = "C:\\Users\\Public\\Documents\\file.txt";
+ *     back_2_forwardslash(path);
+ *     // `path` is now "C:/Users/Public/Documents/file.txt"
+ */
+void back_2_forwardslash(char *path)
+{
+    if (path == NULL)
+        return;
+
+    for (int i = 0; path[i] != '\0'; i++)
+    {
+        if (path[i] == '\\')
+        {
+            path[i] = '/';
+        }
+    }
+}
+
+/**
+ * @brief Shortens a long file name to a DOS 8.3 filename format in uppercase and stores it in a provided array.
+ *
+ * This function takes a long file name, shortens it to the first seven characters, appends a '~' symbol,
+ * and then appends the original file's extension (assumed to be 3 characters long including the dot).
+ * The shortened file name is converted to uppercase and stored in a provided char array of size 12.
+ * The function is designed to handle file names in the format commonly used in Windows file systems.
+ *
+ * @param originalName A pointer to a constant character array containing the original long file name.
+ *                     The name should include the extension and must be null-terminated.
+ * @param shortenedName A pointer to a character array of size 12 where the shortened file name will be stored.
+ *                      This array will be modified by the function to contain the new file name.
+ *
+ * Example usage:
+ *     char shortenedFileName[12];
+ *     shorten_fname("longfilename.txt", shortenedFileName);
+ *     printf("Shortened File Name: %s\n", shortenedFileName);
+ */
+void shorten_fname(const char *originalName, char shortenedName[14])
+{
+    char namePart[9]; // 8 chars for name + null terminator
+    char extPart[5];  // dot + 3 chars for extension + null terminator
+    const char *dot;
+
+    // Initialize the shortenedName array
+    memset(shortenedName, 0, 14);
+
+    // Find the dot for the extension
+    dot = strrchr(originalName, '.');
+    if (dot && strlen(dot) <= 4)
+    {                             // Check if extension is 3 chars + dot
+        strncpy(extPart, dot, 4); // Copy extension
+        extPart[4] = '\0';        // Null-terminate
+
+        int nameLength = dot - originalName; // Calculate the length of the name part
+        if (nameLength > 8)
+        {
+            // If name part is longer than 8 characters, shorten it
+            strncpy(namePart, originalName, 7); // Copy first 7 characters of the name
+            namePart[7] = '~';                  // Add '~'
+            namePart[8] = '\0';                 // Null-terminate
+        }
+        else
+        {
+            // If name part is 8 characters or less, copy it as is
+            strncpy(namePart, originalName, nameLength);
+            namePart[nameLength] = '\0'; // Null-terminate
+        }
+
+        // Convert name part to uppercase
+        for (int i = 0; namePart[i] != '\0'; i++)
+        {
+            namePart[i] = toupper((unsigned char)namePart[i]);
+        }
+        // Convert extension part to uppercase
+        for (int i = 0; extPart[i] != '\0'; i++)
+        {
+            extPart[i] = toupper((unsigned char)extPart[i]);
+        }
+
+        // Format shortened file name
+        snprintf(shortenedName, 14, "%s%s", namePart, extPart);
+    }
+    else
+    {
+        // If no dot is found, copy the original name as is
+        strncpy(shortenedName, originalName, 8);
+        shortenedName[8] = '\0'; // Null-terminate
+    }
+    //    DPRINTF("Original file name: %s, Shortened file name: %s\n", originalName, shortenedName);
+}
+
+/**
+ * @brief Removes consecutive duplicate slashes from a string.
+ *
+ * This function iterates through the provided string, `str`, and when it
+ * finds two consecutive forward slashes, it removes one of them. This
+ * process is done in-place, modifying the original string.
+ *
+ * @param str The string from which duplicate slashes are to be removed.
+ *            This parameter is modified in place.
+ *
+ * @note The function modifies the string in place. Ensure the provided
+ *       string is modifiable and not a string literal.
+ *
+ * Example Usage:
+ *     char path[] = "path//to//your//directory/";
+ *     remove_dup_slashes(path);
+ *     // path is now "path/to/your/directory/"
+ */
+void remove_dup_slashes(char *str)
+{
+    for (char *p = str; *p != '\0'; p++)
+    {
+        if (*p == '/' && *(p + 1) == '/')
+        {
+            memmove(p, p + 1, strlen(p));
+            p--; // Adjust pointer to recheck this position after removal
+        }
+    }
+}
+
+/**
+ * @brief Converts FATFS attributes to ST attributes.
+ *
+ * This function takes FATFS attributes as input and converts them to ST attributes.
+ * The conversion is done by checking each bit of the FAT attributes and setting
+ * the corresponding bit in the ST attributes if it is set in the FATFS attributes.
+ *
+ * @param fat_attribs The FATFS attributes to be converted.
+ * @return The converted ST attributes.
+ */
+uint8_t attribs_fat2st(uint8_t fat_attribs)
+{
+    uint8_t st_attribs = 0;
+
+    if (fat_attribs & AM_RDO)
+    {
+        st_attribs |= FS_ST_READONLY;
+    }
+    if (fat_attribs & AM_HID)
+    {
+        st_attribs |= FS_ST_HIDDEN;
+    }
+    if (fat_attribs & AM_SYS)
+    {
+        st_attribs |= FS_ST_SYSTEM;
+    }
+    if (fat_attribs & AM_DIR)
+    {
+        st_attribs |= FS_ST_FOLDER;
+    }
+    if (fat_attribs & AM_ARC)
+    {
+        st_attribs |= FS_ST_ARCH;
+    }
+    return st_attribs;
+}
+
+/**
+ * @brief Converts ST attributes to FATFS attributes.
+ *
+ * This function takes ST attributes as input and converts them to FATFS attributes.
+ * The conversion is done by checking each bit of the ST attributes and setting
+ * the corresponding bit in the FATFS attributes if it is set in the ST attributes.
+ *
+ * @param st_attribs The ST attributes to be converted.
+ * @return The converted FATFS attributes.
+ */
+uint8_t attribs_st2fat(uint8_t st_attribs)
+
+{
+    uint8_t fat_attribs = 0;
+
+    if (st_attribs & FS_ST_READONLY)
+    {
+        fat_attribs |= AM_RDO;
+    }
+    if (st_attribs & FS_ST_HIDDEN)
+    {
+        fat_attribs |= AM_HID;
+    }
+    if (st_attribs & FS_ST_SYSTEM)
+    {
+        fat_attribs |= AM_SYS;
+    }
+    if (st_attribs & FS_ST_FOLDER)
+    {
+        fat_attribs |= AM_DIR;
+    }
+    if (st_attribs & FS_ST_ARCH)
+    {
+        fat_attribs |= AM_ARC;
+    }
+    return fat_attribs;
+}
+
+/**
+ * @brief Converts ST attributes to a string representation.
+ *
+ * This function takes ST attributes as input and converts them to a string representation.
+ * The conversion is done by checking each bit of the ST attributes and setting
+ * the corresponding character in the string if it is set in the ST attributes.
+ *
+ * @param attribs_str The string to store the representation. It should be at least 6 characters long.
+ * @param st_attribs The ST attributes to be converted.
+ */
+void get_attribs_st_str(char *attribs_str, uint8_t st_attribs)
+{
+    strcpy(attribs_str, "------");
+    if (st_attribs & FS_ST_READONLY)
+    {
+        attribs_str[0] = 'R';
+    }
+    if (st_attribs & FS_ST_HIDDEN)
+    {
+        attribs_str[1] = 'H';
+    }
+    if (st_attribs & FS_ST_SYSTEM)
+    {
+        attribs_str[2] = 'S';
+    }
+    if (st_attribs & FS_ST_LABEL)
+    {
+        attribs_str[3] = 'L';
+    }
+    if (st_attribs & FS_ST_FOLDER)
+    {
+        attribs_str[4] = 'D';
+    }
+    if (st_attribs & FS_ST_ARCH)
+    {
+        attribs_str[5] = 'A';
+    }
+    return;
+}
+
+/**
+ * @brief Converts a filename to uppercase.
+ *
+ * This function takes a filename as input and converts all its characters to uppercase.
+ * The converted filename is stored in a separate string. The original filename remains unchanged.
+ * The function ensures that the converted filename is null-terminated.
+ *
+ * @param originalName The original filename to be converted. It should be a null-terminated string.
+ * @param upperName The string to store the converted filename. It should be at least 14 characters long.
+ */
+void upper_fname(const char *originalName, char upperName[14])
+{
+    int i = 0;
+    while (originalName[i] != '\0' && i < 13)
+    {
+        upperName[i] = toupper(originalName[i]);
+        i++;
+    }
+    upperName[i] = '\0'; // Null terminate the string
+}
+
+/**
+ * @brief Filters a filename.
+ *
+ * This function takes a filename as input and filters it by removing non-alphanumeric characters.
+ * The filtered filename is stored in a separate string. The original filename remains unchanged.
+ * The function ensures that the filtered filename is null-terminated.
+ *
+ * @param originalName The original filename to be filtered. It should be a null-terminated string.
+ * @param filteredName The string to store the filtered filename. It should be at least 14 characters long.
+ */
+void filter_fname(const char *originalName, char filteredName[14])
+
+{
+    int i = 0, j = 0;
+    while (originalName[i] != '\0' && j < 13)
+    {
+        // Check for alphanumeric characters
+        if (isalnum((unsigned char)originalName[i]))
+        {
+            filteredName[j++] = originalName[i];
+        }
+        else
+        {
+            // Check for specific symbols
+            // Ugly as HELL, but not using regular expressions
+            switch (originalName[i])
+            {
+            case '_':
+            case '!':
+            case '@':
+            case '#':
+            case '$':
+            case '%':
+            case '^':
+            case '&':
+            case '(':
+            case ')':
+            case '+':
+            case '-':
+            case '=':
+            case '~':
+            case '`':
+            case ';':
+            case '\'':
+            case ',':
+            case '.':
+            case '<':
+            case '>':
+            case '|':
+            case '[':
+            case ']':
+            case '{':
+            case '}':
+                filteredName[j++] = originalName[i];
+                break;
+            default:
+                // Ignore any other characters
+                break;
+            }
+        }
+        i++;
+    }
+    filteredName[j] = '\0'; // Null-terminate the filtered name
 }

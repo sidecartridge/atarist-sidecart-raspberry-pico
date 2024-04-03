@@ -10,6 +10,7 @@
 #include "include/romemul.h"
 #include "include/floppyemul.h"
 #include "include/rtcemul.h"
+#include "include/gemdrvemul.h"
 
 int main()
 {
@@ -51,7 +52,7 @@ int main()
     // Load the config from FLASH
     load_all_entries();
 
-    ConfigEntry *default_config_entry = find_entry("BOOT_FEATURE");
+    ConfigEntry *default_config_entry = find_entry(PARAM_BOOT_FEATURE);
     DPRINTF("BOOT_FEATURE: %s\n", default_config_entry->value);
 
     ConfigEntry *default_config_reboot_mode = find_entry("SAFE_CONFIG_REBOOT");
@@ -114,7 +115,7 @@ int main()
                 if (gpio_get(5) != 0)
                 {
                     select_button_action(safe_config_reboot, write_config_only_once);
-                    // Write config only once to avoid hitting the flash too much 
+                    // Write config only once to avoid hitting the flash too much
                     write_config_only_once = false;
                 }
             }
@@ -180,6 +181,33 @@ int main()
             // You should never reach this line...
         }
 
+        if (strcmp(default_config_entry->value, "GEMDRIVE_EMULATOR") == 0)
+        {
+            printf("GEMDRIVE_EMULATOR entry found in config. Launching.\n");
+
+            // Copy the GEMDRIVE firmware emulator to RAM
+            copy_firmware_to_RAM((uint16_t *)gemdrvemulROM, gemdrvemulROM_length);
+
+            // Reserve memory for the protocol parser
+            init_protocol_parser();
+
+            // Hybrid way to initialize the ROM emulator:
+            // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+            // and start the state machine
+            init_romemul(NULL, gemdrvemul_dma_irq_handler_lookup_callback, false);
+
+            network_init();
+
+            DPRINTF("Ready to accept commands.\n");
+
+            // The "H" character stands for "HARDISK"
+            blink_morse('H');
+
+            init_gemdrvemul(safe_config_reboot);
+
+            // You should never reach this line...
+        }
+
         DPRINTF("You should never see this line...\n");
         return 0;
     }
@@ -190,7 +218,7 @@ int main()
         // Keep in development mode
         if (strcmp(default_config_entry->value, "CONFIGURATOR") != 0)
         {
-            put_string("BOOT_FEATURE", "CONFIGURATOR");
+            put_string(PARAM_BOOT_FEATURE, "CONFIGURATOR");
             write_all_entries();
         }
 

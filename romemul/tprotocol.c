@@ -8,13 +8,14 @@
 
 #include "include/tprotocol.h"
 
-static uint64_t last_header_found = 0;
+uint64_t last_header_found = 0;
+uint64_t new_header_found = 0;
 
 // Global variable to keep track of current parsing state
-static TPParseStep nextTPstep = HEADER_DETECTION;
+TPParseStep nextTPstep = HEADER_DETECTION;
 
 // Placeholder structure for parsed data
-static TransmissionProtocol transmission;
+TransmissionProtocol transmission;
 
 // Placeholder functions for each step
 inline static void __not_in_flash_func(detect_header)(uint16_t data)
@@ -36,14 +37,13 @@ inline static void __not_in_flash_func(read_payload_size)(uint16_t data)
     if (data > 0)
     {
         transmission.payload_size = data; // Store incoming data as payload size
-        transmission.bytes_read = 0;
         nextTPstep = PAYLOAD_READ_START;
     }
     else
     {
-        transmission.bytes_read = 0;
         nextTPstep = PAYLOAD_READ_END;
     }
+    transmission.bytes_read = 0;
 }
 
 inline static void __not_in_flash_func(read_payload)(uint16_t data)
@@ -78,7 +78,7 @@ void terminate_protocol_parser()
     }
 }
 
-void __not_in_flash_func(process_command)(ProtocolCallback callback)
+inline void __not_in_flash_func(process_command)(ProtocolCallback callback)
 {
 #if defined(_DEBUG) && (_DEBUG != 0) && defined(SHOW_COMMANDS) && (SHOW_COMMANDS != 0)
     DPRINTF("COMMAND: %d / PAYLOAD SIZE: %d / PAYLOAD: ", transmission.command_id, transmission.payload_size);
@@ -100,13 +100,14 @@ void __not_in_flash_func(process_command)(ProtocolCallback callback)
     transmission.command_id = 0;
     transmission.payload_size = 0;
     transmission.bytes_read = 0;
+    last_header_found = 0;
     // Handle the end of the payload reading. Maybe reset state or take some action based on received data.
     nextTPstep = HEADER_DETECTION; // Resetting to start for the next message.
 }
 
-void __not_in_flash_func(parse_protocol)(uint16_t data, ProtocolCallback callback)
+inline void __not_in_flash_func(parse_protocol)(uint16_t data, ProtocolCallback callback)
 {
-    uint64_t new_header_found = (((uint64_t)timer_hw->timerawh) << 32u | timer_hw->timerawl);
+    new_header_found = (((uint64_t)timer_hw->timerawh) << 32u | timer_hw->timerawl);
     if (new_header_found - last_header_found > PROTOCOL_READ_RESTART_MICROSECONDS)
     {
         nextTPstep = HEADER_DETECTION;

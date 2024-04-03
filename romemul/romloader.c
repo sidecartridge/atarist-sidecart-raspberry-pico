@@ -67,6 +67,9 @@ static FloppyImageHeader floppy_header = {0};
 // RTC boot variables
 static bool rtc_boot = false;
 
+// Harddisk boot variables
+static bool gemdrive_boot = false;
+
 // Config call
 static bool get_config_call = false;
 
@@ -83,6 +86,22 @@ static int compare_strings(const void *a, const void *b)
     }
 
     return tolower((unsigned char)*str1) - tolower((unsigned char)*str2);
+}
+
+// Check if the sd card is initalized and mounted and update the information of the folders
+static void update_sd_status(FATFS *fs, SdCardData *sd_data_ptr)
+{
+    SdCardData *sd_data_local = malloc(sizeof(SdCardData));
+    if (sd_data_local == NULL)
+    {
+        DPRINTF("Failed to allocate memory for sd_data_local\n");
+        return;
+    }
+    get_sdcard_data(fs, sd_data_local, sd_data_ptr);
+
+    // Copy the content of sd_data_local to sd_data_ptr
+    memcpy(sd_data_ptr, sd_data_local, sizeof(SdCardData));
+    free(sd_data_local);
 }
 
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
@@ -382,6 +401,12 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         rtc_boot = true; // now in the active loop should stop and boot the RTC emulator
         break;
+    case BOOT_GEMDRIVE:
+        // Boot GEMDRIVE emulator
+        DPRINTF("Command BOOT_GEMDRIVE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        gemdrive_boot = true; // now in the active loop should stop and boot the RTC emulator
+        break;
     case CLEAN_START:
         // Start the configurator when the app starts
         DPRINTF("Command CLEAN_START (%i) received: %d\n", protocol->command_id, protocol->payload_size);
@@ -441,20 +466,6 @@ int init_firmware()
     printf("Initializing Configurator...\n"); // Always this print message to the console
     stdio_flush();
 
-    bool show_blink_code = true;
-    while (!clean_start)
-    {
-        // Wait until the clean start command is received
-        tight_loop_contents();
-        if (show_blink_code)
-        {
-            show_blink_code = false;
-            // The "C" character stands for "Configurator"
-            blink_morse('C');
-        }
-        sleep_ms(100);
-    }
-
     // Print the config
     print_config_table();
 
@@ -475,12 +486,21 @@ int init_firmware()
     if (microsd_initialized)
     {
         // Mount drive
-        fr = f_mount(&fs, "0:", 1);
-        microsd_mounted = (fr == FR_OK);
-        if (!microsd_mounted)
+        microsd_mounted = is_sdcard_mounted(&fs);
+    }
+
+    bool show_blink_code = true;
+    while (!clean_start)
+    {
+        // Wait until the clean start command is received
+        tight_loop_contents();
+        if (show_blink_code)
         {
-            DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
+            show_blink_code = false;
+            // The "C" character stands for "Configurator"
+            blink_morse('C');
         }
+        sleep_ms(100);
     }
 
     // Copy the content of the file list to the end of the ROM4 memory minus 4Kbytes
@@ -507,7 +527,7 @@ int init_firmware()
     u_int16_t wifi_scan_poll_counter = get_wifi_scan_poll_secs();
     u_int32_t network_status_polling_ms = get_network_status_polling_ms();
 
-    SdCardData *sd_data = malloc(sizeof(SdCardData));
+    SdCardData sd_data = {0}; // Lazy initalization
     if (microsd_mounted)
     {
         FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
@@ -542,7 +562,7 @@ int init_firmware()
     while ((rom_file_selected < 0) &&
            (rom_network_selected < 0) &&
            (floppy_file_selected < 0) &&
-           (!reset_default) && (!rtc_boot) &&
+           (!reset_default) && (!rtc_boot) && (!gemdrive_boot) &&
            (rom_rescue_mode_file_content == NULL))
     {
         tight_loop_contents();
@@ -616,6 +636,7 @@ int init_firmware()
                 // Only display when changes status to avoid flooding the console
                 ConnectionStatus previous_status = get_previous_connection_status();
                 ConnectionStatus current_status = get_network_connection_status();
+                DPRINTF("Network status: %d\n", current_status);
                 if (current_status != previous_status)
                 {
                     DPRINTF("Network status: %d\n", current_status);
@@ -645,32 +666,26 @@ int init_firmware()
                         // Start the network.
                         network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
                     }
-                    else if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
-                    {
-                        DPRINTF("Connection failed. Resetting network...\n");
-                        network_disconnect();
+                }
+                else if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
+                {
+                    DPRINTF("Connection failed. Resetting network...\n");
+                    network_disconnect();
 
-                        // Need to deinit and init again the full network stack to be able to scan again
-                        cyw43_arch_deinit();
-                        cyw43_arch_init();
-                        network_init();
+                    // Need to deinit and init again the full network stack to be able to scan again
+                    cyw43_arch_deinit();
+                    cyw43_arch_init();
+                    network_init();
 
-                        network_scan();
-                        // Start the network.
-                        network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
-                    }
+                    network_scan();
+                    // Start the network.
+                    network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
                 }
             }
         }
         if (storage_poll_counter == 0)
         {
-            get_sdcard_data(&fs, sd_data, microsd_mounted);
-            // Swap the bytes to motorola endian format
-            sd_data->roms_folder_count = (sd_data->roms_folder_count >> 16) | (sd_data->roms_folder_count << 16);
-            sd_data->floppies_folder_count = (sd_data->floppies_folder_count >> 16) | (sd_data->floppies_folder_count << 16);
-            sd_data->harddisks_folder_count = (sd_data->harddisks_folder_count >> 16) | (sd_data->harddisks_folder_count << 16);
-            sd_data->sd_free_space = (sd_data->sd_free_space >> 16) | (sd_data->sd_free_space << 16);
-            sd_data->sd_size = (sd_data->sd_size >> 16) | (sd_data->sd_size << 16);
+            update_sd_status(&fs, &sd_data);
         }
         if (get_config_call)
         {
@@ -700,7 +715,15 @@ int init_firmware()
         if (microsd_status)
         {
             microsd_status = false;
-            memcpy(memory_area + RANDOM_SEED_SIZE, sd_data, sizeof(SdCardData));
+            update_sd_status(&fs, &sd_data);
+
+            memcpy(memory_area + RANDOM_SEED_SIZE, &sd_data, sizeof(SdCardData));
+            SdCardData *sd_data_mem = (SdCardData *)(memory_area + RANDOM_SEED_SIZE);
+            sd_data_mem->roms_folder_count = (sd_data.roms_folder_count >> 16) | (sd_data.roms_folder_count << 16);
+            sd_data_mem->floppies_folder_count = (sd_data.floppies_folder_count >> 16) | (sd_data.floppies_folder_count << 16);
+            sd_data_mem->harddisks_folder_count = (sd_data.harddisks_folder_count >> 16) | (sd_data.harddisks_folder_count << 16);
+            sd_data_mem->sd_free_space = (sd_data.sd_free_space >> 16) | (sd_data.sd_free_space << 16);
+            sd_data_mem->sd_size = (sd_data.sd_size >> 16) | (sd_data.sd_size << 16);
 
             swap_words(memory_area + RANDOM_SEED_SIZE, MAX_FOLDER_LENGTH * 3);
 
@@ -786,7 +809,7 @@ int init_firmware()
         {
             list_roms = false;
             // Show the root directory content (ls command)
-            char *dir = find_entry("ROMS_FOLDER")->value;
+            char *dir = find_entry(PARAM_ROMS_FOLDER)->value;
             if (strlen(dir) == 0)
             {
                 dir = "";
@@ -811,7 +834,7 @@ int init_firmware()
         {
             list_floppies = false;
             // Show the root directory content (ls command)
-            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+            char *dir = find_entry(PARAM_FLOPPIES_FOLDER)->value;
             if (strlen(dir) == 0)
             {
                 dir = "";
@@ -930,7 +953,7 @@ int init_firmware()
             }
             strcpy(dest_ptr, ".st.rw");
             DPRINTF("Floppy file to create: %s\n", floppy_header.floppy_name);
-            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+            char *dir = find_entry(PARAM_FLOPPIES_FOLDER)->value;
             DPRINTF("Floppy folder: %s\n", dir);
             FRESULT err = create_blank_ST_image(dir,
                                                 floppy_header.floppy_name,
@@ -978,7 +1001,7 @@ int init_firmware()
             char *base_url = find_entry("FLOPPY_DB_URL")->value;
 
             char *dest_filename = extract_filename(remote.url);
-            char *dir = find_entry("FLOPPIES_FOLDER")->value;
+            char *dir = find_entry(PARAM_FLOPPIES_FOLDER)->value;
 
             if (strncmp(remote_uri, "http", 4) == 0)
             { // Check if remote_uri starts with "http"
@@ -1010,7 +1033,7 @@ int init_firmware()
                 else
                 {
                     put_string("FLOPPY_IMAGE_A", dest_filename);
-                    // put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
+                    // put_string(PARAM_BOOT_FEATURE, "FLOPPY_EMULATOR");
                     // write_all_entries();
                 }
             }
@@ -1044,7 +1067,7 @@ int init_firmware()
         uint32_t ints = save_and_disable_interrupts();
         flash_range_erase(FLASH_ROM_LOAD_OFFSET, ROM_SIZE_BYTES * 2); // Two banks of 64K
         restore_interrupts(ints);
-        int res = load_rom_from_fs(find_entry("ROMS_FOLDER")->value, filtered_local_list[rom_file_selected - 1], FLASH_ROM_LOAD_OFFSET);
+        int res = load_rom_from_fs(find_entry(PARAM_ROMS_FOLDER)->value, filtered_local_list[rom_file_selected - 1], FLASH_ROM_LOAD_OFFSET);
 
         if (res != FR_OK)
             DPRINTF("f_open error: %s (%d)\n", FRESULT_str(res), res);
@@ -1052,7 +1075,7 @@ int init_firmware()
         release_memory_files(file_list, num_files);
         release_memory_files(filtered_local_list, filtered_num_local_files);
 
-        put_string("BOOT_FEATURE", "ROM_EMULATOR");
+        put_string(PARAM_BOOT_FEATURE, "ROM_EMULATOR");
         write_all_entries();
         *((volatile uint32_t *)(memory_area)) = random_token;
     }
@@ -1066,12 +1089,12 @@ int init_firmware()
         uint32_t ints = save_and_disable_interrupts();
         flash_range_erase(FLASH_ROM_LOAD_OFFSET, ROM_SIZE_BYTES * 2); // Two banks of 64K
         restore_interrupts(ints);
-        int res = load_rom_from_fs(find_entry("ROMS_FOLDER")->value, rom_rescue_mode_file_content, FLASH_ROM_LOAD_OFFSET);
+        int res = load_rom_from_fs(find_entry(PARAM_ROMS_FOLDER)->value, rom_rescue_mode_file_content, FLASH_ROM_LOAD_OFFSET);
 
         if (res != FR_OK)
             DPRINTF("f_open error: %s (%d)\n", FRESULT_str(res), res);
 
-        put_string("BOOT_FEATURE", "ROM_EMULATOR");
+        put_string(PARAM_BOOT_FEATURE, "ROM_EMULATOR");
         write_all_entries();
     }
 
@@ -1090,7 +1113,7 @@ int init_firmware()
             }
             free(network_files);
 
-            put_string("BOOT_FEATURE", "ROM_EMULATOR");
+            put_string(PARAM_BOOT_FEATURE, "ROM_EMULATOR");
             write_all_entries();
 
             *((volatile uint32_t *)(memory_area)) = random_token;
@@ -1108,7 +1131,7 @@ int init_firmware()
 
         char *old_floppy = NULL;
         char *filename = NULL;
-        char *dir = find_entry("FLOPPIES_FOLDER")->value;
+        char *dir = find_entry(PARAM_FLOPPIES_FOLDER)->value;
         filename = filtered_local_list[floppy_file_selected - 1];
 
         size_t filename_length = strlen(filename);
@@ -1165,7 +1188,7 @@ int init_firmware()
             DPRINTF("Floppy Read/Write: %s\n", floppy_read_write ? "true" : "false");
 
             put_string("FLOPPY_IMAGE_A", new_floppy);
-            put_string("BOOT_FEATURE", "FLOPPY_EMULATOR");
+            put_string(PARAM_BOOT_FEATURE, "FLOPPY_EMULATOR");
             write_all_entries();
 
             release_memory_files(file_list, num_files);
@@ -1180,7 +1203,14 @@ int init_firmware()
     if (rtc_boot)
     {
         DPRINTF("Boot the RTC emulator.\n");
-        put_string("BOOT_FEATURE", "RTC_EMULATOR");
+        put_string(PARAM_BOOT_FEATURE, "RTC_EMULATOR");
+        write_all_entries();
+        *((volatile uint32_t *)(memory_area)) = random_token;
+    }
+    if (gemdrive_boot)
+    {
+        DPRINTF("Boot the HARDDISK emulator.\n");
+        put_string(PARAM_BOOT_FEATURE, "GEMDRIVE_EMULATOR");
         write_all_entries();
         *((volatile uint32_t *)(memory_area)) = random_token;
     }
@@ -1192,7 +1222,4 @@ int init_firmware()
     }
     // Release memory from the protocol
     terminate_protocol_parser();
-
-    // Release memory from the SD card data
-    free(sd_data);
 }

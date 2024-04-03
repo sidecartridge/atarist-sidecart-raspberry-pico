@@ -96,4 +96,14 @@ void __not_in_flash_func(rtcemul_dma_irq_handler_lookup_callback)(void);
 // Function Prototypes
 int init_rtcemul(bool safe_config_reboot);
 
+void host_found_callback(const char *name, const ip_addr_t *ipaddr, void *arg);
+void set_internal_rtc();
+void ntp_init();
+datetime_t *get_rtc_time();
+NTP_TIME *get_net_time();
+long get_utc_offset_seconds();
+void set_utc_offset_seconds(long offset);
+uint8_t to_bcd(uint8_t val);
+uint8_t add_bcd(uint8_t bcd1, uint8_t bcd2);
+
 #endif // RTCEMUL_H

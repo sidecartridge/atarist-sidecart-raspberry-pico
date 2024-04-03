@@ -23,6 +23,13 @@
 
 #define STORAGE_POLL_INTERVAL 30000
 
+#define FS_ST_READONLY 0x1 // Read only
+#define FS_ST_HIDDEN 0x2   // Hidden
+#define FS_ST_SYSTEM 0x4   // System
+#define FS_ST_LABEL 0x8    // Volume label
+#define FS_ST_FOLDER 0x10  // Directory
+#define FS_ST_ARCH 0x20    // Archive
+
 #define bswap_16(x) (((x) >> 8) | (((x) & 0xFF) << 8))
 
 typedef enum
@@ -81,12 +88,22 @@ FRESULT copy_file(const char *folder, const char *src_filename, const char *dest
 int directory_exists(const char *dir);
 void get_card_info(FATFS *fs_ptr, uint32_t *totalSize_MB, uint32_t *freeSpace_MB);
 uint32_t calculate_folder_count(const char *path);
-void get_sdcard_data(FATFS *fs, SdCardData *sd_data, bool microsd_mounted);
+void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_src);
+bool is_sdcard_mounted(FATFS *fs_ptr);
 char **show_dir_files(const char *dir, int *num_files);
 void release_memory_files(char **files, int num_files);
 int load_rom_from_fs(char *path, char *filename, uint32_t rom_load_offset);
 char **filter(char **file_list, int file_count, int *num_files, const char **allowed_extensions, size_t num_extensions);
 void store_file_list(char **file_list, int num_files, uint8_t *memory_location);
 FRESULT read_and_trim_file(const char *path, char **content);
+void split_fullpath(const char *fullPath, char *drive, char *folders, char *filePattern);
+void back_2_forwardslash(char *path);
+void shorten_fname(const char *originalName, char shortenedName[12]);
+void remove_dup_slashes(char *str);
+uint8_t attribs_st2fat(uint8_t st_attribs);
+uint8_t attribs_fat2st(uint8_t fat_attribs);
+void get_attribs_st_str(char attribs_str[6], uint8_t st_attribs);
+void upper_fname(const char *originalName, char upperName[14]);
+void filter_fname(const char *originalName, char filteredName[14]);
 
 #endif // FILESYS_H
