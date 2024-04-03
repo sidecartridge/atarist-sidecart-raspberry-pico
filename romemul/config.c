@@ -3,10 +3,11 @@
 // We should define ALWAYS the default entries with valid values.
 // DONT FORGET TO CHANGE MAX_ENTRIES if the number of value changes!
 static ConfigEntry defaultEntries[MAX_ENTRIES] = {
-    {"BOOT_FEATURE", TYPE_STRING, "CONFIGURATOR"},
+    {PARAM_BOOT_FEATURE, TYPE_STRING, "CONFIGURATOR"},
+    {PARAM_CONFIGURATOR_DARK, TYPE_BOOL, "false"},
     {"DELAY_ROM_EMULATION", TYPE_BOOL, "false"},
     {PARAM_DOWNLOAD_TIMEOUT_SEC, TYPE_INT, "60"},
-    {"FLOPPIES_FOLDER", TYPE_STRING, "/floppies"},
+    {PARAM_FLOPPIES_FOLDER, TYPE_STRING, "/floppies"},
     {PARAM_FLOPPY_BOOT_ENABLED, TYPE_BOOL, "true"},
     {PARAM_FLOPPY_BUFFER_TYPE, TYPE_INT, "0"},
     {PARAM_FLOPPY_DB_URL, TYPE_STRING, "http://ataristdb.sidecartridge.com"},
@@ -22,7 +23,7 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {PARAM_LASTEST_RELEASE_URL, TYPE_STRING, LATEST_RELEASE_URL},
     {PARAM_MENU_REFRESH_SEC, TYPE_INT, "3"},
     {PARAM_NETWORK_STATUS_SEC, TYPE_INT, NETWORK_POLL_INTERVAL_STR},
-    {"ROMS_FOLDER", TYPE_STRING, "/roms"},
+    {PARAM_ROMS_FOLDER, TYPE_STRING, "/roms"},
     {PARAM_ROMS_YAML_URL, TYPE_STRING, "http://roms.sidecartridge.com/roms.json"},
     {"RTC_NTP_SERVER_HOST", TYPE_STRING, "pool.ntp.org"},
     {"RTC_NTP_SERVER_PORT", TYPE_INT, "123"},
@@ -381,7 +382,7 @@ void select_button_action(bool safe_config_reboot, bool write_config_only_once)
         {
             DPRINTF("SELECT button pressed. Configurator will start after power cycling the computer.\n");
             // Do not reboot if the user has disabled it
-            put_string("BOOT_FEATURE", "CONFIGURATOR");
+            put_string(PARAM_BOOT_FEATURE, "CONFIGURATOR");
             write_all_entries();
         }
     }
