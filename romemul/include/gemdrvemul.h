@@ -41,7 +41,7 @@
 #define SWAP_LONGWORD(data) ((((uint32_t)data << 16) & 0xFFFF0000) | (((uint32_t)data >> 16) & 0xFFFF))
 
 #define DEFAULT_FOPEN_READ_BUFFER_SIZE 8192
-#define DEFAULT_FWRITE_BUFFER_SIZE 1024
+#define DEFAULT_FWRITE_BUFFER_SIZE 2048
 #define FIRST_FILE_DESCRIPTOR 16384
 #define PRG_STRUCT_SIZE 28 // Size of the GEMDOS structure in the executable header file (PRG)
 #define SHARED_VARIABLES_MAXSIZE 32
@@ -56,32 +56,31 @@
 #define SHARED_VARIABLE_DRIVE_NUMBER 4
 #define SHARED_VARIABLE_BUFFER_TYPE 5
 
-#define GEMDRVEMUL_RANDOM_TOKEN (0x0)                                // Offset from 0x0000
-#define GEMDRVEMUL_RANDOM_TOKEN_SEED (GEMDRVEMUL_RANDOM_TOKEN + 4)   // random_token + 4 bytes
-#define GEMDRVEMUL_TIMEOUT_SEC (GEMDRVEMUL_RANDOM_TOKEN_SEED + 4)    // random_token_seed + 4 bytes
-#define GEMDRVEMUL_PING_STATUS (GEMDRVEMUL_TIMEOUT_SEC + 4)          // timeout_sec + 4 bytes
-#define GEMDRVEMUL_RTC_STATUS (GEMDRVEMUL_PING_STATUS + 4)           // ping status + 4 bytes
-#define GEMDRVEMUL_NETWORK_STATUS (GEMDRVEMUL_RTC_STATUS + 4)        // rtc status + 4 bytes
-#define GEMDRVEMUL_NETWORK_ENABLED (GEMDRVEMUL_NETWORK_STATUS + 4)   // network status + 4 bytes
-#define GEMDRVEMUL_OLD_GEMDOS_TRAP (GEMDRVEMUL_NETWORK_ENABLED + 4)  // network enabled + 4 bytes
-#define GEMDRVEMUL_REENTRY_TRAP (GEMDRVEMUL_OLD_GEMDOS_TRAP + 4)     // old_gemdos_trap + 4 bytes
-#define GEMDRVEMUL_DEFAULT_PATH (GEMDRVEMUL_REENTRY_TRAP + 4)        // reentry_trap file + 4 bytes
-#define GEMDRVEMUL_DTA_F_FOUND (GEMDRVEMUL_DEFAULT_PATH + 128)       // default path + 128 bytes
-#define GEMDRVEMUL_DTA_TRANSFER (GEMDRVEMUL_DTA_F_FOUND + 4)         // dta found + 4
-#define GEMDRVEMUL_DTA_EXIST (GEMDRVEMUL_DTA_TRANSFER + sizeof(DTA)) // dta transfer + sizeof(DTA) bytes
-#define GEMDRVEMUL_DTA_RELEASE (GEMDRVEMUL_DTA_EXIST + 4)            // dta exist + 4 bytes
-#define GEMDRVEMUL_SET_DPATH_STATUS (GEMDRVEMUL_DTA_RELEASE + 4)     // dta release + 4 bytes
-#define GEMDRVEMUL_FOPEN_HANDLE (GEMDRVEMUL_SET_DPATH_STATUS + 2)    // set dpath status + 2 bytes
+#define GEMDRVEMUL_RANDOM_TOKEN (0x0)                                   // Offset from 0x0000
+#define GEMDRVEMUL_RANDOM_TOKEN_SEED (GEMDRVEMUL_RANDOM_TOKEN + 4)      // random_token + 4 bytes
+#define GEMDRVEMUL_TIMEOUT_SEC (GEMDRVEMUL_RANDOM_TOKEN_SEED + 4)       // random_token_seed + 4 bytes
+#define GEMDRVEMUL_PING_STATUS (GEMDRVEMUL_TIMEOUT_SEC + 4)             // timeout_sec + 4 bytes
+#define GEMDRVEMUL_RTC_STATUS (GEMDRVEMUL_PING_STATUS + 4)              // ping status + 4 bytes
+#define GEMDRVEMUL_NETWORK_STATUS (GEMDRVEMUL_RTC_STATUS + 4)           // rtc status + 4 bytes
+#define GEMDRVEMUL_NETWORK_ENABLED (GEMDRVEMUL_NETWORK_STATUS + 4)      // network status + 4 bytes
+#define GEMDRVEMUL_REENTRY_TRAP (GEMDRVEMUL_NETWORK_ENABLED + 8)        // network enabled + 4 bytes + 4 GAP
+#define GEMDRVEMUL_DEFAULT_PATH (GEMDRVEMUL_REENTRY_TRAP + 4)           // reentry_trap file + 4 bytes
+#define GEMDRVEMUL_DTA_F_FOUND (GEMDRVEMUL_DEFAULT_PATH + 128)          // default path + 128 bytes
+#define GEMDRVEMUL_DTA_TRANSFER (GEMDRVEMUL_DTA_F_FOUND + 4)            // dta found + 4
+#define GEMDRVEMUL_DTA_EXIST (GEMDRVEMUL_DTA_TRANSFER + DTA_SIZE_ON_ST) // dta transfer + DTA_SIZE_ON_ST bytes
+#define GEMDRVEMUL_DTA_RELEASE (GEMDRVEMUL_DTA_EXIST + 4)               // dta exist + 4 bytes
+#define GEMDRVEMUL_SET_DPATH_STATUS (GEMDRVEMUL_DTA_RELEASE + 4)        // dta release + 4 bytes
+#define GEMDRVEMUL_FOPEN_HANDLE (GEMDRVEMUL_SET_DPATH_STATUS + 4)       // set dpath status + 4 bytes
 
-#define GEMDRVEMUL_READ_BYTES (GEMDRVEMUL_FOPEN_HANDLE + 2)                            // fopen handle + 2 bytes. Must be aligned to 4 bytes/32 bits
+#define GEMDRVEMUL_READ_BYTES (GEMDRVEMUL_FOPEN_HANDLE + 4)                            // fopen handle + 4 bytes.
 #define GEMDRVEMUL_READ_BUFF (GEMDRVEMUL_READ_BYTES + 4)                               // read bytes + 4 bytes
 #define GEMDRVEMUL_WRITE_BYTES (GEMDRVEMUL_READ_BUFF + DEFAULT_FOPEN_READ_BUFFER_SIZE) // GEMDRVEMUL_READ_BUFFER + DEFAULT_FOPEN_READ_BUFFER_SIZE bytes
 #define GEMDRVEMUL_WRITE_CHK (GEMDRVEMUL_WRITE_BYTES + 4)                              // GEMDRVEMUL_WRITE_BYTES + 4 bytes
 #define GEMDRVEMUL_WRITE_CONFIRM_STATUS (GEMDRVEMUL_WRITE_CHK + 4)                     // write check + 4 bytes
 
 #define GEMDRVEMUL_FCLOSE_STATUS (GEMDRVEMUL_WRITE_CONFIRM_STATUS + 4) // read buff + 4 bytes
-#define GEMDRVEMUL_DCREATE_STATUS (GEMDRVEMUL_FCLOSE_STATUS + 2)       // fclose status + 2 bytes
-#define GEMDRVEMUL_DDELETE_STATUS (GEMDRVEMUL_DCREATE_STATUS + 2)      // dcreate status + 2 bytes
+#define GEMDRVEMUL_DCREATE_STATUS (GEMDRVEMUL_FCLOSE_STATUS + 4)       // fclose status + 2 bytes + 2 bytes padding
+#define GEMDRVEMUL_DDELETE_STATUS (GEMDRVEMUL_DCREATE_STATUS + 4)      // dcreate status + 2 bytes + 2 bytes padding
 #define GEMDRVEMUL_EXEC_HEADER (GEMDRVEMUL_DDELETE_STATUS + 4)         // ddelete status + 2 bytes + 2 bytes padding. Must be aligned to 4 bytes/32 bits
 #define GEMDRVEMUL_FCREATE_HANDLE (GEMDRVEMUL_EXEC_HEADER + 32)        // exec header + 32 bytes
 #define GEMDRVEMUL_FDELETE_STATUS (GEMDRVEMUL_FCREATE_HANDLE + 4)      // fcreate handle + 4 bytes
@@ -185,6 +184,7 @@ typedef struct DTANode
     DTA data;
     DIR *dj;
     FILINFO *fno;
+    TCHAR *pat; /* Pointer to the name matching pattern. Hack for dir_findfirst().  */
     struct DTANode *next;
 } DTANode;
 
