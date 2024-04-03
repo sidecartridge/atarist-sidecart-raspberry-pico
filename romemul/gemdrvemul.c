@@ -47,6 +47,18 @@ static void __not_in_flash_func(write_random_token)(uint32_t memory_shared_addre
     *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN)) = random_token;
 }
 
+// Erase the values in the DTA transfer area
+static void __not_in_flash_func(nullify_dta)(uint32_t memory_shared_address)
+{
+    // for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
+    // {
+    //     uint32_t mem_acc = memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i;
+    //     DPRINTF("Setting memory address %x to 0xEE\n", mem_acc);
+    //     *((volatile uint8_t *)(mem_acc)) = 0xEE;
+    // }
+    memset((void *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER), 0, DTA_SIZE_ON_ST);
+}
+
 // Hash function
 static unsigned int __not_in_flash_func(hash)(uint32_t key)
 {
@@ -68,6 +80,23 @@ static void __not_in_flash_func(insertDTA)(uint32_t key, DTA data, DIR *dj, FILI
     newNode->data = data;
     newNode->dj = dj;
     newNode->fno = fno;
+    // To copy the content of pat from dj to newNode:
+    if (dj->pat != NULL)
+    {
+        newNode->pat = malloc(strlen(dj->pat) + 1); // +1 for the null terminator
+        if (newNode->pat != NULL)
+        {
+            strcpy(newNode->pat, dj->pat);
+        }
+        else
+        {
+            DPRINTF("Memory allocation failed for newNode->pat\n");
+        }
+    }
+    else
+    {
+        newNode->pat = NULL;
+    }
     newNode->next = NULL;
 
     if (dtaTbl[index] == NULL)
@@ -87,17 +116,27 @@ static DTANode *__not_in_flash_func(lookupDTA)(uint32_t key)
 {
     unsigned int index = hash(key);
     DTANode *current = dtaTbl[index];
+    DTANode *new_current = NULL;
 
     while (current != NULL)
     {
         if (current->key == key)
         {
-            return current;
+            new_current = current;
+            new_current->dj->pat = current->pat;
         }
+        DPRINTF("DTA key: %x, filinfo_fname: %s, dir_obj: %x, pattern: %s\n", current->key, current->fno->fname, (void *)current->dj, current->dj->pat);
         current = current->next;
     }
-
-    return NULL;
+    if (new_current == NULL)
+    {
+        DPRINTF("DTA key: %x not found\n", key);
+    }
+    else
+    {
+        DPRINTF("Returning DTA key: %x\n", new_current->key);
+    }
+    return new_current;
 }
 
 // Release function
@@ -130,7 +169,8 @@ static void __not_in_flash_func(releaseDTA)(uint32_t key)
             {
                 free(current->fno); // Free the memory of the FILINFO
             }
-            free(current); // Free the memory of the node
+            free(current->pat); // Free the memory of the pat
+            free(current);      // Free the memory of the node
             return;
         }
 
@@ -159,6 +199,31 @@ static void __not_in_flash_func(initializeDTAHashTable)()
 {
     for (int i = 0; i < DTA_HASH_TABLE_SIZE; ++i)
     {
+        dtaTbl[i] = NULL;
+    }
+}
+
+// Clean the hash table
+static void __not_in_flash_func(cleanDTAHashTable)()
+{
+    for (int i = 0; i < DTA_HASH_TABLE_SIZE; ++i)
+    {
+        DTANode *currentNode = dtaTbl[i];
+        while (currentNode != NULL)
+        {
+            DTANode *nextNode = currentNode->next;
+            if (currentNode->dj != NULL)
+            {
+                f_closedir(currentNode->dj); // Close the directory
+                free(currentNode->dj);       // Free the memory of the DIR
+            }
+            if (currentNode->fno != NULL)
+            {
+                free(currentNode->fno); // Free the memory of the FILINFO
+            }
+            free(currentNode); // Free the memory of the node
+            currentNode = nextNode;
+        }
         dtaTbl[i] = NULL;
     }
 }
@@ -212,6 +277,7 @@ static void __not_in_flash_func(seach_path_2_st)(const char *fspec_str, char *in
 
 static void __not_in_flash_func(populate_dta)(uint32_t memory_address_dta, uint32_t dta_address, int16_t gemdos_err_code)
 {
+    nullify_dta(memory_address_dta);
     // Search the folder for the files
     DTANode *dataNode = lookupDTA(dta_address);
     DTA *data = dataNode != NULL ? &dataNode->data : NULL;
@@ -274,10 +340,6 @@ static void __not_in_flash_func(populate_dta)(uint32_t memory_address_dta, uint3
             // If no files found, return EFILNF for Fsfirst
             DPRINTF("DTA at %x showing error code: %x\n", dta_address, gemdos_err_code);
             *((volatile int16_t *)(memory_address_dta + GEMDRVEMUL_DTA_F_FOUND)) = (int16_t)gemdos_err_code;
-            for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
-            {
-                *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
-            }
             // release the memory allocated for the hash table
             releaseDTA(dta_address);
             DPRINTF("DTA at %x released. DTA table elements: %d\n", dta_address, countDTA());
@@ -299,7 +361,7 @@ static void __not_in_flash_func(populate_dta)(uint32_t memory_address_dta, uint3
     }
 }
 
-static FileDescriptors *__not_in_flash_func(add_file)(FileDescriptors **head, const char *fpath, FIL fobject, int new_fd)
+static FileDescriptors *__not_in_flash_func(add_file)(FileDescriptors **head, const char *fpath, FIL fobject, uint16_t new_fd)
 {
     FileDescriptors *newFDescriptor = malloc(sizeof(FileDescriptors));
     if (newFDescriptor == NULL)
@@ -318,6 +380,16 @@ static FileDescriptors *__not_in_flash_func(add_file)(FileDescriptors **head, co
     return newFDescriptor;
 }
 
+static void __not_in_flash_func(print_file_descriptors)(FileDescriptors *head)
+{
+    FileDescriptors *current = head;
+    while (current != NULL)
+    {
+        DPRINTF("File descriptor: %i - File path: %s\n", current->fd, current->fpath);
+        current = current->next;
+    }
+}
+
 static FileDescriptors *__not_in_flash_func(get_file_by_fpath)(FileDescriptors *head, const char *fpath)
 {
     while (head != NULL)
@@ -331,19 +403,19 @@ static FileDescriptors *__not_in_flash_func(get_file_by_fpath)(FileDescriptors *
     return NULL;
 }
 
-static FileDescriptors *__not_in_flash_func(get_file_by_fdesc)(FileDescriptors *head, int fd)
+static FileDescriptors *__not_in_flash_func(get_file_by_fdesc)(FileDescriptors *head, uint16_t fd)
 {
     while (head != NULL)
     {
+        DPRINTF("Comparing %i with %i\n", head->fd, fd);
         if (head->fd == fd)
-        { // Adjust this line based on the actual structure of FIL
-            {
-                return head;
-            }
-            head = head->next;
+        {
+            DPRINTF("File descriptor found. Returning %i\n", head->fd);
+            return head;
         }
-        return NULL;
+        head = head->next;
     }
+    return NULL;
 }
 
 static void __not_in_flash_func(delete_file_by_fpath)(FileDescriptors **head, const char *fpath)
@@ -371,7 +443,7 @@ static void __not_in_flash_func(delete_file_by_fpath)(FileDescriptors **head, co
     }
 }
 
-static void __not_in_flash_func(delete_file_by_fdesc)(FileDescriptors **head, int fd)
+static void __not_in_flash_func(delete_file_by_fdesc)(FileDescriptors **head, uint16_t fd)
 {
     FileDescriptors *current = *head;
     FileDescriptors *prev = NULL;
@@ -399,12 +471,12 @@ static void __not_in_flash_func(delete_file_by_fdesc)(FileDescriptors **head, in
 }
 
 // Comparator function for qsort
-static int __not_in_flash_func(compare_fd)(const void *a, const void *b)
+static uint16_t __not_in_flash_func(compare_fd)(const void *a, const void *b)
 {
-    return (*(int *)a - *(int *)b);
+    return (*(uint16_t *)a - *(uint16_t *)b);
 }
 
-static int __not_in_flash_func(get_first_available_fd)(FileDescriptors *head)
+static uint16_t __not_in_flash_func(get_first_available_fd)(FileDescriptors *head)
 {
     if (head == NULL)
     {
@@ -426,7 +498,7 @@ static int __not_in_flash_func(get_first_available_fd)(FileDescriptors *head)
     if (!fdArray)
     {
         printf("Memory allocation failed\n");
-        return INT_MAX;
+        return (uint16_t)INT_MAX;
     }
 
     fdArray[0] = FIRST_FILE_DESCRIPTOR; // Add the first file descriptor to the array always
@@ -438,20 +510,20 @@ static int __not_in_flash_func(get_first_available_fd)(FileDescriptors *head)
     }
 
     // Sort the array by fd
-    qsort(fdArray, count, sizeof(int), compare_fd);
+    qsort(fdArray, count, sizeof(uint16_t), compare_fd);
 
     // Find the smallest gap
-    for (int i = 0; i < count - 1; i++)
+    for (uint16_t i = 0; i < count - 1; i++)
     {
         if (fdArray[i + 1] - fdArray[i] > 1)
         {
-            int val = fdArray[i] + 1; // Found a gap, return the first available number
-            free(fdArray);            // Free the allocated memory
+            uint16_t val = fdArray[i] + 1; // Found a gap, return the first available number
+            free(fdArray);                 // Free the allocated memory
             return val;
         }
     }
-    int val = fdArray[count - 1] + 1; // No gap found, return the last value plus 1
-    free(fdArray);                    // Free the allocated memory
+    uint16_t val = fdArray[count - 1] + 1; // No gap found, return the last value plus 1
+    free(fdArray);                         // Free the allocated memory
     return val;
 }
 
@@ -502,33 +574,109 @@ static void __not_in_flash_func(get_local_full_pathname)(char *tmp_filepath)
     DPRINTF("tmp_filepath: %s\n", tmp_filepath);
 }
 
+// Delete all the file descriptors in the list using delete all files by fdesc
+static void __not_in_flash_func(delete_all_files)(FileDescriptors **head)
+{
+    FileDescriptors *current = *head;
+    while (current != NULL)
+    {
+        FileDescriptors *next = current->next;
+        delete_file_by_fdesc(head, current->fd);
+        current = next;
+    }
+}
+
+// Cound the number of file descriptors in the list
+static int __not_in_flash_func(count_fdesc)(FileDescriptors *head)
+{
+    int count = 0;
+    FileDescriptors *current = head;
+    while (current != NULL)
+    {
+        count++;
+        current = current->next;
+    }
+    return count;
+}
+
+static void print_variables(uint32_t memory_shared_address)
+{
+    // DPRINTF("Printing shared variables\n");
+    // DPRINTF("GEMDRVEMUL_RANDOM_TOKEN(0x0): %x\n", SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN))));
+    // DPRINTF("GEMDRVEMUL_RANDOM_TOKEN_SEED(0x4): %x\n", SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN_SEED))));
+    DPRINTF("GEMDRVEMUL_TIMEOUT_SEC(0x%04x): %x\n", GEMDRVEMUL_TIMEOUT_SEC, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_TIMEOUT_SEC))));
+    DPRINTF("GEMDRVEMUL_PING_STATUS(0x%04x): %x\n", GEMDRVEMUL_PING_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_PING_STATUS))));
+    DPRINTF("GEMDRVEMUL_RTC_STATUS(0x%04x): %x\n", GEMDRVEMUL_RTC_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS))));
+    DPRINTF("GEMDRVEMUL_NETWORK_STATUS(0x%04x): %x\n", GEMDRVEMUL_NETWORK_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS))));
+    DPRINTF("GEMDRVEMUL_NETWORK_ENABLED(0x%04x): %x\n", GEMDRVEMUL_NETWORK_ENABLED, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_ENABLED))));
+    DPRINTF("GEMDRVEMUL_REENTRY_TRAP(0x%04x): %x\n", GEMDRVEMUL_REENTRY_TRAP, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_REENTRY_TRAP))));
+    // For strings, swapping is not applicable, so print as is.
+    DPRINTF("GEMDRVEMUL_DEFAULT_PATH(0x%04x): %s\n", GEMDRVEMUL_DEFAULT_PATH, (char *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH));
+    DPRINTF("GEMDRVEMUL_DTA_F_FOUND(0x%04x): %x\n", GEMDRVEMUL_DTA_F_FOUND, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DTA_F_FOUND))));
+    DPRINTF("GEMDRVEMUL_DTA_TRANSFER(0x%04x): %x\n", GEMDRVEMUL_DTA_TRANSFER, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER))));
+    DPRINTF("GEMDRVEMUL_DTA_EXIST(0x%04x): %x\n", GEMDRVEMUL_DTA_EXIST, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DTA_EXIST))));
+    DPRINTF("GEMDRVEMUL_DTA_RELEASE(0x%04x): %x\n", GEMDRVEMUL_DTA_RELEASE, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DTA_RELEASE))));
+    DPRINTF("GEMDRVEMUL_SET_DPATH_STATUS(0x%04x): %x\n", GEMDRVEMUL_SET_DPATH_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_SET_DPATH_STATUS))));
+    DPRINTF("GEMDRVEMUL_FOPEN_HANDLE(0x%04x): %x\n", GEMDRVEMUL_FOPEN_HANDLE, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE))));
+    DPRINTF("GEMDRVEMUL_READ_BYTES(0x%04x): %x\n", GEMDRVEMUL_READ_BYTES, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_READ_BYTES))));
+    DPRINTF("GEMDRVEMUL_READ_BUFF(0x%04x): %x\n", GEMDRVEMUL_READ_BUFF, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_READ_BUFF))));
+    DPRINTF("GEMDRVEMUL_WRITE_BYTES(0x%04x): %x\n", GEMDRVEMUL_WRITE_BYTES, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_WRITE_BYTES))));
+    DPRINTF("GEMDRVEMUL_WRITE_CHK(0x%04x): %x\n", GEMDRVEMUL_WRITE_CHK, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_WRITE_CHK))));
+    DPRINTF("GEMDRVEMUL_WRITE_CONFIRM_STATUS(0x%04x): %x\n", GEMDRVEMUL_WRITE_CONFIRM_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_WRITE_CONFIRM_STATUS))));
+    DPRINTF("GEMDRVEMUL_FCLOSE_STATUS(0x%04x): %x\n", GEMDRVEMUL_FCLOSE_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FCLOSE_STATUS))));
+    DPRINTF("GEMDRVEMUL_DCREATE_STATUS(0x%04x): %x\n", GEMDRVEMUL_DCREATE_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DCREATE_STATUS))));
+    DPRINTF("GEMDRVEMUL_DDELETE_STATUS(0x%04x): %x\n", GEMDRVEMUL_DDELETE_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DDELETE_STATUS))));
+    DPRINTF("GEMDRVEMUL_FCREATE_HANDLE(0x%04x): %x\n", GEMDRVEMUL_FCREATE_HANDLE, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE))));
+    DPRINTF("GEMDRVEMUL_FDELETE_STATUS(0x%04x): %x\n", GEMDRVEMUL_FDELETE_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDELETE_STATUS))));
+    DPRINTF("GEMDRVEMUL_FSEEK_STATUS(0x%04x): %x\n", GEMDRVEMUL_FSEEK_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FSEEK_STATUS))));
+    DPRINTF("GEMDRVEMUL_FATTRIB_STATUS(0x%04x): %x\n", GEMDRVEMUL_FATTRIB_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FATTRIB_STATUS))));
+    DPRINTF("GEMDRVEMUL_FRENAME_STATUS(0x%04x): %x\n", GEMDRVEMUL_FRENAME_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS))));
+    DPRINTF("GEMDRVEMUL_FDATETIME_DATE(0x%04x): %x\n", GEMDRVEMUL_FDATETIME_DATE, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE))));
+    DPRINTF("GEMDRVEMUL_FDATETIME_TIME(0x%04x): %x\n", GEMDRVEMUL_FDATETIME_TIME, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME))));
+    DPRINTF("GEMDRVEMUL_FDATETIME_STATUS(0x%04x): %x\n", GEMDRVEMUL_FDATETIME_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS))));
+    DPRINTF("GEMDRVEMUL_DFREE_STATUS(0x%04x): %x\n", GEMDRVEMUL_DFREE_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DFREE_STATUS))));
+    DPRINTF("GEMDRVEMUL_DFREE_STRUCT(0x%04x): %x\n", GEMDRVEMUL_DFREE_STRUCT, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT))));
+    DPRINTF("GEMDRVEMUL_PEXEC_MODE(0x%04x): %x\n", GEMDRVEMUL_PEXEC_MODE, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_PEXEC_MODE))));
+    DPRINTF("GEMDRVEMUL_PEXEC_STACK_ADDR(0x%04x): %x\n", GEMDRVEMUL_PEXEC_STACK_ADDR, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_PEXEC_STACK_ADDR))));
+    // For strings, swapping is not applicable, so print as is.
+    DPRINTF("GEMDRVEMUL_PEXEC_FNAME(0x%04x): %s\n", GEMDRVEMUL_PEXEC_FNAME, (char *)(memory_shared_address + GEMDRVEMUL_PEXEC_FNAME));
+    DPRINTF("GEMDRVEMUL_PEXEC_CMDLINE(0x%04x): %s\n", GEMDRVEMUL_PEXEC_CMDLINE, (char *)(memory_shared_address + GEMDRVEMUL_PEXEC_CMDLINE));
+    DPRINTF("GEMDRVEMUL_PEXEC_ENVSTR(0x%04x): %s\n", GEMDRVEMUL_PEXEC_ENVSTR, (char *)(memory_shared_address + GEMDRVEMUL_PEXEC_ENVSTR));
+}
+
 static void print_payload(uint8_t *payloadShowBytesPtr)
 {
     // Display the first 256 bytes of the payload in hexadecimal showing 16 bytes per line and the ASCII representation
-    for (int i = 0; i < 256 - 10; i += 16)
+    for (int i = 0; i < 256 - 10; i += 8)
     {
-        DPRINTF("%04x - %02x %02x %02x %02x %02x %02x %02x %02x  %02x %02x %02x %02x %02x %02x %02x %02x  |%c %c %c %c %c %c %c %c  %c %c %c %c %c %c %c %c|\n",
+        uint64_t data = *((uint64_t *)(payloadShowBytesPtr + i));
+        DPRINTF("%04x - %02x %02x %02x %02x %02x %02x %02x %02x | %c %c %c %c %c %c %c %c\n",
                 i,
-                payloadShowBytesPtr[i + 1], payloadShowBytesPtr[i], payloadShowBytesPtr[i + 3], payloadShowBytesPtr[i + 2],
-                payloadShowBytesPtr[i + 5], payloadShowBytesPtr[i + 4], payloadShowBytesPtr[i + 7], payloadShowBytesPtr[i + 6],
-                payloadShowBytesPtr[i + 9], payloadShowBytesPtr[i + 8], payloadShowBytesPtr[i + 11], payloadShowBytesPtr[i + 10],
-                payloadShowBytesPtr[i + 13], payloadShowBytesPtr[i + 12], payloadShowBytesPtr[i + 15], payloadShowBytesPtr[i + 14],
-                (payloadShowBytesPtr[i + 1] >= 32 && payloadShowBytesPtr[i + 1] <= 126) ? payloadShowBytesPtr[i + 1] : '.',
-                (payloadShowBytesPtr[i] >= 32 && payloadShowBytesPtr[i] <= 126) ? payloadShowBytesPtr[i] : '.',
-                (payloadShowBytesPtr[i + 3] >= 32 && payloadShowBytesPtr[i + 3] <= 126) ? payloadShowBytesPtr[i + 3] : '.',
-                (payloadShowBytesPtr[i + 2] >= 32 && payloadShowBytesPtr[i + 2] <= 126) ? payloadShowBytesPtr[i + 2] : '.',
-                (payloadShowBytesPtr[i + 5] >= 32 && payloadShowBytesPtr[i + 5] <= 126) ? payloadShowBytesPtr[i + 5] : '.',
-                (payloadShowBytesPtr[i + 4] >= 32 && payloadShowBytesPtr[i + 4] <= 126) ? payloadShowBytesPtr[i + 4] : '.',
-                (payloadShowBytesPtr[i + 7] >= 32 && payloadShowBytesPtr[i + 7] <= 126) ? payloadShowBytesPtr[i + 7] : '.',
-                (payloadShowBytesPtr[i + 6] >= 32 && payloadShowBytesPtr[i + 6] <= 126) ? payloadShowBytesPtr[i + 6] : '.',
-                (payloadShowBytesPtr[i + 9] >= 32 && payloadShowBytesPtr[i + 9] <= 126) ? payloadShowBytesPtr[i + 9] : '.',
-                (payloadShowBytesPtr[i + 8] >= 32 && payloadShowBytesPtr[i + 8] <= 126) ? payloadShowBytesPtr[i + 8] : '.',
-                (payloadShowBytesPtr[i + 11] >= 32 && payloadShowBytesPtr[i + 11] <= 126) ? payloadShowBytesPtr[i + 11] : '.',
-                (payloadShowBytesPtr[i + 10] >= 32 && payloadShowBytesPtr[i + 10] <= 126) ? payloadShowBytesPtr[i + 10] : '.',
-                (payloadShowBytesPtr[i + 13] >= 32 && payloadShowBytesPtr[i + 13] <= 126) ? payloadShowBytesPtr[i + 13] : '.',
-                (payloadShowBytesPtr[i + 12] >= 32 && payloadShowBytesPtr[i + 12] <= 126) ? payloadShowBytesPtr[i + 12] : '.',
-                (payloadShowBytesPtr[i + 15] >= 32 && payloadShowBytesPtr[i + 15] <= 126) ? payloadShowBytesPtr[i + 15] : '.',
-                (payloadShowBytesPtr[i + 14] >= 32 && payloadShowBytesPtr[i + 14] <= 126) ? payloadShowBytesPtr[i + 14] : '.');
+                data & 0xFF,
+                (data >> 8) & 0xFF,
+                (data >> 16) & 0xFF,
+                (data >> 24) & 0xFF,
+                (data >> 32) & 0xFF,
+                (data >> 40) & 0xFF,
+                (data >> 48) & 0xFF,
+                (data >> 56) & 0xFF,
+                (data & 0xFF >= 32 && data & 0xFF <= 126) ? data & 0xFF : '.',
+                ((data >> 8) & 0xFF >= 32 && (data >> 8) & 0xFF <= 126) ? (data >> 8) & 0xFF : '.',
+                ((data >> 16) & 0xFF >= 32 && (data >> 16) & 0xFF <= 126) ? (data >> 16) & 0xFF : '.',
+                ((data >> 24) & 0xFF >= 32 && (data >> 24) & 0xFF <= 126) ? (data >> 24) & 0xFF : '.',
+                ((data >> 32) & 0xFF >= 32 && (data >> 32) & 0xFF <= 126) ? (data >> 32) & 0xFF : '.',
+                ((data >> 40) & 0xFF >= 32 && (data >> 40) & 0xFF <= 126) ? (data >> 40) & 0xFF : '.',
+                ((data >> 48) & 0xFF >= 32 && (data >> 48) & 0xFF <= 126) ? (data >> 48) & 0xFF : '.',
+                ((data >> 56) & 0xFF >= 32 && (data >> 56) & 0xFF <= 126) ? (data >> 56) & 0xFF : '.');
+    }
+}
+
+static void init_variables(uint32_t memory_shared_address)
+{
+    DPRINTF("Initializing shared variables\n");
+    for (uint32_t i = 0; i < 4096; i++)
+    {
+        *((volatile uint32_t *)(memory_shared_address + (i * 4))) = 0;
     }
 }
 
@@ -565,7 +713,6 @@ static inline void __not_in_flash_func(handle_protocol_command)(const Transmissi
 // Interrupt handler callback for DMA completion
 void __not_in_flash_func(gemdrvemul_dma_irq_handler_lookup_callback)(void)
 {
-
     // Read the address to process
     uint32_t addr = (uint32_t)dma_hw->ch[lookup_data_rom_dma_channel].al3_read_addr_trig;
 
@@ -612,8 +759,6 @@ int init_gemdrvemul(bool safe_config_reboot)
     srand(time(0));
     printf("Initializing GEMDRIVE...\n"); // Print alwayse
 
-    initializeDTAHashTable();
-
     dpath_string[0] = '\\'; // Set the root folder as default
     dpath_string[1] = '\0';
 
@@ -624,6 +769,8 @@ int init_gemdrvemul(bool safe_config_reboot)
     uint32_t memory_shared_address = ROM3_START_ADDRESS; // Start of the shared memory buffer
     uint32_t memory_firmware_code = ROM4_START_ADDRESS;  // Start of the firmware code
 
+    init_variables(memory_shared_address);
+
     *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS)) = 0x0;
     *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = 0x0;
 
@@ -633,10 +780,10 @@ int init_gemdrvemul(bool safe_config_reboot)
     {
         gemdrive_rtc_enabled = gemdrive_rtc->value[0] == 't' || gemdrive_rtc->value[0] == 'T';
     }
-#if defined(_DEBUG) && (_DEBUG != 0)
-    DPRINTF("RTC DISABLED FOR DEBUGGING\n");
-    gemdrive_rtc_enabled = false;
-#endif
+    // #if defined(_DEBUG) && (_DEBUG != 0)
+    //     DPRINTF("RTC DISABLED FOR DEBUGGING\n");
+    //     gemdrive_rtc_enabled = false;
+    // #endif
     *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_ENABLED)) = gemdrive_rtc_enabled;
     DPRINTF("Network enabled? %s\n", gemdrive_rtc_enabled ? "Yes" : "No");
 
@@ -697,6 +844,7 @@ int init_gemdrvemul(bool safe_config_reboot)
         get_net_time()->ntp_server_found = false;
 
         network_ready = true;
+        bool dns_query_done = false;
 
         // Wait until the RTC is set by the NTP server
         while (gemdrive_timeout_sec > 0 && get_rtc_time()->year == 0)
@@ -712,7 +860,16 @@ int init_gemdrvemul(bool safe_config_reboot)
             cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
             cyw43_arch_lwip_end();
 #endif
+            if (get_net_time()->ntp_server_found && dns_query_done)
+            {
+                DPRINTF("NTP server found. Connecting to NTP server...\n");
+                get_net_time()->ntp_server_found = false;
+                set_internal_rtc();
+            }
+
             sleep_ms(1000); // Wait 1 sec per test
+
+            // If the NTP server is found, then send the NTP request and set the clock
             if (network_poll_counter == 0)
             {
                 if (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
@@ -747,7 +904,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                         }
                     }
                     // Get the IP address from the DNS server if the wifi is connected and no IP address is found yet
-                    if (get_rtc_time()->year == 0 && current_status == CONNECTED_WIFI_IP && !get_net_time()->ntp_server_found)
+                    if (get_rtc_time()->year == 0 && current_status == CONNECTED_WIFI_IP && !(dns_query_done))
                     {
                         // Let's connect to ntp server
                         DPRINTF("Querying the DNS...\n");
@@ -757,18 +914,11 @@ int init_gemdrvemul(bool safe_config_reboot)
                             DPRINTF("Invalid DNS argument\n");
                         }
                         DPRINTF("DNS query done\n");
-                        sleep_ms(1000);
+                        dns_query_done = true;
                     }
                     // If connected to the wifi then set the network status to 1, otherwise set it to 0
                     *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = (current_status == CONNECTED_WIFI_IP);
                 }
-            }
-            // If the NTP server is found, then send the NTP request and set the clock
-            if (get_net_time()->ntp_server_found)
-            {
-                DPRINTF("NTP server found. Connecting to NTP server...\n");
-                get_net_time()->ntp_server_found = false;
-                set_internal_rtc();
             }
             gemdrive_timeout_sec--;
         }
@@ -836,6 +986,10 @@ int init_gemdrvemul(bool safe_config_reboot)
         *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
         tight_loop_contents();
 
+// fully bypass the print variables when debug disabled
+#if defined(_DEBUG) && (_DEBUG != 0)
+        uint16_t old_command = active_command_id != 0xFFFF ? active_command_id : 0xFFFF;
+#endif
         switch (active_command_id)
         {
         case GEMDRVEMUL_DEBUG:
@@ -897,8 +1051,14 @@ int init_gemdrvemul(bool safe_config_reboot)
                     {
                         hd_folder = find_entry(PARAM_GEMDRIVE_FOLDERS)->value;
                         DPRINTF("Emulating GEMDRIVE in folder: %s\n", hd_folder);
+                        cleanDTAHashTable();
+                        delete_all_files(&fdescriptors);
+                        DPRINTF("DTA table elements: %d\n", countDTA());
+                        DPRINTF("File descriptors: %d\n", count_fdesc(fdescriptors));
+                        dpath_string[0] = '\\'; // Set the root folder as default
+                        dpath_string[1] = '\0';
                         hd_folder_ready = true;
-                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_STATUS)) = 0xFFFF;
+                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PING_STATUS)) = 0x1;
                     }
                 }
             }
@@ -1037,9 +1197,9 @@ int init_gemdrvemul(bool safe_config_reboot)
                 strcpy(dpath_tmp, tmp_path_concat);
                 DPRINTF("Dpath tmp: %s\n", dpath_tmp);
             }
+            back_2_forwardslash(dpath_tmp);
             // Concatenate the path with the hd_folder
             snprintf(tmp_path, sizeof(tmp_path), "%s/%s", hd_folder, dpath_tmp);
-            back_2_forwardslash(tmp_path);
 
             // Remove duplicated forward slashes
             remove_dup_slashes(tmp_path);
@@ -1047,15 +1207,16 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (directory_exists(tmp_path))
             {
                 DPRINTF("Directory exists: %s\n", tmp_path);
-                // Copy dpath_tmp to dpath_string
-                strcpy(dpath_string, dpath_tmp);
                 *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SET_DPATH_STATUS)) = GEMDOS_EOK;
             }
             else
             {
                 DPRINTF("Directory does not exist: %s\n", tmp_path);
-                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SET_DPATH_STATUS)) = GEMDOS_EDRIVE;
+                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SET_DPATH_STATUS)) = GEMDOS_EPTHNF;
             }
+            // Copy dpath_tmp to dpath_string
+            strcpy(dpath_string, dpath_tmp);
+            DPRINTF("The new default path is: %s\n", dpath_string);
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
@@ -1165,7 +1326,7 @@ int init_gemdrvemul(bool safe_config_reboot)
         {
             uint32_t ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
             bool ndta_exists = lookupDTA(ndta);
-            DPRINTF("DTA exists: %s\n", (ndta_exists) ? "TRUE" : "FALSE");
+            DPRINTF("DTA %x exists: %s\n", ndta, (ndta_exists) ? "TRUE" : "FALSE");
             set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DTA_EXIST, (ndta_exists ? ndta : 0));
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
@@ -1181,10 +1342,8 @@ int init_gemdrvemul(bool safe_config_reboot)
                 releaseDTA(ndta);
                 DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
             }
-            for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
-            {
-                *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
-            }
+            nullify_dta(memory_shared_address);
+
             set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DTA_RELEASE, countDTA());
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
@@ -1202,8 +1361,23 @@ int init_gemdrvemul(bool safe_config_reboot)
             char internal_path[MAX_FOLDER_LENGTH * 2] = {0};
             char pattern[32] = {0};
             char fspec_string[MAX_FOLDER_LENGTH] = {0};
-            swap_string_endiannes((char *)payloadPtr, fspec_string);
-            DPRINTF("Fspec string: %s\n", fspec_string);
+            char tmp_string[MAX_FOLDER_LENGTH] = {0};
+            swap_string_endiannes((char *)payloadPtr, tmp_string);
+            DPRINTF("Fspec string: %s\n", tmp_string);
+            if (tmp_string[0] == '\\' || tmp_string[1] == ':')
+            {
+                DPRINTF("Root folder found. Ignoring default path.\n");
+                strcpy(fspec_string, tmp_string);
+            }
+            else
+            {
+                DPRINTF("Need to concatenate the default path: %s\n", dpath_string);
+                snprintf(fspec_string, sizeof(fspec_string), "%s/%s", dpath_string, tmp_string);
+                DPRINTF("Full fspec string: %s\n", fspec_string);
+            }
+
+            // Remove duplicated forward slashes
+            remove_dup_slashes(fspec_string);
             get_attribs_st_str(attribs_str, attribs);
             seach_path_2_st(fspec_string, internal_path, pattern);
             DPRINTF("Fsfirst ndta: %x, attribs: %s, fspec: %x, fspec string: %s\n", ndta, attribs_str, fspec, fspec_string);
@@ -1220,7 +1394,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             char raw_filename[2] = "._";
             fr = FR_OK;
             bool first_time = true;
-            while (fr == FR_OK && (raw_filename[0] == '.' || raw_filename[1] == '_'))
+            while (fr == FR_OK && ((raw_filename[0] == '.') || (raw_filename[0] == '.' && raw_filename[1] == '_')))
             {
                 if (first_time)
                 {
@@ -1272,10 +1446,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                     {
                         releaseDTA(ndta);
                         DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
-                        for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
-                        {
-                            *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
-                        }
+                        nullify_dta(memory_shared_address);
                     }
                     DTA data = {"filename.typ", 0, 0, 0, 0, 0, 0, 0, 0, "filename.typ"};
                     insertDTA(ndta, data, dj, fno);
@@ -1292,10 +1463,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                     {
                         releaseDTA(ndta);
                         DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
-                        for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
-                        {
-                            *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
-                        }
+                        nullify_dta(memory_shared_address);
                     }
                 }
             }
@@ -1304,16 +1472,13 @@ int init_gemdrvemul(bool safe_config_reboot)
                 DPRINTF("Nothing returned from Fsfirst\n");
                 int16_t error_code = GEMDOS_EFILNF;
                 DPRINTF("DTA at %x showing error code: %x\n", ndta, error_code);
-                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DTA_F_FOUND)) = error_code;
-                for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
-                {
-                    *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
-                }
                 if (ndta_exists)
                 {
                     releaseDTA(ndta);
                     DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
                 }
+                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DTA_F_FOUND)) = error_code;
+                nullify_dta(memory_shared_address);
             }
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
@@ -1334,9 +1499,10 @@ int init_gemdrvemul(bool safe_config_reboot)
                 // And in the Atari ST environment
                 char raw_filename[2] = "._";
                 fr = FR_OK;
-                while (fr == FR_OK && (raw_filename[0] == '.' || raw_filename[1] == '_'))
+                while (fr == FR_OK && ((raw_filename[0] == '.') || (raw_filename[0] == '.' && raw_filename[1] == '_')))
                 {
                     fr = f_findnext(dtaNode->dj, dtaNode->fno);
+                    DPRINTF("Fsnext fr: %d and filename: %s\n", fr, dtaNode->fno->fname);
                     if (dtaNode->fno->fname[0])
                     {
                         if (fr == FR_OK)
@@ -1363,7 +1529,7 @@ int init_gemdrvemul(bool safe_config_reboot)
 
                     uint8_t attribs = dtaNode->fno->fattrib;
                     uint8_t attribs_conv_st = attribs_fat2st(attribs);
-                    if (!(attribs & (FS_ST_LABEL | FS_ST_FOLDER)))
+                    if (!(attribs & (FS_ST_LABEL)))
                     {
                         attribs |= FS_ST_ARCH;
                     }
@@ -1384,10 +1550,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                         releaseDTA(ndta);
                         DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
                     }
-                    for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
-                    {
-                        *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
-                    }
+                    nullify_dta(memory_shared_address);
                 }
             }
             else
@@ -1401,10 +1564,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                     releaseDTA(ndta);
                     DPRINTF("Existing DTA at %x released. DTA table elements: %d\n", ndta, countDTA());
                 }
-                for (uint8_t i = 0; i < DTA_SIZE_ON_ST; i += 1)
-                {
-                    *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DTA_TRANSFER + i)) = 0;
-                }
+                nullify_dta(memory_shared_address);
             }
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
@@ -1428,14 +1588,14 @@ int init_gemdrvemul(bool safe_config_reboot)
                 fatfs_open_mode = FA_READ;
                 break;
             case 1: // Write only
-                fatfs_open_mode = FA_WRITE | FA_CREATE_ALWAYS;
+                fatfs_open_mode = FA_WRITE;
                 break;
             case 2: // Read/Write
-                fatfs_open_mode = FA_READ | FA_WRITE | FA_CREATE_ALWAYS;
+                fatfs_open_mode = FA_READ | FA_WRITE;
                 break;
             default:
                 DPRINTF("ERROR: Invalid mode: %x\n", fopen_mode);
-                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE)) = GEMDOS_EACCDN;
+                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EACCDN);
                 break;
             }
             DPRINTF("FatFs open mode: %x\n", fatfs_open_mode);
@@ -1447,7 +1607,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 if (fr != FR_OK)
                 {
                     DPRINTF("ERROR: Could not open file (%d)\r\n", fr);
-                    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE)) = GEMDOS_EFILNF;
+                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EFILNF);
                 }
                 else
                 {
@@ -1458,13 +1618,13 @@ int init_gemdrvemul(bool safe_config_reboot)
                     if (new_fd == NULL)
                     {
                         DPRINTF("ERROR: Could not add file to the list of open files\n");
-                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE)) = GEMDOS_EINTRN;
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EINTRN);
                     }
                     else
                     {
                         DPRINTF("File opened with file descriptor: %d\n", fd_counter);
                         // Return the file descriptor
-                        *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE)) = fd_counter;
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, fd_counter);
                     }
                 }
             }
@@ -1487,7 +1647,12 @@ int init_gemdrvemul(bool safe_config_reboot)
             {
                 // Close the file with FatFs
                 fr = f_close(&file->fobject);
-                if (fr != FR_OK)
+                if (fr == FR_INVALID_OBJECT)
+                {
+                    DPRINTF("ERROR: File descriptor is not valid\n");
+                    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FCLOSE_STATUS)) = GEMDOS_EIHNDL;
+                }
+                else if (fr != FR_OK)
                 {
                     DPRINTF("ERROR: Could not close file (%d)\r\n", fr);
                     *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FCLOSE_STATUS)) = GEMDOS_EINTRN;
@@ -1526,7 +1691,8 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (fr != FR_OK)
             {
                 DPRINTF("ERROR: Could not create file (%d)\r\n", fr);
-                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
+                // *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
+                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = GEMDOS_EPTHNF;
             }
             else
             {
@@ -1538,7 +1704,8 @@ int init_gemdrvemul(bool safe_config_reboot)
                 // MISSING ATTRIBUTE MODIFICATION
 
                 // Return the file descriptor
-                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = SWAP_LONGWORD(fd_counter);
+                // *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = SWAP_LONGWORD(fd_counter);
+                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = fd_counter;
             }
 
             write_random_token(memory_shared_address);
@@ -1552,36 +1719,53 @@ int init_gemdrvemul(bool safe_config_reboot)
             // concatenated path and filename
             char tmp_filepath[MAX_FOLDER_LENGTH] = {0};
             get_local_full_pathname(tmp_filepath);
-            DPRINTF("Deleting file: %s\n", tmp_filepath);
-            // Delete the file
-            fr = f_unlink(tmp_filepath);
-            uint32_t status;
-            if (fr != FR_OK)
+            uint32_t status = GEMDOS_EOK;
+            // Check first if the file is open. If so, close it first.
+            FileDescriptors *file = get_file_by_fpath(fdescriptors, tmp_filepath);
+            if (file != NULL)
             {
-                DPRINTF("ERROR: Could not delete file (%d)\r\n", fr);
-                if (fr == FR_DENIED)
+                DPRINTF("File is open. Closing it first\n");
+                fr = f_close(&file->fobject);
+                if (fr != FR_OK)
                 {
-                    DPRINTF("ERROR: Not enough permissions to delete file\n");
-                    status = GEMDOS_EACCDN;
+                    DPRINTF("ERROR: Could not close file (%d)\r\n", fr);
+                    status = GEMDOS_EINTRN;
                 }
-                else if (fr == FR_NO_PATH)
+                // In both cases, remove the file from the list of open files
+                delete_file_by_fdesc(&fdescriptors, file->fd);
+            }
+            // If the file was open and it was not possible to close it, return an error
+            if (status == GEMDOS_EOK)
+            {
+                DPRINTF("Deleting file: %s\n", tmp_filepath);
+                // Delete the file
+                fr = f_unlink(tmp_filepath);
+                if (fr != FR_OK)
                 {
-                    DPRINTF("ERROR: Folder does not exist\n");
-                    status = GEMDOS_EPTHNF;
+                    DPRINTF("ERROR: Could not delete file (%d)\r\n", fr);
+                    if (fr == FR_DENIED)
+                    {
+                        DPRINTF("ERROR: Not enough permissions to delete file\n");
+                        status = GEMDOS_EACCDN;
+                    }
+                    else if (fr == FR_NO_PATH)
+                    {
+                        DPRINTF("ERROR: Folder does not exist\n");
+                        status = GEMDOS_EPTHNF;
+                    }
+                    else
+                    {
+                        DPRINTF("ERROR: Internal error\n");
+                        status = GEMDOS_EINTRN;
+                    }
                 }
                 else
                 {
-                    DPRINTF("ERROR: Internal error\n");
-                    status = GEMDOS_EINTRN;
+                    DPRINTF("File deleted\n");
+                    status = GEMDOS_EOK;
                 }
             }
-            else
-            {
-                DPRINTF("File deleted\n");
-                status = GEMDOS_EOK;
-            }
             *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FDELETE_STATUS)) = SWAP_LONGWORD(status);
-
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
@@ -1776,11 +1960,15 @@ int init_gemdrvemul(bool safe_config_reboot)
         }
         case GEMDRVEMUL_FDATETIME_CALL:
         {
-            uint16_t fdatetime_flag = payloadPtr[0]; // d3 register
+            uint16_t fdatetime_flag = payloadPtr[0]; // d3.w register
             payloadPtr += 2;                         // Skip two words
             // Obtain the file descriptor to change the date and time
             uint16_t fdatetime_fd = payloadPtr[0]; // d4 register
-            payloadPtr += 4;                       // Skip four words
+            payloadPtr += 2;                       // Skip two words
+            // Obtain the date and time to set
+            uint16_t date_dos = payloadPtr[0]; // d5 low register
+            uint16_t time_dos = payloadPtr[1]; // d5 high register
+            DPRINTF("Fdatetime flag: %x, fd: %x, time: %x, date: %x\n", fdatetime_flag, fdatetime_fd, time_dos, date_dos);
 
             FileDescriptors *fd = get_file_by_fdesc(fdescriptors, fdatetime_fd);
             if (fd == NULL)
@@ -1792,15 +1980,17 @@ int init_gemdrvemul(bool safe_config_reboot)
             }
             else
             {
-                DPRINTF("Modify file date and time: %s fd: %d\n", fd->fpath, fdatetime_fd);
                 if (fdatetime_flag == FDATETIME_INQUIRE)
                 {
+                    DPRINTF("Inquire file date and time: %s fd: %d\n", fd->fpath, fdatetime_fd);
                     FILINFO fno;
                     FRESULT fr;
                     fr = f_stat(fd->fpath, &fno);
                     if (fr == FR_OK)
                     {
                         // File information is now in fno
+#if defined(_DEBUG) && (_DEBUG != 0)
+                        // Save some memory and cycles if not in debug mode
                         // Convert the date and time
                         unsigned int year = (fno.fdate >> 9);
                         unsigned int month = (fno.fdate >> 5) & 0x0F;
@@ -1811,9 +2001,10 @@ int init_gemdrvemul(bool safe_config_reboot)
                         unsigned int second = (fno.ftime & 0x1F);
 
                         DPRINTF("Get file date and time: %02d:%02d:%02d %02d/%02d/%02d\n", hour, minute, second * 2, day, month, year + 1980);
+#endif
                         set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EOK);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, (year << 16) | (month << 8) | day);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, (hour << 16) | (minute << 8) | second);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, fno.fdate);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, fno.ftime);
                     }
                     else
                     {
@@ -1825,25 +2016,25 @@ int init_gemdrvemul(bool safe_config_reboot)
                 }
                 else
                 {
-                    uint8_t hour = payloadPtr[2];
-                    uint8_t minute = payloadPtr[4];
-                    uint8_t second = payloadPtr[5];
-                    uint8_t year = payloadPtr[1];
-                    uint8_t month = payloadPtr[0];
-                    uint8_t day = payloadPtr[3];
+                    DPRINTF("Modify file date and time: %s fd: %d\n", fd->fpath, fdatetime_fd);
+#if defined(_DEBUG) && (_DEBUG != 0)
+                    // Save some memory and cycles if not in debug mode
+                    // Convert the date and time
+                    unsigned int year = (date_dos >> 9);
+                    unsigned int month = (date_dos >> 5) & 0x0F;
+                    unsigned int day = date_dos & 0x1F;
+
+                    unsigned int hour = time_dos >> 11;
+                    unsigned int minute = (time_dos >> 5) & 0x3F;
+                    unsigned int second = (time_dos & 0x1F);
+
                     DPRINTF("Show in hex the values: %02x:%02x:%02x %02x/%02x/%02x\n", hour, minute, second, day, month, year);
                     DPRINTF("File date and time: %02d:%02d:%02d %02d/%02d/%02d\n", hour, minute, second * 2, day, month, year + 1980);
-
+#endif
                     FILINFO fno;
-
-                    fno.fdate = (WORD)(((year) * 512U) | month * 32U | day);
-                    fno.ftime = (WORD)(hour * 2048U | minute * 32U | second);
-
-                    // Shockinly I need to close the file to set the date and time!!!! WTF???
-                    FRESULT fr = f_close(&fd->fobject);
+                    fno.fdate = date_dos;
+                    fno.ftime = time_dos;
                     fr = f_utime(fd->fpath, &fno);
-                    // Remove the file from the list of open files
-                    delete_file_by_fdesc(&fdescriptors, fdatetime_fd);
                     if (fr == FR_OK)
                     {
                         // File exists and date and time set
@@ -1860,17 +2051,6 @@ int init_gemdrvemul(bool safe_config_reboot)
                         set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
                         set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
                     }
-
-                    // // Set the date and time of the file with the values read from the payload
-                    // datetime_t rtc_time = {0};
-                    // rtc_get_datetime(&rtc_time);
-                    // // Ensure the values fit into the designated bit sizes
-                    // uint16_t hours = rtc_time.hour & 0x1F;        // Take only the lowest 5 bits
-                    // uint16_t minutes = rtc_time.min & 0x3F;       // Take only the lowest 6 bits
-                    // uint16_t seconds = rtc_time.sec & 0x1F;       // Take only the lowest 5 bits
-                    // uint16_t day = rtc_time.day & 0x1F;           // Take only the lowest 5 bits
-                    // uint16_t month = rtc_time.month & 0xF;        // Take only the lowest 4 bits
-                    // uint16_t year = rtc_time.year & 0x7FFF >> 16; // Take only the lowest 7 bits
                 }
             }
             write_random_token(memory_shared_address);
@@ -1886,6 +2066,8 @@ int init_gemdrvemul(bool safe_config_reboot)
             payloadPtr += 2;                                                                           // Skip two words
             uint32_t readbuff_pending_bytes_to_read = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d5 register constains the number of bytes to read
             DPRINTF("Read buffering file with fd: x%x, bytes_to_read: x%08x, pending_bytes_to_read: x%08x\n", readbuff_fd, readbuff_bytes_to_read, readbuff_pending_bytes_to_read);
+            // Show open files
+            print_file_descriptors(fdescriptors);
             // Obtain the file descriptor
             FileDescriptors *file = get_file_by_fdesc(fdescriptors, readbuff_fd);
             if (file == NULL)
@@ -2123,6 +2305,13 @@ int init_gemdrvemul(bool safe_config_reboot)
             }
         }
         }
+// Fully bypass the print variables
+#if defined(_DEBUG) && (_DEBUG != 0)
+        // if (old_command != 0xFFFF)
+        // {
+        //     print_variables(memory_shared_address);
+        // }
+#endif
         // If SELECT button is pressed, launch the configurator
         if (gpio_get(5) != 0)
         {
