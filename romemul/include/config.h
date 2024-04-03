@@ -28,13 +28,14 @@
 // Warning. There will be an issue when reaching the maximum number of entries for 4Kbytes of flash memory
 // The maximum number of entries is 46
 // Change the memory size of the config structure to 8Kbytes when reaching the maximum number of entries
-#define MAX_ENTRIES 32
+#define MAX_ENTRIES 33
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
 #define PARAM_BOOT_FEATURE "BOOT_FEATURE"
 #define PARAM_CONFIGURATOR_DARK "CONFIGURATOR_DARK"
 #define PARAM_DOWNLOAD_TIMEOUT_SEC "DOWNLOAD_TIMEOUT_SEC"
+#define PARAM_FILE_COUNT_ENABLED "FILE_COUNT_ENABLED"
 #define PARAM_FLOPPY_BOOT_ENABLED "FLOPPY_BOOT_ENABLED"
 #define PARAM_FLOPPY_BUFFER_TYPE "FLOPPY_BUFFER_TYPE"
 #define PARAM_FLOPPY_DB_URL "FLOPPY_DB_URL"

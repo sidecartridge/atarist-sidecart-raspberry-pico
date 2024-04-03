@@ -864,7 +864,7 @@ bool is_sdcard_mounted(FATFS *fs_ptr)
     return sd_card_mounted;
 }
 
-void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_src)
+void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_src, bool is_fcount_enabled)
 {
 
     bool is_card_mounted = is_sdcard_mounted(fs);
@@ -879,7 +879,6 @@ void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_s
     strncpy(sd_data->harddisks_folder, find_entry(PARAM_GEMDRIVE_FOLDERS)->value, MAX_FOLDER_LENGTH - 1);
     sd_data->harddisks_folder[MAX_FOLDER_LENGTH - 1] = '\0'; // Ensure null termination
 
-
     if (is_card_mounted)
     {
         sd_data->floppies_folder_status = directory_exists(sd_data->floppies_folder) ? FLOPPIES_FOLDER_OK : FLOPPIES_FOLDER_NOTFOUND;
@@ -892,7 +891,7 @@ void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_s
         sd_data->sd_size = total;
         sd_data->sd_free_space = freeSpace;
 
-        if (sd_data_src && sd_data_src->roms_folder_count == 0)
+        if (sd_data_src && sd_data_src->roms_folder_count == 0 && is_fcount_enabled)
         {
             // If the ROMs folder count is zero, recalculate the folder count
             sd_data->roms_folder_count = calculate_folder_count(sd_data->roms_folder);
@@ -901,7 +900,7 @@ void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_s
         {
             sd_data->roms_folder_count = sd_data_src->roms_folder_count;
         }
-        if (sd_data_src && sd_data_src->floppies_folder_count == 0)
+        if (sd_data_src && sd_data_src->floppies_folder_count == 0 && is_fcount_enabled)
         {
             // If the floppies folder count is zero, recalculate the folder count
             sd_data->floppies_folder_count = calculate_folder_count(sd_data->floppies_folder);
@@ -910,7 +909,7 @@ void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_s
         {
             sd_data->floppies_folder_count = sd_data_src->floppies_folder_count;
         }
-        if (sd_data_src && sd_data_src->harddisks_folder_count == 0)
+        if (sd_data_src && sd_data_src->harddisks_folder_count == 0 && is_fcount_enabled)
         {
             // If the harddisks folder count is zero, recalculate the folder count
             sd_data->harddisks_folder_count = calculate_folder_count(sd_data->harddisks_folder);

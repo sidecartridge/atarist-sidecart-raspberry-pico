@@ -97,7 +97,10 @@ static void update_sd_status(FATFS *fs, SdCardData *sd_data_ptr)
         DPRINTF("Failed to allocate memory for sd_data_local\n");
         return;
     }
-    get_sdcard_data(fs, sd_data_local, sd_data_ptr);
+
+    ConfigEntry *is_fcount_enabled_conf = find_entry(PARAM_FILE_COUNT_ENABLED);
+    bool is_fcount_enabled = (is_fcount_enabled_conf->value[0] == 't' || is_fcount_enabled_conf->value[0] == 'T') ? true : false;
+    get_sdcard_data(fs, sd_data_local, sd_data_ptr, is_fcount_enabled);
 
     // Copy the content of sd_data_local to sd_data_ptr
     memcpy(sd_data_ptr, sd_data_local, sizeof(SdCardData));
