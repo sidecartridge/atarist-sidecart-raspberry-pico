@@ -283,7 +283,7 @@ int init_floppyemul(bool safe_config_reboot)
                     error = true;
                 }
 
-                char *dir = find_entry("FLOPPIES_FOLDER")->value;
+                char *dir = find_entry(PARAM_FLOPPIES_FOLDER)->value;
                 char *filename_a = find_entry("FLOPPY_IMAGE_A")->value;
                 fullpath_a = malloc(strlen(dir) + strlen(filename_a) + 2);
                 strcpy(fullpath_a, dir);
