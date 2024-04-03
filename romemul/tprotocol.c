@@ -9,6 +9,7 @@
 #include "include/tprotocol.h"
 
 uint64_t last_header_found = 0;
+uint64_t new_header_found = 0;
 
 // Global variable to keep track of current parsing state
 TPParseStep nextTPstep = HEADER_DETECTION;
@@ -36,14 +37,13 @@ inline static void __not_in_flash_func(read_payload_size)(uint16_t data)
     if (data > 0)
     {
         transmission.payload_size = data; // Store incoming data as payload size
-        transmission.bytes_read = 0;
         nextTPstep = PAYLOAD_READ_START;
     }
     else
     {
-        transmission.bytes_read = 0;
         nextTPstep = PAYLOAD_READ_END;
     }
+    transmission.bytes_read = 0;
 }
 
 inline static void __not_in_flash_func(read_payload)(uint16_t data)
@@ -107,7 +107,7 @@ inline void __not_in_flash_func(process_command)(ProtocolCallback callback)
 
 inline void __not_in_flash_func(parse_protocol)(uint16_t data, ProtocolCallback callback)
 {
-    uint64_t new_header_found = (((uint64_t)timer_hw->timerawh) << 32u | timer_hw->timerawl);
+    new_header_found = (((uint64_t)timer_hw->timerawh) << 32u | timer_hw->timerawl);
     if (new_header_found - last_header_found > PROTOCOL_READ_RESTART_MICROSECONDS)
     {
         nextTPstep = HEADER_DETECTION;
