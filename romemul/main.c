@@ -52,7 +52,7 @@ int main()
     // Load the config from FLASH
     load_all_entries();
 
-    ConfigEntry *default_config_entry = find_entry("BOOT_FEATURE");
+    ConfigEntry *default_config_entry = find_entry(PARAM_BOOT_FEATURE);
     DPRINTF("BOOT_FEATURE: %s\n", default_config_entry->value);
 
     ConfigEntry *default_config_reboot_mode = find_entry("SAFE_CONFIG_REBOOT");
@@ -218,7 +218,7 @@ int main()
         // Keep in development mode
         if (strcmp(default_config_entry->value, "CONFIGURATOR") != 0)
         {
-            put_string("BOOT_FEATURE", "CONFIGURATOR");
+            put_string(PARAM_BOOT_FEATURE, "CONFIGURATOR");
             write_all_entries();
         }
 
