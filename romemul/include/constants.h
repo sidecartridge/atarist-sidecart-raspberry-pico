@@ -31,7 +31,7 @@ extern const float SAMPLE_DIV_FREQ;
 extern const uint32_t RP2040_CLOCK_FREQ_KHZ;
 
 // Frequency constants.
-#define SAMPLE_DIV_FREQ (1.f) // Sample frequency division factor.
+#define SAMPLE_DIV_FREQ (1.f)                   // Sample frequency division factor.
 #define RP2040_CLOCK_FREQ_KHZ (125000 + 100000) // Clock frequency in KHz (200MHz).
 
 // Voltage constants.
