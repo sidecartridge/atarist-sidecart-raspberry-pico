@@ -84,6 +84,7 @@
 ; Wait a safe number of cycles before reading the address in the bus
     nop side READ_NOT_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
     nop side READ_NOT_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+    nop side READ_NOT_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
 
 ; We need to add the Most Significant Word to the address read from the input, and we have
 ; it in the scratch registry X forever.
@@ -112,7 +113,7 @@
 ; Wait a safe number of cycles before releasing the bus
     nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
     nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
-;    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
+    nop side NOT_READ_WRITE [READ_ADDRESS_SAFE_WAIT_CYCLES]
 
 
 ; If some of the pins are not properly connected and are floating, disable these two
