@@ -2147,6 +2147,23 @@ int init_gemdrvemul(bool safe_config_reboot)
                     uint16_t buff_size = writebuff_pending_bytes_to_write > DEFAULT_FWRITE_BUFFER_SIZE ? DEFAULT_FWRITE_BUFFER_SIZE : writebuff_pending_bytes_to_write;
                     // Transform buffer's words from little endian to big endian inline
                     uint16_t *target = payloadPtr;
+                    // Calculate the checksum of the buffer
+                    // Use a 16 bit checksum to minimize the number of loops
+                    uint16_t chk = 0;
+                    UINT words_to_write = (DEFAULT_FWRITE_BUFFER_SIZE) / 2;
+                    UINT pending_bytes = (DEFAULT_FWRITE_BUFFER_SIZE) % 2;
+                    uint16_t *target16 = (uint16_t *)target;
+                    for (int i = 0; i < words_to_write; i++)
+                    {
+                        // Swap the order of the bytes in target16
+                        chk += target16[i];
+                    }
+                    DPRINTF("Checksum: x%x\n", chk);
+                    if (pending_bytes > 0)
+                    {
+                        uint16_t pending_long_word = target16[words_to_write];
+                        chk += pending_long_word & (0x00FF << (pending_bytes * 8));
+                    }
                     // Change the endianness of the bytes read
                     swap_words(target, ((buff_size + 1) * 2) / 2);
                     // Write the bytes
@@ -2159,15 +2176,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                     }
                     else
                     {
-                        // Calculate the checksum of the buffer
-                        uint8_t *target8 = (uint8_t *)target;
-                        uint32_t chk = 0;
-                        for (int i = 0; i < bytes_write; i++)
-                        {
-                            chk += target8[i];
-                        }
-                        DPRINTF("Checksum: x%x\n", chk);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_CHK, chk);
+                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_CHK, (uint32_t)chk);
                         set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, bytes_write);
                     }
                 }
