@@ -28,7 +28,7 @@ SidecarT is a state-of-the-art cartridge ROM emulator crafted for the Atari ST, 
 
 ## Binary Releases
 
-The rest of the document is intended for developers willing to customize on their own the software and also the hardware of the SidecarT board. If you are not interested in that, you can download the latest binary release from the [Releases page](https://github.com/diegoparrilla/atarist-sidecart-raspberry-pico/releases). The latest stable release is always recommended.
+The rest of the document is intended for developers willing to customize on their own the software and also the hardware of the SidecarT board. If you are not interested in that, you can download the latest binary release from the [Releases page](https://github.com/sidecartridge/atarist-sidecart-raspberry-pico/releases). The latest stable release is always recommended.
 
 If you need help or have any questions, please visit the website of the project [SidecarT](https://sidecartridge.com).
 
@@ -47,7 +47,7 @@ If you need help or have any questions, please visit the website of the project 
 
 - If you are a developer, you'll need a another Raspberry Pi Pico or a RP2040 based board that will act as a picoprobe hardware debugger. 
 
-- The [atarist-toolkit-docker](https://github.com/diegoparrilla/atarist-toolkit-docker) is pivotal. Familiarize yourself with its installation and usage.
+- The [atarist-toolkit-docker](https://github.com/sidecartridge/atarist-toolkit-docker) is pivotal. Familiarize yourself with its installation and usage.
 
 - A `git` client, command line or GUI, your pick.
 
@@ -117,7 +117,7 @@ To build a production ready firmware for the SidecarT board, follow these steps:
 1. Clone this repository:
 
 ```
-$ git clone https://github.com/diegoparrilla/atarist-sidecart-raspberry-pico.git
+$ git clone https://github.com/sidecartridge/atarist-sidecart-raspberry-pico.git
 ```
 
 2. Navigate to the cloned repository:
@@ -155,11 +155,11 @@ Here goes a list of things to take into account when developing:
 2. `memmap_romemul.ld` is the linker script used to link the code. It contains the different memory sections that the Sidecart needs. Please don't change these values if you don't know what you are doing. The RAM for the RP2040 has been reduced to 128Kbytes to keep the Atari ST ROMs in the RAM for performance reasons. Also, don't modify the space needed for configuration data. This data is used to store the configuration of the SidecarT board and it's used by the `CONFIGURATOR` tool.
 3. CMakelists.txt is the file used by the CMake tool to build the project.
 
-A special note about the `firmware.c` file. This file is an array generated with the python script `download_firmware.py`. This script downloads the latest version of the Atari ST firmware contained in the repository [atarist-sidecart-firmware](https://github.com/diegoparrilla/atarist-sidecart-firmware). The same can apply to `firmware_floppyemul` file. This file is an array generated with the python script `download_floppyemul.py`. This script downloads the latest version of the Atari ST Floppy emulator driver contained in the repository [atarist-sidecart-floppy-emulator](https://github.com/diegoparrilla/atarist-sidecart-floppy-emulator). Hence, the code embeds the Atari ST firmware in the SidecarT firmware. This is done to simplify the development and to avoid the need to flash the Atari ST firmware in the RP2040. **As a rule of thumb, if you modify any of those firmwares, you have to regenerate the `firmware.c` and `firmware_floppyemul.c` file. To do that, just run the `download_firmware.py` and `download_floppyemul.py` scripts.**
+A special note about the `firmware.c` file. This file is an array generated with the python script `download_firmware.py`. This script downloads the latest version of the Atari ST firmware contained in the repository [atarist-sidecart-firmware](https://github.com/sidecartridge/atarist-sidecart-firmware). The same can apply to `firmware_floppyemul` file. This file is an array generated with the python script `download_floppyemul.py`. This script downloads the latest version of the Atari ST Floppy emulator driver contained in the repository [atarist-sidecart-floppy-emulator](https://github.com/sidecartridge/atarist-sidecart-floppy-emulator). Hence, the code embeds the Atari ST firmware in the SidecarT firmware. This is done to simplify the development and to avoid the need to flash the Atari ST firmware in the RP2040. **As a rule of thumb, if you modify any of those firmwares, you have to regenerate the `firmware.c` and `firmware_floppyemul.c` file. To do that, just run the `download_firmware.py` and `download_floppyemul.py` scripts.**
 
 ## Releases
 
-For releases, head over to the [Releases page](https://github.com/diegoparrilla/atarist-sidecart-raspberry-pico/releases). The latest release is always recommended.
+For releases, head over to the [Releases page](https://github.com/sidecartridge/atarist-sidecart-raspberry-pico/releases). The latest release is always recommended.
 
 For a quick tutorial about how to flash the firmware in the Raspberry Pi Pico, please read the [Quickstart](https://sidecartridge.com/quickstart).
 
@@ -170,8 +170,8 @@ The full changelog is available in the [CHANGELOG.md](CHANGELOG.md) file.
 ## Resources 
 
 - [Sidecart ROM Emulator website](https://sidecartridge.com)
-- [Sidecart Atari ST Firmware](https://github.com/diegoparrilla/atarist-sidecart-firmware).
-- [Sidecart Atari ST Test ROM](https://github.com/diegoparrilla/atarist-sidecart-test-rom).
+- [Sidecart Atari ST Firmware](https://github.com/sidecartridge/atarist-sidecart-firmware).
+- [Sidecart Atari ST Test ROM](https://github.com/sidecartridge/atarist-sidecart-test-rom).
 
 ## Contribute
 
