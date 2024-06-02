@@ -8,7 +8,7 @@
 - RP2040 Overclock and power management enhancements to avoid bus synchronizations glitches. 
 
 ### New Features
-- **Issue 18**: Launched the GEMDRIVE hard disk emulation mode. For setup instructions, please [consult the user guide](https://docs.sidecartridge.com/userguide/#hard-disk-emulation) and refer to the detailed blog post [here](https://sidecartridge.com/blog/2024/01/26/hard-disk-emulation-sidecart/).
+- **Issue 18**: Launched the GEMDRIVE hard disk emulation mode. For setup instructions, please [consult the user guide](https://docs.sidecartridge.com/sidecartridge-multidevice/userguide/#hard-disk-emulation) and refer to the detailed blog post [here](https://sidecartridge.com/blog/2024/01/26/hard-disk-emulation-sidecart/).
 - **Issue 38**: Added the ability to configure Floppy emulation mode directly from the Configurator menu.
 - **Issue 97**: Introduced an option to enable or disable the boot sector during startup in floppy emulation mode.
 - **Issue 100**: Implemented a new **Dark mode** option for the Configurator for enhanced user experience.
