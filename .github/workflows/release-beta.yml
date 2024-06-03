@@ -28,7 +28,7 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential libstdc++-arm-none-eabi-newlib
     
     - name: Install AtariST Toolkit Docker image
-      run: curl -sL https://github.com/diegoparrilla/atarist-toolkit-docker/releases/download/latest/linux.sh | bash
+      run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/latest/linux.sh | bash
 
     - name: Run - remove interactive
       run: sed -i 's/-it//' /usr/local/bin/stcmd
