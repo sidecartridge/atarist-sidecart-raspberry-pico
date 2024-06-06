@@ -917,13 +917,19 @@ int init_firmware()
                         // Copy the string from network_files[i].name to dest_ptr
                         // Ensure the name is padded with spaces up to position 60
                         char padded_name[61]; // 60 characters for padding + 1 for null terminator
-                        snprintf(padded_name, sizeof(padded_name), "%-65s", floppy_images_file->name);
+                        snprintf(padded_name, sizeof(padded_name), "%-52s", floppy_images_file->name);
 
                         char padded_extra[16]; // 15 characters for padding + 1 for null terminator
                         snprintf(padded_extra, sizeof(padded_extra), "%-15s", floppy_images_file->extra);
 
+                        char padded_filename[13]; // 12 characters for padding + 1 for null terminator
+                        // Get the filename from the URL
+                        char fname[256] = {0};
+                        extract_filename(floppy_images_file->url, fname);
+                        snprintf(padded_filename, sizeof(padded_filename), "%-13s", fname);
+
                         // Display padded content
-                        sprintf(dest_ptr, "%s%s\0", padded_name, padded_extra);
+                        sprintf(dest_ptr, "%s%s %s\0", padded_name, padded_extra, padded_filename);
                         dest_ptr += strlen(dest_ptr) + 1;
                         floppy_images_file = floppy_images_file->next;
                     }

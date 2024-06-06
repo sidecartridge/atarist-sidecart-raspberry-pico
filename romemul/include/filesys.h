@@ -105,5 +105,6 @@ uint8_t attribs_fat2st(uint8_t fat_attribs);
 void get_attribs_st_str(char attribs_str[6], uint8_t st_attribs);
 void upper_fname(const char *originalName, char upperName[14]);
 void filter_fname(const char *originalName, char filteredName[14]);
+void extract_filename(const char *url, char filename[256]);
 
 #endif // FILESYS_H
