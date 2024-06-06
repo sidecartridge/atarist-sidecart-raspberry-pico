@@ -1799,3 +1799,22 @@ void filter_fname(const char *originalName, char filteredName[14])
     }
     filteredName[j] = '\0'; // Null-terminate the filtered name
 }
+
+/**
+ * @brief Extract the filename from a full path
+ *
+ * Takes a full path or url and extracts the filename from it at the right end until a slash or
+ * backslash is found. The extracted filename is stored in a separate string. The original path
+ *
+ * @param url The full path or url from which to extract the filename. It should be a null-terminated string.
+ * @param filename The string to store the extracted filename. It should be at least 256 characters long.
+ */
+void extract_filename(const char *url, char filename[256])
+{
+    int i = strlen(url) - 1;
+    while (i >= 0 && url[i] != '/' && url[i] != '\\')
+    {
+        i--;
+    }
+    strcpy(filename, url + i + 1);
+}
