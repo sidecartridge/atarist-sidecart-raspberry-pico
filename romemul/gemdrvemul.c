@@ -1753,6 +1753,12 @@ int init_gemdrvemul(bool safe_config_reboot)
                         DPRINTF("ERROR: Folder does not exist\n");
                         status = GEMDOS_EPTHNF;
                     }
+                    else if (fr == FR_NO_FILE)
+                    {
+                        DPRINTF("ERROR: File does not exist\n");
+                        // status = GEMDOS_EFILNF;
+                        status = GEMDOS_EOK;
+                    }
                     else
                     {
                         DPRINTF("ERROR: Internal error\n");
@@ -1940,6 +1946,11 @@ int init_gemdrvemul(bool safe_config_reboot)
                     {
                         DPRINTF("ERROR: Folder does not exist\n");
                         *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
+                    }
+                    else if (fr == FR_NO_FILE)
+                    {
+                        DPRINTF("ERROR: File does not exist\n");
+                        *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EFILNF);
                     }
                     else
                     {
