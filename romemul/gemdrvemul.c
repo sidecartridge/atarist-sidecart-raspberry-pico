@@ -843,9 +843,6 @@ int init_gemdrvemul(bool safe_config_reboot)
         // Start the internal RTC
         rtc_init();
 
-        // Start the NTP client
-        ntp_init();
-
         ntp_server_host = find_entry("RTC_NTP_SERVER_HOST")->value;
         ntp_server_port = atoi(find_entry("RTC_NTP_SERVER_PORT")->value);
 
@@ -860,6 +857,8 @@ int init_gemdrvemul(bool safe_config_reboot)
         }
         DPRINTF("UTC offset: %ld\n", get_utc_offset_seconds());
 
+        // Start the NTP client
+        ntp_init();
         get_net_time()->ntp_server_found = false;
 
         network_ready = true;
