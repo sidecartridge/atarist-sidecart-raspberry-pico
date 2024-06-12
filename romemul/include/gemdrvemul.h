@@ -187,6 +187,7 @@ typedef struct
 typedef struct DTANode
 {
     uint32_t key;
+    uint32_t attribs;
     DTA data;
     DIR *dj;
     FILINFO *fno;

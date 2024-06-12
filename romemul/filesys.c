@@ -1498,6 +1498,37 @@ void back_2_forwardslash(char *path)
 }
 
 /**
+ * @brief Converts all forward slash characters to backslashes in a given string.
+ *
+ * This function iterates through the characters of the provided string and replaces
+ * each forward slash ('/') character with a backslash ('\\'). This is typically used
+ * to convert file paths from Unix-style to Windows-style. The function operates in place,
+ * modifying the original string. It is safe to use with strings that do not contain
+ * forward slashes, as the function will simply leave them unchanged.
+ *
+ * @param path A pointer to a character array (string) that will be modified in place.
+ *             The array should be null-terminated.
+ *
+ * Example usage:
+ *     char path[] = "C:/Users/Public/Documents/file.txt";
+ *     forward_2_backslash(path);
+ *     // `path` is now "C:\\Users\\Public\\Documents\\file.txt"
+ */
+void forward_2_backslash(char *path)
+{
+    if (path == NULL)
+        return;
+
+    for (int i = 0; path[i] != '\0'; i++)
+    {
+        if (path[i] == '/')
+        {
+            path[i] = '\\';
+        }
+    }
+}
+
+/**
  * @brief Shortens a long file name to a DOS 8.3 filename format in uppercase and stores it in a provided array.
  *
  * This function takes a long file name, shortens it to the first seven characters, appends a '~' symbol,

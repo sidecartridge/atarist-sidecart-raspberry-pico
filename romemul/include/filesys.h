@@ -98,6 +98,7 @@ void store_file_list(char **file_list, int num_files, uint8_t *memory_location);
 FRESULT read_and_trim_file(const char *path, char **content);
 void split_fullpath(const char *fullPath, char *drive, char *folders, char *filePattern);
 void back_2_forwardslash(char *path);
+void forward_2_backslash(char *path);
 void shorten_fname(const char *originalName, char shortenedName[12]);
 void remove_dup_slashes(char *str);
 uint8_t attribs_st2fat(uint8_t st_attribs);
