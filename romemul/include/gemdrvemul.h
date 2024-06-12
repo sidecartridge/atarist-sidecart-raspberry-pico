@@ -40,7 +40,7 @@
 
 #define SWAP_LONGWORD(data) ((((uint32_t)data << 16) & 0xFFFF0000) | (((uint32_t)data >> 16) & 0xFFFF))
 
-#define DEFAULT_FOPEN_READ_BUFFER_SIZE 8192
+#define DEFAULT_FOPEN_READ_BUFFER_SIZE 16384
 #define DEFAULT_FWRITE_BUFFER_SIZE 2048
 #define FIRST_FILE_DESCRIPTOR 16384
 #define PRG_STRUCT_SIZE 28 // Size of the GEMDOS structure in the executable header file (PRG)

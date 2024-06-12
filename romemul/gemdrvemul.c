@@ -585,6 +585,26 @@ static void __not_in_flash_func(delete_all_files)(FileDescriptors **head)
     }
 }
 
+// Close all the open files, if any
+static void __not_in_flash_func(close_all_files)(FileDescriptors **head)
+{
+    FileDescriptors *current = *head;
+    while (current != NULL)
+    {
+        FileDescriptors *next = current->next;
+        FRESULT fr = f_close(&current->fobject);
+        if (fr != FR_OK)
+        {
+            DPRINTF("ERROR: Could not close file (%d)\r\n", fr);
+        }
+        else
+        {
+            DPRINTF("File %s closed successfully\n", current->fpath);
+        }
+        current = next;
+    }
+}
+
 // Cound the number of file descriptors in the list
 static int __not_in_flash_func(count_fdesc)(FileDescriptors *head)
 {
@@ -1049,6 +1069,8 @@ int init_gemdrvemul(bool safe_config_reboot)
                     {
                         hd_folder = find_entry(PARAM_GEMDRIVE_FOLDERS)->value;
                         DPRINTF("Emulating GEMDRIVE in folder: %s\n", hd_folder);
+                        // Iterate over fdescriptors and close all files
+                        close_all_files(&fdescriptors);
                         cleanDTAHashTable();
                         delete_all_files(&fdescriptors);
                         DPRINTF("DTA table elements: %d\n", countDTA());
@@ -2126,7 +2148,9 @@ int init_gemdrvemul(bool safe_config_reboot)
             uint32_t readbuff_pending_bytes_to_read = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d5 register constains the number of bytes to read
             DPRINTF("Read buffering file with fd: x%x, bytes_to_read: x%08x, pending_bytes_to_read: x%08x\n", readbuff_fd, readbuff_bytes_to_read, readbuff_pending_bytes_to_read);
             // Show open files
+#if defined(_DEBUG) && (_DEBUG != 0)
             print_file_descriptors(fdescriptors);
+#endif
             // Obtain the file descriptor
             FileDescriptors *file = get_file_by_fdesc(fdescriptors, readbuff_fd);
             if (file == NULL)
