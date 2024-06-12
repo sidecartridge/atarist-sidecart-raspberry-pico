@@ -361,14 +361,8 @@ static void __not_in_flash_func(populate_dta)(uint32_t memory_address_dta, uint3
     }
 }
 
-static FileDescriptors *__not_in_flash_func(add_file)(FileDescriptors **head, const char *fpath, FIL fobject, uint16_t new_fd)
+static void __not_in_flash_func(add_file)(FileDescriptors **head, FileDescriptors *newFDescriptor, const char *fpath, FIL fobject, uint16_t new_fd)
 {
-    FileDescriptors *newFDescriptor = malloc(sizeof(FileDescriptors));
-    if (newFDescriptor == NULL)
-    {
-        DPRINTF("Memory allocation failed for new FileDescriptors\n");
-        return NULL; // Allocation failed
-    }
     strncpy(newFDescriptor->fpath, fpath, 127);
     newFDescriptor->fpath[127] = '\0'; // Ensure null-termination
     newFDescriptor->fobject = fobject;
@@ -377,7 +371,6 @@ static FileDescriptors *__not_in_flash_func(add_file)(FileDescriptors **head, co
     newFDescriptor->next = *head;
     *head = newFDescriptor;
     DPRINTF("File %s added with fd %i\n", fpath, new_fd);
-    return newFDescriptor;
 }
 
 static void __not_in_flash_func(print_file_descriptors)(FileDescriptors *head)
@@ -887,17 +880,16 @@ int init_gemdrvemul(bool safe_config_reboot)
                     {
                         DPRINTF("Network status: %d\n", current_status);
                         DPRINTF("Network previous status: %d\n", previous_status);
-                        ConnectionData *connection_data = malloc(sizeof(ConnectionData));
-                        get_connection_data(connection_data);
+                        ConnectionData connection_data = {};
+                        get_connection_data(&connection_data);
                         DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s\n",
-                                connection_data->ssid,
-                                connection_data->network_status,
-                                connection_data->ipv4_address,
-                                connection_data->ipv6_address,
+                                connection_data.ssid,
+                                connection_data.network_status,
+                                connection_data.ipv4_address,
+                                connection_data.ipv6_address,
                                 print_ipv4(get_gateway()),
                                 print_ipv4(get_netmask()),
                                 print_mac(get_mac_address()));
-                        free(connection_data);
                         if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
                         {
                             DPRINTF("Connection failed. Retrying...\n");
@@ -1486,6 +1478,9 @@ int init_gemdrvemul(bool safe_config_reboot)
                     insertDTA(ndta, data, dj, fno, attribs);
                     // Populate the DTA with the first file found
                     populate_dta(memory_shared_address, ndta, GEMDOS_EFILNF);
+                    // Null dj and fno to avoid freeing them
+                    dj = NULL;
+                    fno = NULL;
                 }
                 else
                 {
@@ -1513,6 +1508,15 @@ int init_gemdrvemul(bool safe_config_reboot)
                 }
                 *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_DTA_F_FOUND)) = error_code;
                 nullify_dta(memory_shared_address);
+            }
+            // Guarantee that the dynamic memory is released
+            if (dj != NULL)
+            {
+                free(dj);
+            }
+            if (fno != NULL)
+            {
+                free(fno);
             }
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
@@ -1652,14 +1656,16 @@ int init_gemdrvemul(bool safe_config_reboot)
                     // Add the file to the list of open files
                     int fd_counter = get_first_available_fd(fdescriptors);
                     DPRINTF("Opening file with new file descriptor: %d\n", fd_counter);
-                    FileDescriptors *new_fd = add_file(&fdescriptors, tmp_filepath, file_object, fd_counter);
-                    if (new_fd == NULL)
+                    FileDescriptors *newFDescriptor = malloc(sizeof(FileDescriptors));
+                    if (newFDescriptor == NULL)
                     {
+                        DPRINTF("Memory allocation failed for new FileDescriptors\n");
                         DPRINTF("ERROR: Could not add file to the list of open files\n");
                         set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EINTRN);
                     }
                     else
                     {
+                        add_file(&fdescriptors, newFDescriptor, tmp_filepath, file_object, fd_counter);
                         DPRINTF("File opened with file descriptor: %d\n", fd_counter);
                         // Return the file descriptor
                         set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, fd_counter);
@@ -1737,13 +1743,22 @@ int init_gemdrvemul(bool safe_config_reboot)
                 // Add the file to the list of open files
                 int fd_counter = get_first_available_fd(fdescriptors);
                 DPRINTF("File created with file descriptor: %d\n", fd_counter);
-                add_file(&fdescriptors, tmp_filepath, file_object, fd_counter);
+                FileDescriptors *newFDescriptor = malloc(sizeof(FileDescriptors));
+                if (newFDescriptor == NULL)
+                {
+                    DPRINTF("Memory allocation failed for new FileDescriptors\n");
+                    DPRINTF("ERROR: Could not add file to the list of open files\n");
+                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE, GEMDOS_EINTRN);
+                }
+                else
+                {
+                    add_file(&fdescriptors, newFDescriptor, tmp_filepath, file_object, fd_counter);
 
-                // MISSING ATTRIBUTE MODIFICATION
+                    // MISSING ATTRIBUTE MODIFICATION
 
-                // Return the file descriptor
-                // *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = SWAP_LONGWORD(fd_counter);
-                *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = fd_counter;
+                    // Return the file descriptor
+                    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE)) = fd_counter;
+                }
             }
 
             write_random_token(memory_shared_address);
@@ -1956,11 +1971,6 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (strcasecmp(drive_src, drive_dst) != 0)
             {
                 DPRINTF("ERROR: Different drives\n");
-                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
-            }
-            else if (strcasecmp(folders_src, folders_dst) != 0)
-            {
-                DPRINTF("ERROR: Different folders\n");
                 *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_FRENAME_STATUS)) = SWAP_LONGWORD(GEMDOS_EPTHNF);
             }
             else
