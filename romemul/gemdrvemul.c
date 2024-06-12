@@ -66,7 +66,7 @@ static unsigned int __not_in_flash_func(hash)(uint32_t key)
 }
 
 // Insert function
-static void __not_in_flash_func(insertDTA)(uint32_t key, DTA data, DIR *dj, FILINFO *fno)
+static void __not_in_flash_func(insertDTA)(uint32_t key, DTA data, DIR *dj, FILINFO *fno, uint32_t attribs)
 {
     unsigned int index = hash(key);
     DTANode *newNode = malloc(sizeof(DTANode));
@@ -80,6 +80,7 @@ static void __not_in_flash_func(insertDTA)(uint32_t key, DTA data, DIR *dj, FILI
     newNode->data = data;
     newNode->dj = dj;
     newNode->fno = fno;
+    newNode->attribs = attribs;
     // To copy the content of pat from dj to newNode:
     if (dj->pat != NULL)
     {
@@ -238,10 +239,9 @@ static void __not_in_flash_func(swap_string_endiannes)(const char *origin, char 
     }
 }
 
-static void __not_in_flash_func(seach_path_2_st)(const char *fspec_str, char *internal_path, char *name_pattern)
+static void __not_in_flash_func(seach_path_2_st)(const char *fspec_str, char *internal_path, char *path_forwardslash, char *name_pattern)
 {
     char drive[2] = {0};
-    char path_forwardslash[MAX_FOLDER_LENGTH] = {0};
     char path[MAX_FOLDER_LENGTH] = {0};
     split_fullpath(fspec_str, drive, path_forwardslash, name_pattern);
 
@@ -549,6 +549,12 @@ static void __not_in_flash_func(get_local_full_pathname)(char *tmp_filepath)
         // If the path has the drive letter, jump two positions
         // and ignore the dpath_string
         snprintf(path_filename, MAX_FOLDER_LENGTH, "%s", path_filename + 2);
+        DPRINTF("New path_filename: %s\n", path_filename);
+        snprintf(tmp_path, MAX_FOLDER_LENGTH, "%s/", hd_folder);
+    }
+    else if (path_filename[0] == '\\')
+    {
+        // If the path filename has a backslash, ignore the dpath_string
         DPRINTF("New path_filename: %s\n", path_filename);
         snprintf(tmp_path, MAX_FOLDER_LENGTH, "%s/", hd_folder);
     }
@@ -960,8 +966,8 @@ int init_gemdrvemul(bool safe_config_reboot)
     {
         drive_letter = drive_letter_conf->value[0];
     }
-    uint16_t drive_letter_num = (uint8_t)toupper(drive_letter);
-    uint16_t drive_number = drive_letter_num - 65; // Convert the drive letter to a number. Add 1 because 0 is the current drive
+    uint32_t drive_letter_num = (uint8_t)toupper(drive_letter);
+    uint32_t drive_number = drive_letter_num - 65; // Convert the drive letter to a number. Add 1 because 0 is the current drive
 
     ConfigEntry *buffer_type_conf = find_entry(PARAM_GEMDRIVE_BUFF_TYPE);
     uint16_t buffer_type = 0; // 0: Diskbuffer, 1: Stack
@@ -1153,10 +1159,18 @@ int init_gemdrvemul(bool safe_config_reboot)
             uint16_t dpath_drive = payloadPtr[0]; // d3 register
 
             DPRINTF("Dpath drive: %x\n", dpath_drive);
+            DPRINTF("Dpath string: %s\n", dpath_string);
+
+            char tmp_path[MAX_FOLDER_LENGTH] = {0};
+            memccpy(tmp_path, dpath_string, 0, MAX_FOLDER_LENGTH);
+            forward_2_backslash(tmp_path);
+
+            DPRINTF("Dpath backslash string: %s\n", tmp_path);
+
             // Copy the content of the path variable to memory_shared_address + GEMDRVEMUL_DEFAULT_PATH
             for (int i = 0; i < MAX_FOLDER_LENGTH; i++)
             {
-                *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH + i)) = dpath_string[i];
+                *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH + i)) = tmp_path[i];
             }
             // Swap the bytes
             swap_words((uint16_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH), MAX_FOLDER_LENGTH);
@@ -1186,16 +1200,22 @@ int init_gemdrvemul(bool safe_config_reboot)
                 memmove(dpath_tmp, dpath_tmp + 2, strlen(dpath_tmp));
             }
 
-            if (dpath_tmp[0] != '\\')
+            DPRINTF("Dpath string: %s\n", dpath_string);
+            DPRINTF("Dpath tmp: %s\n", dpath_tmp);
+
+            // Check if the path is relative or absolute
+            if ((dpath_tmp[0] != '\\') && (dpath_tmp[0] != '/'))
             {
                 // Concatenate the path with the existing dpath_string
-                DPRINTF("Dpath string: %s\n", dpath_string);
-                DPRINTF("Dpath tmp: %s\n", dpath_tmp);
                 char tmp_path_concat[MAX_FOLDER_LENGTH] = {0};
                 snprintf(tmp_path_concat, sizeof(tmp_path_concat), "%s/%s", dpath_string, dpath_tmp);
                 DPRINTF("Concatenated path: %s\n", tmp_path_concat);
                 strcpy(dpath_tmp, tmp_path_concat);
                 DPRINTF("Dpath tmp: %s\n", dpath_tmp);
+            }
+            else
+            {
+                DPRINTF("Do not concatenate the path\n");
             }
             back_2_forwardslash(dpath_tmp);
             // Concatenate the path with the hd_folder
@@ -1315,7 +1335,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             else
             {
                 DTA data = {"filename", 0, 0, 0, 0, 0, 0, 0, 0, "filename"};
-                insertDTA(ndta, data, NULL, NULL);
+                insertDTA(ndta, data, NULL, NULL, 0);
                 DPRINTF("Added ndta: %x.\n", ndta);
             }
             write_random_token(memory_shared_address);
@@ -1362,9 +1382,12 @@ int init_gemdrvemul(bool safe_config_reboot)
             char pattern[32] = {0};
             char fspec_string[MAX_FOLDER_LENGTH] = {0};
             char tmp_string[MAX_FOLDER_LENGTH] = {0};
+            char path_forwardslash[MAX_FOLDER_LENGTH] = {0};
             swap_string_endiannes((char *)payloadPtr, tmp_string);
             DPRINTF("Fspec string: %s\n", tmp_string);
-            if (tmp_string[0] == '\\' || tmp_string[1] == ':')
+            back_2_forwardslash(tmp_string);
+            DPRINTF("Fspec string backslash: %s\n", tmp_string);
+            if (tmp_string[0] == '/' || tmp_string[1] == ':')
             {
                 DPRINTF("Root folder found. Ignoring default path.\n");
                 strcpy(fspec_string, tmp_string);
@@ -1379,11 +1402,23 @@ int init_gemdrvemul(bool safe_config_reboot)
             // Remove duplicated forward slashes
             remove_dup_slashes(fspec_string);
             get_attribs_st_str(attribs_str, attribs);
-            seach_path_2_st(fspec_string, internal_path, pattern);
+            seach_path_2_st(fspec_string, internal_path, path_forwardslash, pattern);
+
+            back_2_forwardslash(path_forwardslash);
+
+            // Testing if the FSfirst changes the default path or not
+            // DPRINTF("Old dpath string: %s, new dpath string: %s\n", dpath_string, path_forwardslash);
+            // strcpy(dpath_string, path_forwardslash);
+
             DPRINTF("Fsfirst ndta: %x, attribs: %s, fspec: %x, fspec string: %s\n", ndta, attribs_str, fspec, fspec_string);
             DPRINTF("Fsfirst Full internal path: %s, filename pattern: %s\n", internal_path, pattern);
 
             bool ndta_exists = lookupDTA(ndta) ? true : false;
+
+            if (!(attribs & FS_ST_LABEL))
+            {
+                attribs |= FS_ST_ARCH;
+            }
 
             FRESULT fr;   /* Return value */
             DIR *dj;      /* Directory object */
@@ -1407,10 +1442,13 @@ int init_gemdrvemul(bool safe_config_reboot)
                 }
                 if (fno->fname[0])
                 {
-                    if (fr == FR_OK)
+                    if (attribs & attribs_fat2st(fno->fattrib))
                     {
-                        raw_filename[0] = fno->fname[0];
-                        raw_filename[1] = fno->fname[1];
+                        if (fr == FR_OK)
+                        {
+                            raw_filename[0] = fno->fname[0];
+                            raw_filename[1] = fno->fname[1];
+                        }
                     }
                 }
                 else
@@ -1423,10 +1461,6 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (fr == FR_OK && fno->fname[0])
             {
                 uint8_t attribs_conv_st = attribs_fat2st(fno->fattrib);
-                if (!(attribs & FS_ST_LABEL))
-                {
-                    attribs |= FS_ST_ARCH;
-                }
                 char attribs_str[7] = "";
                 get_attribs_st_str(attribs_str, attribs_conv_st);
                 char shorten_filename[14];
@@ -1449,7 +1483,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                         nullify_dta(memory_shared_address);
                     }
                     DTA data = {"filename.typ", 0, 0, 0, 0, 0, 0, 0, 0, "filename.typ"};
-                    insertDTA(ndta, data, dj, fno);
+                    insertDTA(ndta, data, dj, fno, attribs);
                     // Populate the DTA with the first file found
                     populate_dta(memory_shared_address, ndta, GEMDOS_EFILNF);
                 }
@@ -1495,6 +1529,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             bool ndta_exists = dtaNode ? true : false;
             if (dtaNode != NULL && dtaNode->dj != NULL && dtaNode->fno != NULL && ndta_exists)
             {
+                uint32_t attribs = dtaNode->attribs;
                 // We need to filter out the elements that does not make sense in the FsFat environment
                 // And in the Atari ST environment
                 char raw_filename[2] = "._";
@@ -1505,10 +1540,13 @@ int init_gemdrvemul(bool safe_config_reboot)
                     DPRINTF("Fsnext fr: %d and filename: %s\n", fr, dtaNode->fno->fname);
                     if (dtaNode->fno->fname[0])
                     {
-                        if (fr == FR_OK)
+                        if (attribs & attribs_fat2st(dtaNode->fno->fattrib))
                         {
-                            raw_filename[0] = dtaNode->fno->fname[0];
-                            raw_filename[1] = dtaNode->fno->fname[1];
+                            if (fr == FR_OK)
+                            {
+                                raw_filename[0] = dtaNode->fno->fname[0];
+                                raw_filename[1] = dtaNode->fno->fname[1];
+                            }
                         }
                     }
                     else
