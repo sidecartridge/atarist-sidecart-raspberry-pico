@@ -52,6 +52,61 @@ int main()
     // Load the config from FLASH
     load_all_entries();
 
+    // Change SPI speed of the SD card
+    size_t sd_num = sd_get_num();
+    if (sd_num > 0)
+    {
+        ConfigEntry *sd_baud_rate_kb = find_entry(PARAM_SD_BAUD_RATE_KB);
+        if (sd_baud_rate_kb != NULL)
+        {
+            int baud_rate = atoi(sd_baud_rate_kb->value);
+            if (baud_rate > 0)
+            {
+
+                DPRINTF("Changing SD card baud rate to %i\n", baud_rate);
+                sd_card_t *sd_card = sd_get_by_num(sd_num - 1);
+                sd_card->spi_if_p->spi->baud_rate = baud_rate * 1000;
+            }
+            else
+            {
+                DPRINTF("Invalid baud rate. Using default value\n");
+            }
+        }
+    }
+    else
+    {
+        DPRINTF("SD card not found\n");
+    }
+
+    // Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
+    if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
+    {
+        DPRINTF("USB connected\n");
+        ConfigEntry *sd_card_mass_storage_enabled = find_entry(PARAM_SD_MASS_STORAGE);
+        if ((sd_card_mass_storage_enabled != NULL) && (sd_card_mass_storage_enabled->value[0] == 't' || sd_card_mass_storage_enabled->value[0] == 'T'))
+        {
+            DPRINTF("USB Mass storage flag set to enabled\n");
+            // Initialize SD card
+            bool microsd_initialized = sd_init_driver();
+            if (!microsd_initialized)
+            {
+                DPRINTF("ERROR: Could not initialize SD card\r\n");
+            }
+            else
+            {
+                DPRINTF("SD card initialized\n");
+                // Turn on the LED
+                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+                // Start the USB Mass storage device
+                usb_mass_init();
+            }
+        }
+        else
+        {
+            DPRINTF("USB Mass storage flag set to disabled\n");
+        }
+    }
+
     ConfigEntry *default_config_entry = find_entry(PARAM_BOOT_FEATURE);
     DPRINTF("BOOT_FEATURE: %s\n", default_config_entry->value);
 
