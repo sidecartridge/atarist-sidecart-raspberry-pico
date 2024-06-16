@@ -103,6 +103,10 @@ extern const char ROM_RESCUE_MODE_FILE_NAME[];
 #define FR_FILE_EXISTS 100
 #define FR_CANNOT_OPEN_FILE_FOR_WRITE 101
 
+// Time macros
+#define GET_CURRENT_TIME() (((uint64_t)timer_hw->timerawh) << 32u | timer_hw->timerawl)
+#define GET_CURRENT_TIME_INTERVAL_MS(start) (uint32_t)((GET_CURRENT_TIME() - start) / (((uint32_t)RP2040_CLOCK_FREQ_KHZ) / 1000))
+
 typedef struct
 {
     char character;
