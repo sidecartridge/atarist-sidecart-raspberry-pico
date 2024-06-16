@@ -239,7 +239,7 @@ char const *string_desc_arr[] =
         (const char[]){0x09, 0x04}, // 0: is supported language is English (0x0409)
         "Sidecartridge",            // 1: Manufacturer
         "SidecarTridge Multidevice",        // 2: Product
-        "123456789012",             // 3: Serials, should use chip ID
+        NULL,             // 3: Serials, should use chip ID
         "Sidecartridge Multidevice CDC",    // 4: CDC Interface
         "Sidecartridge Multidevice MSC",    // 5: MSC Interface
 };
