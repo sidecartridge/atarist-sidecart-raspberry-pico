@@ -23,12 +23,20 @@
 #include <hardware/flash.h>
 #include <hardware/watchdog.h>
 #include "hardware/structs/bus_ctrl.h"
+// USB register definitions from pico-sdk
+#include "hardware/regs/usb.h"
+// USB hardware struct definitions from pico-sdk
+#include "hardware/structs/usb.h"
+
+#include "tusb.h"
 
 // #include "pico/cyw43_arch.h"
 
 #include "sd_card.h"
 #include "f_util.h"
 #include "ff.h"
+#include "diskio.h" /* Declarations of disk functions */
+#include "hw_config.h"
 
 #include "config.h"
 #include "tprotocol.h"
@@ -36,6 +44,7 @@
 #include "romemul.h"
 #include "network.h"
 #include "filesys.h"
+#include "usb_mass.h"
 
 // Size of the random seed to use in the sync commands
 #define RANDOM_SEED_SIZE 4 // 4 bytes

@@ -53,6 +53,8 @@ target_sources(${PROJECT_NAME} PRIVATE filesys.c)
 target_sources(${PROJECT_NAME} PRIVATE rtcemul.c)
 target_sources(${PROJECT_NAME} PRIVATE gemdrvemul.c)
 target_sources(${PROJECT_NAME} PRIVATE cJSON/cJSON.c)
+target_sources(${PROJECT_NAME} PRIVATE usb_descriptors.c)
+target_sources(${PROJECT_NAME} PRIVATE usb_mass.c)
 
 # Tell CMake where to find other source code
 add_subdirectory($ENV{FATFS_SDK_PATH}/src build)
@@ -68,6 +70,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
         pico_cyw43_arch_lwip_poll
 #        pico_multicore                # for multicore functionality
         pico_lwip_http
+        tinyusb_device           # for USB
         )
 
 # Link custom memmap with reserved memory for ROMs
