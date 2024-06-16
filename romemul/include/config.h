@@ -28,7 +28,7 @@
 // Warning. There will be an issue when reaching the maximum number of entries for 4Kbytes of flash memory
 // The maximum number of entries is 46
 // Change the memory size of the config structure to 8Kbytes when reaching the maximum number of entries
-#define MAX_ENTRIES 33
+#define MAX_ENTRIES 35
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
@@ -51,6 +51,9 @@
 #define PARAM_NETWORK_STATUS_SEC "NETWORK_STATUS_SEC"
 #define PARAM_ROMS_FOLDER "ROMS_FOLDER"
 #define PARAM_ROMS_YAML_URL "ROMS_YAML_URL"
+#define PARAM_SAFE_CONFIG_REBOOT "SAFE_CONFIG_REBOOT"
+#define PARAM_SD_MASS_STORAGE "SD_MASS_STORAGE"
+#define PARAM_SD_BAUD_RATE_KB "SD_BAUD_RATE_KB"
 #define PARAM_WIFI_AUTH "WIFI_AUTH"
 #define PARAM_WIFI_COUNTRY "WIFI_COUNTRY"
 #define PARAM_WIFI_PASSWORD "WIFI_PASSWORD"
