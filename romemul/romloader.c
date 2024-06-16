@@ -492,20 +492,6 @@ int init_firmware()
         microsd_mounted = is_sdcard_mounted(&fs);
     }
 
-    bool show_blink_code = true;
-    while (!clean_start)
-    {
-        // Wait until the clean start command is received
-        tight_loop_contents();
-        if (show_blink_code)
-        {
-            show_blink_code = false;
-            // The "C" character stands for "Configurator"
-            blink_morse('C');
-        }
-        sleep_ms(100);
-    }
-
     // Copy the content of the file list to the end of the ROM4 memory minus 4Kbytes
     // Translated to pure ROM4 address of the ST: 0xFB0000 - 0x1000 = 0xFAF000
     // The firmware code should be able to read the list of files from 0xFAF000
@@ -559,6 +545,30 @@ int init_firmware()
 
     // Start the network.
     network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+
+    bool show_blink_code = true;
+    while (!clean_start)
+    {
+        // Wait until the clean start command is received
+        tight_loop_contents();
+        if (show_blink_code)
+        {
+            show_blink_code = false;
+            // The "C" character stands for "Configurator"
+            blink_morse('C');
+        }
+        sleep_ms(100);
+#if PICO_CYW43_ARCH_POLL
+        cyw43_arch_lwip_begin();
+        network_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
+        cyw43_arch_lwip_end();
+#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
+        cyw43_arch_lwip_begin();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
+        cyw43_arch_lwip_end();
+#endif
+    }
 
     u_int32_t network_poll_counter = 0;
     u_int32_t storage_poll_counter = 0;
