@@ -16,6 +16,8 @@
 #include <string.h>
 
 #include "tusb.h"
+#include <hardware/watchdog.h>
+#include "pico/cyw43_arch.h"
 
 #include "sd_card.h"
 #include "f_util.h"

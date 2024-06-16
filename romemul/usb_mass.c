@@ -20,11 +20,16 @@ void usb_mass_init(void)
     // init device stack on configured roothub port
     tud_init(BOARD_TUD_RHPORT);
 
-    while (true)
+    // Loop while the USB is connected and the VBUS is high
+    // Exit when the VBUS is low and reset the device
+    while (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
     {
         tud_task(); // tinyusb device task
         cdc_task();
     }
+    watchdog_reboot(0, SRAM_END, 10);
+    while (1)
+        ;
 }
 
 //--------------------------------------------------------------------+
@@ -123,7 +128,7 @@ void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16
 
     const char vid[] = "SidecarTridge Multidevice";
     const char pid[] = "Mass Storage";
-    const char rev[] = "1.0";
+    const char rev[] = RELEASE_VERSION;
 
     memcpy(vendor_id, vid, strlen(vid));
     memcpy(product_id, pid, strlen(pid));
