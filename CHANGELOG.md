@@ -1,5 +1,24 @@
 # Changelog
 
+## BETA 0.0.17 (2024-06-18) - Mass Storage Device Support
+### Changes
+- **Issue 106**: Improved the CHECKSUM algorithm in GEMDRIVE writing to boost performance. Thanks to the work of [Peter Nyman](https://github.com/Pny), reading performance is now 50% faster.
+- Introduced new `SD_BAUD_RATE_KB` parameter to increase the speed of the SD card. The default value is 12500, but it can be increased to 25000 for high-quality SD cards. This can also help troubleshoot issues with some microSD cards.
+
+### New Features
+- **Issue 96**: Added the name of the floppy image to the list view in the Floppy Database.
+- **Issue 112**: Added support for EmuTOS 1.3.0.
+- **Issue 111**: **Added Mass Storage device support.** Now you can use the Sidecartridge as a mass storage device to transfer information faster to your Atari ST. For setup instructions, please [consult the user guide](https://docs.sidecartridge.com/sidecartridge-multidevice/userguide/#mass-storage-mode).
+
+### Fixes
+- **Issue 108**: Added support for MegaSTE 16Mhz and Cache enhancement in GEMDRIVE mode.
+- **Issue 109**: Fixed the issue with the overlap of drive units in GEMDRIVE mode.
+- **Issue 113**: Fixed an issue when loading the first image available in the floppy images folder.
+- **Issue 115**: `FDelete` function in GEMDOS and `f_delete` of FatFS now work as GEMDOS expects.
+- **Issue 104**: Rewritten `FsFirst` and `FsNext` functions in GEMDOS to match the GEMDOS specification.
+- **Issue 94**: Fixed broken links in documentation.
+- **Issue 118**: Fixed renaming behavior in GEMDRIVE to match GEMDOS specification, which is critical to support AUTO folder sorting.
+
 ## BETA 0.0.16 (2024-04-04) - GEMDRIVE Hard Disk Emulator
 ### Changes
 - **Issue 89**: Introduced a new parameters page featuring pagination.
