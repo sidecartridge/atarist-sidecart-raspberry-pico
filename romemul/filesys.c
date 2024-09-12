@@ -860,7 +860,6 @@ bool is_sdcard_mounted(FATFS *fs_ptr)
     {
         DPRINTF("ERROR: Could not mount filesystem (%d)\r\n", fr);
     }
-
     return sd_card_mounted;
 }
 
@@ -974,6 +973,7 @@ void get_sdcard_data(FATFS *fs, SdCardData *sd_data, const SdCardData *sd_data_s
  */
 char **show_dir_files(const char *dir, int *num_files)
 {
+    DPRINTF("show_dir_files: %s\n", dir);
     char cwdbuf[FF_LFN_BUF] = {0};
     FRESULT fr;
     char const *p_dir;
@@ -997,8 +997,8 @@ char **show_dir_files(const char *dir, int *num_files)
 
     DIR dj;
     FILINFO fno;
-    memset(&dj, 0, sizeof dj);
-    memset(&fno, 0, sizeof fno);
+    // memset(&dj, 0, sizeof dj);
+    // memset(&fno, 0, sizeof fno);
 
     fr = f_findfirst(&dj, &fno, p_dir, "*");
     if (FR_OK != fr)
@@ -1025,6 +1025,71 @@ char **show_dir_files(const char *dir, int *num_files)
     f_closedir(&dj);
 
     return filenames;
+}
+
+// Custom case-insensitive comparison function
+int compare_strings(const void *a, const void *b)
+{
+    const char *str1 = *(const char **)a;
+    const char *str2 = *(const char **)b;
+
+    while (*str1 && *str2 && tolower((unsigned char)*str1) == tolower((unsigned char)*str2))
+    {
+        str1++;
+        str2++;
+    }
+
+    return tolower((unsigned char)*str1) - tolower((unsigned char)*str2);
+}
+
+bool get_dir_files(const char *dir_ptr, const char *allowed_extensions[], char ***files, int *num_files, FATFS *fs_ptr)
+{
+    // Function to count the number of elements in the array
+    int _count_elements(const char *allowed_extensions[])
+    {
+        int count = 0;
+
+        while (allowed_extensions[count][0] != '\0')
+        {
+            count++;
+        }
+
+        return count;
+    }
+    // Check the card first
+    if (!is_sdcard_mounted(fs_ptr))
+    {
+        DPRINTF("SD card not mounted\n");
+        return false;
+    }
+    else
+    {
+        DPRINTF("SD card mounted\n");
+    }
+
+    // Get the list of floppy image files in the directory
+    int unfiltered_num_files = 0;
+    int ext_count = _count_elements(allowed_extensions);
+    // int ext_count = num_extensions;
+    DPRINTF("Number of allowed extensions: %d\n", ext_count);
+    char **file_list = show_dir_files(dir_ptr, &unfiltered_num_files);
+
+    if (!file_list)
+    {
+        DPRINTF("No files found in the directory\n");
+        return false;
+    }
+
+    DPRINTF("Number of files found: %d\n", unfiltered_num_files);
+    // Keep only valid extension files
+    *files = filter(file_list, unfiltered_num_files, num_files, allowed_extensions, ext_count);
+
+    // Sort remaining valid filenames lexicographically
+    qsort(*files, *num_files, sizeof(char *), compare_strings);
+
+    release_memory_files(file_list, unfiltered_num_files); // Free the memory when done
+
+    return true;
 }
 
 /**
@@ -1147,7 +1212,7 @@ int load_rom_from_fs(char *path, char *filename, uint32_t rom_load_offset)
             break; // EOF
 
         // Transform buffer's words from little endian to big endian inline
-        swap_words(buffer, br);
+        CHANGE_ENDIANESS_BLOCK16(buffer, br);
 
         // Transfer buffer to FLASH
         // WARNING! TRANSFER THE INFORMATION IN THE BUFFER AS LITTLE ENDIAN!!!!
@@ -1203,7 +1268,8 @@ int has_allowed_extension(const char *filename, const char **allowed_extensions,
     // Check against each allowed extension
     for (size_t i = 0; i < num_extensions; i++)
     {
-        if (strcmp(lower_ext, allowed_extensions[i]) == 0)
+        const char *lower_allowed = allowed_extensions[i];
+        if (strcmp(lower_ext, lower_allowed) == 0)
         {
             return 1; // Extension is allowed
         }
@@ -1240,11 +1306,12 @@ int has_allowed_extension(const char *filename, const char **allowed_extensions,
 char **filter(char **file_list, int file_count, int *num_files, const char **allowed_extensions, size_t num_extensions)
 {
     int validCount = 0;
-
     // Count valid filenames
     for (int i = 0; i < file_count; i++)
     {
-        if ((file_list[i][0] != '.') && has_allowed_extension(file_list[i], allowed_extensions, num_extensions))
+        bool allowed_ext = has_allowed_extension(file_list[i], allowed_extensions, num_extensions);
+        bool hidden_file = (file_list[i][0] == '.');
+        if (allowed_ext && !hidden_file)
         {
             validCount++;
         }
@@ -1332,10 +1399,10 @@ void store_file_list(char **file_list, int num_files, uint8_t *memory_location)
     *dest_ptr++ = 0xFF;
 
     // Transform buffer's words from little endian to big endian inline
-    swap_words(memory_location, total_size);
+    CHANGE_ENDIANESS_BLOCK16(memory_location, total_size);
 }
 
-FRESULT read_and_trim_file(const char *path, char **content)
+FRESULT read_and_trim_file(const char *path, char **content, size_t max_length)
 {
     FIL fil;              // File object
     FRESULT fr;           // FatFs return code
@@ -1410,6 +1477,12 @@ FRESULT read_and_trim_file(const char *path, char **content)
     // Close the file
     f_close(&fil);
     DPRINTF("File content: '%s'\n", *content);
+
+    // Trim content to the maximum length
+    if (strlen(*content) > max_length)
+    {
+        (*content)[max_length] = '\0';
+    }
     return FR_OK;
 }
 /**
@@ -1848,4 +1921,54 @@ void extract_filename(const char *url, char filename[256])
         i--;
     }
     strcpy(filename, url + i + 1);
+}
+
+/**
+ * @brief Check if the filename is a read-write floppy disk image file with the ".rw" extension.
+ *
+ * This file contains functions related to file system operations in the Atari ST sidecart
+ * emulation project. It provides a utility function to check if a given filename is a
+ * read-write floppy disk image file.
+ *
+ * @param filename The name of the file to check.
+ * @return True if the filename ends with ".rw", indicating a read-write floppy disk image file.
+ *         False otherwise.
+ */
+bool is_floppy_rw(const char *filename)
+{
+    return (strlen(filename) >= 3 && strcmp(filename + strlen(filename) - 3, ".rw") == 0);
+}
+
+/**
+ * @brief Change the SPI speed for the SD card.
+ *
+ * This function changes the SPI speed for the SD card based on the configured baud rate.
+ * It retrieves the baud rate from the configuration entry and updates the SPI baud rate accordingly.
+ * If the baud rate is invalid or not found, it uses the default value.
+ */
+void change_spi_speed()
+{
+    size_t sd_num = sd_get_num();
+    if (sd_num > 0)
+    {
+        ConfigEntry *sd_baud_rate_kb = find_entry(PARAM_SD_BAUD_RATE_KB);
+        if (sd_baud_rate_kb != NULL)
+        {
+            int baud_rate = atoi(sd_baud_rate_kb->value);
+            if (baud_rate > 0)
+            {
+                DPRINTF("Changing SD card baud rate to %i\n", baud_rate);
+                sd_card_t *sd_card = sd_get_by_num(sd_num - 1);
+                sd_card->spi_if_p->spi->baud_rate = baud_rate * 1000;
+            }
+            else
+            {
+                DPRINTF("Invalid baud rate. Using default value\n");
+            }
+        }
+    }
+    else
+    {
+        DPRINTF("SD card not found\n");
+    }
 }

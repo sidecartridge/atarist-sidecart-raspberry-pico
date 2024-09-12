@@ -11,8 +11,10 @@
 
 #include "sd_card.h"
 #include "f_util.h"
+#include "hw_config.h"
 
 #include "config.h"
+#include "memfunc.h"
 
 #define GEMDOS_FILE_ATTRIB_VOLUME_LABEL 8
 
@@ -20,6 +22,9 @@
 #define SPF_MAX 9
 
 #define MAX_FOLDER_LENGTH 128 // Max length of the folder names
+
+#define MAX_WIFI_PASSWORD_LENGTH 64
+#define MAX_RESCUE_ROM_NAME_LENGTH 256
 
 #define STORAGE_POLL_INTERVAL 30000
 
@@ -95,7 +100,7 @@ void release_memory_files(char **files, int num_files);
 int load_rom_from_fs(char *path, char *filename, uint32_t rom_load_offset);
 char **filter(char **file_list, int file_count, int *num_files, const char **allowed_extensions, size_t num_extensions);
 void store_file_list(char **file_list, int num_files, uint8_t *memory_location);
-FRESULT read_and_trim_file(const char *path, char **content);
+FRESULT read_and_trim_file(const char *path, char **content, size_t max_length);
 void split_fullpath(const char *fullPath, char *drive, char *folders, char *filePattern);
 void back_2_forwardslash(char *path);
 void forward_2_backslash(char *path);
@@ -107,5 +112,8 @@ void get_attribs_st_str(char attribs_str[6], uint8_t st_attribs);
 void upper_fname(const char *originalName, char upperName[14]);
 void filter_fname(const char *originalName, char filteredName[14]);
 void extract_filename(const char *url, char filename[256]);
+bool get_dir_files(const char *dir, const char *allowed_extensions[], char ***files, int *num_files, FATFS *fs_ptr);
+bool is_floppy_rw(const char *filename);
+void change_spi_speed();
 
 #endif // FILESYS_H
