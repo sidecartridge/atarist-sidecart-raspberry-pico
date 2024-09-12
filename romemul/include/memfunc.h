@@ -264,7 +264,7 @@
             (void)xip_ctrl_hw->stream_fifo;                                \
         xip_ctrl_hw->stream_addr = (uint32_t) & (emulROM)[0];              \
         xip_ctrl_hw->stream_ctr = (emulROM_length) / 2;                    \
-        const uint dma_chan = 0;                                           \
+        const uint dma_chan = dma_claim_unused_channel(true);              \
         extern uint16_t __rom_in_ram_start__;                              \
         dma_channel_config cfg = dma_channel_get_default_config(dma_chan); \
         channel_config_set_read_increment(&cfg, false);                    \
@@ -278,6 +278,10 @@
             (emulROM_length) / 2,          /* Transfer count */            \
             true                           /* Start immediately! */        \
         );                                                                 \
+        while (dma_channel_is_busy(dma_chan))                              \
+        {                                                                  \
+            tight_loop_contents();                                         \
+        }                                                                  \
     } while (0)
 
 #endif // MEMFUNC_H
