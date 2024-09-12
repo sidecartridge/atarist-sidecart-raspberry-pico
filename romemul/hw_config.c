@@ -27,8 +27,6 @@ socket, which SPI it is driven by, and how it is wired.
 
 #include <string.h>
 //
-#include "my_debug.h"
-//
 #include "hw_config.h"
 //
 #include "ff.h" /* Obtains integer types */
