@@ -27,7 +27,7 @@ void usb_mass_init(void)
         tud_task(); // tinyusb device task
         cdc_task();
     }
-    watchdog_reboot(0, SRAM_END, 10);
+    reboot();
     while (1)
         ;
 }

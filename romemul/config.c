@@ -5,31 +5,33 @@
 static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {PARAM_BOOT_FEATURE, TYPE_STRING, "CONFIGURATOR"},
     {PARAM_CONFIGURATOR_DARK, TYPE_BOOL, "false"},
-    {"DELAY_ROM_EMULATION", TYPE_BOOL, "false"},
+    {PARAM_DELAY_ROM_EMULATION, TYPE_BOOL, "false"},
     {PARAM_DOWNLOAD_TIMEOUT_SEC, TYPE_INT, "60"},
     {PARAM_FILE_COUNT_ENABLED, TYPE_BOOL, "false"},
     {PARAM_FLOPPIES_FOLDER, TYPE_STRING, "/floppies"},
     {PARAM_FLOPPY_BOOT_ENABLED, TYPE_BOOL, "true"},
     {PARAM_FLOPPY_BUFFER_TYPE, TYPE_INT, "0"},
     {PARAM_FLOPPY_DB_URL, TYPE_STRING, "http://ataristdb.sidecartridge.com"},
-    {"FLOPPY_IMAGE_A", TYPE_STRING, ""},
-    {"FLOPPY_IMAGE_B", TYPE_STRING, ""},
+    {PARAM_FLOPPY_IMAGE_A, TYPE_STRING, ""},
+    {PARAM_FLOPPY_IMAGE_B, TYPE_STRING, ""},
     {PARAM_FLOPPY_XBIOS_ENABLED, TYPE_BOOL, "true"},
+    {PARAM_FLOPPY_NET_TOUT_SEC, TYPE_INT, "45"},
     {PARAM_GEMDRIVE_BUFF_TYPE, TYPE_INT, "0"},
     {PARAM_GEMDRIVE_DRIVE, TYPE_STRING, "C"},
     {PARAM_GEMDRIVE_FOLDERS, TYPE_STRING, "/hd"},
     {PARAM_GEMDRIVE_RTC, TYPE_BOOL, "true"},
     {PARAM_GEMDRIVE_TIMEOUT_SEC, TYPE_INT, "45"},
-    {"HOSTNAME", TYPE_STRING, "sidecart"},
+    {PARAM_HOSTNAME, TYPE_STRING, "sidecart.local"},
     {PARAM_LASTEST_RELEASE_URL, TYPE_STRING, LATEST_RELEASE_URL},
     {PARAM_MENU_REFRESH_SEC, TYPE_INT, "3"},
     {PARAM_NETWORK_STATUS_SEC, TYPE_INT, NETWORK_POLL_INTERVAL_STR},
+    {PARAM_ROMS_CSV_URL, TYPE_STRING, "http://roms.sidecartridge.com/roms.csv"},
     {PARAM_ROMS_FOLDER, TYPE_STRING, "/roms"},
     {PARAM_ROMS_YAML_URL, TYPE_STRING, "http://roms.sidecartridge.com/roms.json"},
-    {"RTC_NTP_SERVER_HOST", TYPE_STRING, "pool.ntp.org"},
-    {"RTC_NTP_SERVER_PORT", TYPE_INT, "123"},
-    {"RTC_TYPE", TYPE_STRING, "SIDECART"},
-    {"RTC_UTC_OFFSET", TYPE_STRING, "+1"},
+    {PARAM_RTC_NTP_SERVER_HOST, TYPE_STRING, "pool.ntp.org"},
+    {PARAM_RTC_NTP_SERVER_PORT, TYPE_INT, "123"},
+    {PARAM_RTC_TYPE, TYPE_STRING, "SIDECART"},
+    {PARAM_RTC_UTC_OFFSET, TYPE_STRING, "+1"},
     {PARAM_SAFE_CONFIG_REBOOT, TYPE_BOOL, "true"},
     {PARAM_SD_MASS_STORAGE, TYPE_BOOL, "true"},
     {PARAM_SD_BAUD_RATE_KB, TYPE_INT, "12500"},
@@ -377,6 +379,17 @@ void swap_data(uint16_t *dest_ptr_word)
     }
 }
 
+/**
+ * @brief Handles the action when the SELECT button is pressed.
+ *
+ * This function is responsible for determining the action to be taken when the SELECT button is pressed.
+ * If the safe_config_reboot parameter is true, it checks if the write_config_only_once parameter is also true.
+ * If both conditions are met, it sets the boot feature parameter to "CONFIGURATOR" and writes all entries.
+ * If the safe_config_reboot parameter is false, it initiates a watchdog reboot and enters an infinite loop.
+ *
+ * @param safe_config_reboot A boolean indicating whether a safe configuration reboot is required.
+ * @param write_config_only_once A boolean indicating whether the configuration should be written only once.
+ */
 void select_button_action(bool safe_config_reboot, bool write_config_only_once)
 {
     if (safe_config_reboot)
@@ -393,9 +406,35 @@ void select_button_action(bool safe_config_reboot, bool write_config_only_once)
     {
 
         DPRINTF("SELECT button pressed. Launch configurator.\n");
-        watchdog_reboot(0, SRAM_END, 10);
+        put_string(PARAM_BOOT_FEATURE, "CONFIGURATOR");
+        write_all_entries();
+        reboot();
         while (1)
             ;
+    }
+}
+
+void reboot()
+{
+    // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+    DPRINTF("Rebooting...\n");
+    //    reset_block(RESETS_RESET_DMA_BITS);
+    DPRINTF("Requesting AIRCR_Register reset...\n");
+    AIRCR_Register = 0x5FA0004;
+    DPRINTF("Now ASM code to reset...\n");
+    asm volatile(
+        "mov r0, %[start]\n"
+        "ldr r1, =%[vtable]\n"
+        "str r0, [r1]\n"
+        "ldmia r0, {r0, r1}\n"
+        "msr msp, r0\n"
+        "bx r1\n"
+        :
+        : [start] "r"(XIP_BASE + 0x100), [vtable] "X"(PPB_BASE + M0PLUS_VTOR_OFFSET)
+        :);
+    while (1)
+    {
+        DPRINTF("Reboot failed.\n");
     }
 }
 
@@ -454,61 +493,6 @@ void blink_morse(char ch)
     blink_morse_container();
 }
 
-/**
- * Swaps the bytes in each word (16-bit) of a given block of memory.
- * This function is used for changing the endianness of data
- *
- * @param dest_ptr_word A pointer to the memory block where words will be swapped.
- * @param size_in_bytes The total size of the memory block in bytes.
- *
- * Note: The function assumes that 'size_in_bytes' is an even number, as it processes
- *       16-bit words. If 'size_in_bytes' is odd, the last byte will not be processed.
- */
-void swap_words(void *dest_ptr_word, uint16_t size_in_bytes)
-{
-    uint16_t *word_ptr = (uint16_t *)dest_ptr_word;
-    uint16_t total_words = size_in_bytes / 2;
-    for (uint16_t j = 0; j < total_words; ++j)
-    {
-        uint16_t value = word_ptr[j];              // Read the current word once
-        word_ptr[j] = (value << 8) | (value >> 8); // Swap the bytes and write back
-    }
-}
-
-void null_words(void *dest_ptr_word, uint16_t size_in_bytes)
-{
-    memset(dest_ptr_word, 0, size_in_bytes);
-}
-
-int copy_firmware_to_RAM(uint16_t *emulROM, int emulROM_length)
-{
-    // Need to initialize the ROM4 section with the firmware data
-    extern uint16_t __rom_in_ram_start__;
-    // uint16_t *rom4_dest = &__rom_in_ram_start__;
-    // volatile uint16_t *rom4_src = emulROM;
-    // for (int i = 0; i < emulROM_length; i++)
-    // {
-    //     uint16_t value = *rom4_src++;
-    //     *rom4_dest++ = value;
-    // }
-    memcpy(&__rom_in_ram_start__, emulROM, emulROM_length * sizeof(uint16_t));
-    DPRINTF("Emulation firmware copied to RAM.\n");
-    return 0;
-}
-
-int erase_firmware_from_RAM()
-{
-    // Need to initialize the ROM4 section with the firmware data
-    extern uint16_t __rom_in_ram_start__;
-    volatile uint32_t *rom4_dest = (uint32_t *)&__rom_in_ram_start__;
-    for (int i = 0; i < ROM_SIZE_LONGWORDS * ROM_BANKS; i++)
-    {
-        *rom4_dest++ = 0x0;
-    }
-    DPRINTF("RAM for the firmware zeroed.\n");
-    return 0;
-}
-
 void blink_error()
 {
     // If we are here, something went wrong. Flash 'E' in morse code until pressed SELECT or RESET.
@@ -544,12 +528,4 @@ char *bin_2_str(int number)
     binaryStr[numBits] = '\0'; // Null-terminate the string
 
     return binaryStr;
-}
-
-// Change endianess of a 32 bit value by swapping the words in the longword in memory
-void set_and_swap_longword(uint32_t memory_address, uint32_t longword_value)
-{
-    uint16_t *address = (uint16_t *)(memory_address);
-    address[0] = (longword_value >> 16) & 0xFFFF; // Most significant 16 bits
-    address[1] = longword_value & 0xFFFF;         // Least significant 16 bit
 }
