@@ -10,6 +10,7 @@
 #define USB_MASS_H
 
 #include "debug.h"
+#include "constants.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,6 +27,8 @@
 
 // For resetting the USB controller
 #include "hardware/resets.h"
+
+#include "include/config.h"
 
 #define USBDRIVE_READ_ONLY false
 
