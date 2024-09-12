@@ -1,10 +1,24 @@
 #!/bin/bash
 
 # Install SDK needed for building
+echo "Installing SDKs..."
 git submodule init
 git submodule update --init --recursive
 
+# Pin the building versions
+echo "Pinning the SDK versions..."
+cd fatfs-sdk
+git checkout tags/v1.1.1
+
+cd ../pico-sdk
+git checkout tags/1.5.1
+
+cd ../pico-extras
+git checkout tags/sdk-1.5.1
+cd ..
+
 # This is a dirty hack to guarantee that I can use the fatfs-sdk submodule
+echo "Patching the fatfs-sdk... to use chmod"
 sed -i.bak 's/#define FF_USE_CHMOD[[:space:]]*0/#define FF_USE_CHMOD 1/' fatfs-sdk/src/ff15/source/ffconf.h && mv fatfs-sdk/src/ff15/source/ffconf.h.bak .
 
 # Set the environment variables of the SDKs
