@@ -11,6 +11,14 @@
 #include <stdint.h>
 #include "pico/stdlib.h"
 
+// Size of the shared variables of the shared functions
+#define SHARED_VARIABLE_SHARED_FUNCTIONS_SIZE 16 // Leave a gap for the shared variables of the shared functions
+
+// Index for the shared variables
+#define SHARED_VARIABLE_HARDWARE_TYPE 0
+#define SHARED_VARIABLE_SVERSION 1
+#define SHARED_VARIABLE_BUFFER_TYPE 2
+
 // GPIO constants for SELECT button.
 extern const uint32_t SELECT_GPIO;
 
@@ -92,6 +100,12 @@ extern const uint32_t CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES;
 // Configuration files constants.
 extern const char WIFI_PASS_FILE_NAME[];
 extern const char ROM_RESCUE_MODE_FILE_NAME[];
+
+// Timeout before resetting the device.
+#define WATCHDOG_RESET_DELAY_MS 100
+
+// AIRCR.SYSRESETREQ
+#define AIRCR_Register (*((volatile uint32_t *)(PPB_BASE + 0x0ED0C)))
 
 // Morse code
 #define DOT_DURATION_MS 150
