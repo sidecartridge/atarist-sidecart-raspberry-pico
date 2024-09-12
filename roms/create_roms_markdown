@@ -13,15 +13,18 @@ sorted_data = sorted(data, key=lambda x: x["name"].lower())
 with open("roms.md", "w") as output_file:
     # Write the header
     output_file.write(
-        """---
-layout: page
+        """----
+layout: basic
 title: ROMS list
 permalink: /roms/
+date: 2024-06-01T00:00:00Z
+meta_description: "List of available ROMs for Atari ST computers"
+
 ---
 
 ## List of ROMs available
 
-You can find the full list in the JSON file [here](http://roms.sidecart.xyz/roms.json).
+You can find the full list in the JSON file [here](http://roms.sidecartridge.com/roms.json).
 
 | Name | Description | Size (KB) |
 | --- | --- | --- |
