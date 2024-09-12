@@ -35,6 +35,7 @@ static int rom_file_selected = -1;
 static bool list_floppies = false;
 static int floppy_file_selected = -1;
 static bool floppy_read_write = true;
+static int floppy_drive = -1;
 
 // Query floppy database variables
 static bool query_floppy_db = false;
@@ -55,7 +56,7 @@ static bool reset_default = false;
 static bool scan_network = false;
 static bool disconnect_network = false;
 static bool restart_network = false;
-static bool get_json_file = false;
+static bool get_rom_catalog = false;
 
 // ROMs in network variables
 static int rom_network_selected = -1;
@@ -136,7 +137,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             DPRINTF("SD card not mounted. Cannot load ROM.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         break;
     case LIST_ROMS:
@@ -146,7 +147,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         if (!microsd_mounted)
         {
             DPRINTF("SD card not mounted. Cannot list ROMs.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         else
         {
@@ -220,6 +221,11 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         reset_default = true; // now the active loop should stop and reset the config
         break;
+    case REBOOT:
+        // Reboot the device
+        DPRINTF("Command REBOOT (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        reboot();
+        break;
     case LAUNCH_SCAN_NETWORKS:
         // Scan the networks and return the results
         DPRINTF("Command LAUNCH_SCAN_NETWORKS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
@@ -263,40 +269,38 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         // Download the JSON file of the ROMs from the URL
         DPRINTF("Command GET_ROMS_JSON_FILE (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        get_json_file = true; // now in the active loop should stop and download the JSON file
+        get_rom_catalog = true; // now in the active loop should stop and download the JSON file
         break;
     case LOAD_FLOPPY_RO:
         // Load the floppy image in ro mode passed as argument in the payload
         DPRINTF("Command LOAD_FLOPPY_RO (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        value_payload = protocol->payload[4] | (protocol->payload[5] << 8);
-        DPRINTF("Value: %d\n", value_payload);
         if (microsd_mounted)
         {
-            floppy_file_selected = value_payload;
+            floppy_file_selected = protocol->payload[4] | (protocol->payload[5] << 8);
             floppy_read_write = false;
+            floppy_drive = protocol->payload[6] | (protocol->payload[7] << 8);
         }
         else
         {
             DPRINTF("SD card not mounted. Cannot load ROM.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         break;
     case LOAD_FLOPPY_RW:
         // Load the floppy image in rw mode passed as argument in the payload
         DPRINTF("Command LOAD_FLOPPY_RW (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        value_payload = protocol->payload[4] | (protocol->payload[5] << 8);
-        DPRINTF("Value: %d\n", value_payload);
         if (microsd_mounted)
         {
-            floppy_file_selected = value_payload;
+            floppy_file_selected = protocol->payload[4] | (protocol->payload[5] << 8);
             floppy_read_write = true;
+            floppy_drive = protocol->payload[6] | (protocol->payload[7] << 8);
         }
         else
         {
             DPRINTF("SD card not mounted. Cannot load ROM.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         break;
     case LIST_FLOPPIES:
@@ -306,7 +310,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         if (!microsd_mounted)
         {
             DPRINTF("SD card not mounted. Cannot list Floppies.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
         }
         else
         {
@@ -344,7 +348,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         else
         {
             DPRINTF("SD card not mounted. Cannot save the image to download.\n");
-            null_words((uint16_t *)memory_area, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
+            memset(memory_area, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES);
             floppy_image_selected_status = 1; // Error: SD card not mounted
             floppy_image_selected = 0;
         }
@@ -375,7 +379,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         DPRINTF("Num sides: %d\n", floppy_header.num_sides);
         floppy_header.overwrite = protocol->payload[12] | (protocol->payload[13] << 8);
         DPRINTF("Overwrite: %d\n", floppy_header.overwrite);
-        swap_words(&protocol->payload[sizeof(floppy_header.volume_name)], (sizeof(floppy_header.volume_name) + sizeof(floppy_header.floppy_name)));
+        CHANGE_ENDIANESS_BLOCK16(&protocol->payload[sizeof(floppy_header.volume_name)], (sizeof(floppy_header.volume_name) + sizeof(floppy_header.floppy_name)));
         // Now read the volume name until a zero is found
         int i = 0;
         for (i = 0; i < 14; i++)
@@ -457,7 +461,7 @@ int init_firmware()
     init_romemul(NULL, dma_irq_handler_lookup_callback, false);
 
     // Copy the firmware to RAM
-    copy_firmware_to_RAM((uint16_t *)firmwareROM, firmwareROM_length);
+    COPY_FIRMWARE_TO_RAM((uint16_t *)firmwareROM, firmwareROM_length);
 
     // Reserve memory for the protocol parser
     init_protocol_parser();
@@ -519,7 +523,7 @@ int init_firmware()
     SdCardData sd_data = {0}; // Lazy initalization
     if (microsd_mounted)
     {
-        FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
+        FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content, MAX_WIFI_PASSWORD_LENGTH);
         if (err == FR_OK)
         {
             DPRINTF("Wifi password file found. Content: %s\n", wifi_password_file_content);
@@ -532,7 +536,7 @@ int init_firmware()
 
     if (microsd_mounted)
     {
-        FRESULT err = read_and_trim_file(ROM_RESCUE_MODE_FILE_NAME, &rom_rescue_mode_file_content);
+        FRESULT err = read_and_trim_file(ROM_RESCUE_MODE_FILE_NAME, &rom_rescue_mode_file_content, MAX_RESCUE_ROM_NAME_LENGTH);
         if (err == FR_OK)
         {
             DPRINTF("ROM rescue mode file found. Content: %s\n", rom_rescue_mode_file_content);
@@ -574,22 +578,19 @@ int init_firmware()
     u_int32_t storage_poll_counter = 0;
     while ((rom_file_selected < 0) &&
            (rom_network_selected < 0) &&
-           (floppy_file_selected < 0) &&
            (!reset_default) && (!rtc_boot) && (!gemdrive_boot) &&
            (rom_rescue_mode_file_content == NULL))
     {
         tight_loop_contents();
 
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_lwip_begin();
         network_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
-        cyw43_arch_lwip_end();
-#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
-        cyw43_arch_lwip_begin();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
 #endif
+        cyw43_arch_lwip_begin();
+        cyw43_arch_lwip_check();
+        cyw43_arch_lwip_end();
+        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
+
         if ((time_us_64() - wifi_scan_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
         {
             if (get_network_connection_status() == DISCONNECTED)
@@ -738,7 +739,7 @@ int init_firmware()
             sd_data_mem->sd_free_space = (sd_data.sd_free_space >> 16) | (sd_data.sd_free_space << 16);
             sd_data_mem->sd_size = (sd_data.sd_size >> 16) | (sd_data.sd_size << 16);
 
-            swap_words(memory_area + RANDOM_SEED_SIZE, MAX_FOLDER_LENGTH * 3);
+            CHANGE_ENDIANESS_BLOCK16(memory_area + RANDOM_SEED_SIZE, MAX_FOLDER_LENGTH * 3);
 
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
@@ -757,7 +758,7 @@ int init_firmware()
                     DPRINTF("New version available: %s\n", latest_version);
                     strcpy((char *)(memory_area + RANDOM_SEED_SIZE), latest_version);
                     // Convert to motorla endian
-                    swap_words(memory_area + RANDOM_SEED_SIZE, strlen(latest_version));
+                    CHANGE_ENDIANESS_BLOCK16(memory_area + RANDOM_SEED_SIZE, strlen(latest_version));
                 }
                 else
                 {
@@ -772,47 +773,72 @@ int init_firmware()
         }
 
         // Download the json file
-        if (get_json_file)
+        if (get_rom_catalog)
         {
-            get_json_file = false;
+            get_rom_catalog = false;
+
+            // Free dynamically allocated memory first just in case
+            if (filtered_num_network_files > 0)
+            {
+                RomInfo *current = network_files;
+                // Free dynamically allocated memory
+                while (current != NULL)
+                {
+                    RomInfo *next = current->next;
+                    freeRomItem(current);
+                    free(current);
+                    current = next;
+                }
+            }
 
             // Clean memory space
             memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
 
             // Get the URL from the configuration
-            char *url = find_entry(PARAM_ROMS_YAML_URL)->value;
+            // char *url = find_entry(PARAM_ROMS_YAML_URL)->value;
+            char *url = find_entry(PARAM_ROMS_CSV_URL)->value;
 
             // The the JSON file info
-            get_json_files(&network_files, &filtered_num_network_files, url);
-
-            // Iterate over the RomInfo items and populate the names array
-            char *dest_ptr = (char *)(memory_area + RANDOM_SEED_SIZE);
-            for (int i = 0; i < filtered_num_network_files; i++)
+            err_t err = get_rom_catalog_file(&network_files, &filtered_num_network_files, url);
+            if (err == ERR_OK)
             {
-                // Ensure the name is padded with spaces up to position 60
-                char padded_name[51]; // 50 characters for padding + 1 for null terminator
-                snprintf(padded_name, sizeof(padded_name), "%-50s", network_files[i].name);
+                // Iterate over the RomInfo items and populate the names array
+                char *dest_ptr = (char *)(memory_area + RANDOM_SEED_SIZE);
+                RomInfo *current = network_files;
+                for (int i = 0; i < filtered_num_network_files; i++)
+                {
+                    DPRINTF("Name: %s, tags: %s, size: %d\n", current->name, current->tags, current->size_kb);
+                    // Ensure the name is padded with spaces up to position 60
+                    char padded_name[51]; // 50 characters for padding + 1 for null terminator
+                    snprintf(padded_name, sizeof(padded_name), "%-50s", current->name);
 
-                char padded_tags[26]; // 25 characters for padding + 1 for null terminator
-                snprintf(padded_tags, sizeof(padded_tags), "%-25s", network_files[i].tags);
+                    char padded_tags[26]; // 25 characters for padding + 1 for null terminator
+                    snprintf(padded_tags, sizeof(padded_tags), "%-25s", current->tags);
 
-                char padded_size[6]; // 5 characters for padding + 1 for null terminator
-                snprintf(padded_size, sizeof(padded_size), "%5d", network_files[i].size_kb);
+                    char padded_size[6]; // 5 characters for padding + 1 for null terminator
+                    snprintf(padded_size, sizeof(padded_size), "%5d", current->size_kb);
 
-                // Display padded content
-                sprintf(dest_ptr, "%s%s%s\0", padded_name, padded_tags, padded_size);
-                dest_ptr += strlen(dest_ptr) + 1;
-            }
-            // If dest_ptr is odd, add a 0x00 byte to align the next string
-            if ((uintptr_t)dest_ptr & 1)
-            {
+                    // Display padded content
+                    sprintf(dest_ptr, "%s%s%s\0", padded_name, padded_tags, padded_size);
+                    dest_ptr += strlen(dest_ptr) + 1;
+
+                    current = current->next;
+                }
+                // If dest_ptr is odd, add a 0x00 byte to align the next string
+                if ((uintptr_t)dest_ptr & 1)
+                {
+                    *dest_ptr++ = 0x00;
+                } // Add an additional 0x00 word to mark the end of the list
                 *dest_ptr++ = 0x00;
-            } // Add an additional 0x00 word to mark the end of the list
-            *dest_ptr++ = 0x00;
-            *dest_ptr++ = 0x00;
+                *dest_ptr++ = 0x00;
 
-            // Swap the words to motorola endian format: BIG ENDIAN
-            network_swap_json_data((__uint16_t *)(memory_area + RANDOM_SEED_SIZE));
+                // Swap the words to motorola endian format: BIG ENDIAN
+                CHANGE_ENDIANESS_BLOCK16(memory_area + RANDOM_SEED_SIZE, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
+            }
+            else
+            {
+                DPRINTF("Error getting the ROM catalog: %d\n", err);
+            }
 
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
@@ -945,7 +971,7 @@ int init_firmware()
                     }
 
                     // Swap the words to motorola endian format: BIG ENDIAN
-                    swap_words((__uint16_t *)(memory_area + RANDOM_SEED_SIZE), CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
+                    CHANGE_ENDIANESS_BLOCK16(memory_area + RANDOM_SEED_SIZE, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
                 }
                 else
                 {
@@ -1051,7 +1077,10 @@ int init_firmware()
                 }
                 else
                 {
-                    put_string("FLOPPY_IMAGE_A", dest_filename);
+                    // When downloading a floppy image, the floppy image B is cleared
+                    // to avoid conflicts
+                    put_string(PARAM_FLOPPY_IMAGE_A, dest_filename);
+                    put_string(PARAM_FLOPPY_IMAGE_B, "");
                     // put_string(PARAM_BOOT_FEATURE, "FLOPPY_EMULATOR");
                     // write_all_entries();
                 }
@@ -1066,6 +1095,95 @@ int init_firmware()
             *((volatile uint16_t *)(memory_area + 4)) = floppy_image_selected_status;
 
             DPRINTF("Random token: %x\n", random_token);
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
+
+        if (floppy_file_selected > 0)
+        {
+            DPRINTF("Floppy file selected: %d in disk %c (%d)\n", floppy_file_selected, floppy_drive == 0 ? 'A' : 'B', floppy_drive);
+
+            if (floppy_drive < 0)
+            {
+                DPRINTF("Floppy drive not selected\n");
+            }
+            else
+            {
+
+                char *old_floppy = NULL;
+                char *filename = NULL;
+                char *dir = find_entry(PARAM_FLOPPIES_FOLDER)->value;
+                filename = filtered_local_list[floppy_file_selected - 1];
+
+                size_t filename_length = strlen(filename);
+                bool is_msa = filename_length > 4 &&
+                              (strcasecmp(&filename[filename_length - 4], ".MSA") == 0);
+
+                DPRINTF("Floppy drive: %c\n", floppy_drive == 0 ? 'A' : 'B');
+                DPRINTF("Floppy folder: %s\n", dir);
+                DPRINTF("Floppy file: %s\n", filename);
+                DPRINTF("Floppy file length: %d\n", filename_length);
+                DPRINTF("Floppy file is MSA: %s\n", is_msa ? "true" : "false");
+
+                if (is_msa)
+                {
+                    // Create a filename and change the extension to .ST
+                    char *stFilename = malloc(filename_length + 1);
+                    strcpy(stFilename, filename);
+                    strcpy(&stFilename[filename_length - 4], ".ST");
+                    DPRINTF("MSA to ST: %s -> %s\n", filename, stFilename);
+                    dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+                    FRESULT err = MSA_to_ST(dir, filename, stFilename, true);
+                    dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+                    if (err != FR_OK)
+                    {
+                        DPRINTF("MSA to ST error: %d\n", err);
+                    }
+                    else
+                    {
+                        old_floppy = stFilename;
+                    }
+                }
+                else
+                {
+                    old_floppy = filename;
+                }
+
+                if (old_floppy != NULL)
+                {
+                    DPRINTF("Load file: %s\n", old_floppy);
+                    char *new_floppy = NULL;
+                    // Check if old_floppy ends with ".rw"
+                    bool use_existing_rw = (strlen(old_floppy) > 3 && strcmp(&old_floppy[strlen(old_floppy) - 3], ".rw") == 0);
+                    if (floppy_read_write && !use_existing_rw)
+                    {
+                        new_floppy = malloc(strlen(old_floppy) + strlen(".rw") + 1); // Allocate space for the old string, the new suffix, and the null terminator
+                        sprintf(new_floppy, "%s.rw", old_floppy);                    // Create the new string with the .rw suffix
+                        dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
+                        FRESULT result = copy_file(dir, old_floppy, new_floppy, false); // Do not overwrite if exists
+                        dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
+                    }
+                    else
+                    {
+                        new_floppy = strdup(old_floppy);
+                    }
+                    DPRINTF("Floppy Read/Write: %s\n", floppy_read_write ? "true" : "false");
+
+                    if (floppy_drive == 0)
+                    {
+                        put_string(PARAM_FLOPPY_IMAGE_A, new_floppy);
+                    }
+                    else
+                    {
+                        put_string(PARAM_FLOPPY_IMAGE_B, new_floppy);
+                    }
+                    put_string(PARAM_BOOT_FEATURE, "FLOPPY_EMULATOR");
+                    write_all_entries();
+
+                    free(new_floppy);
+                    fflush(stdout);
+                }
+            }
+            floppy_file_selected = -1;
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
@@ -1120,18 +1238,35 @@ int init_firmware()
     if (rom_network_selected > 0)
     {
         DPRINTF("ROM network selected: %d\n", rom_network_selected);
-        err_t res = download_rom(network_files[rom_network_selected - 1].url, FLASH_ROM_LOAD_OFFSET);
+        RomInfo *current = network_files;
+        for (size_t i = 0; i < rom_network_selected - 1; i++)
+        {
+            current = current->next;
+        }
+        const char *url = find_entry(PARAM_ROMS_CSV_URL)->value;
+        // Split the url in parts
+        UrlParts url_parts;
+        int url_parts_err = split_url(url, &url_parts);
+
+        char *full_url = NULL;
+        // Check if the current->url starts with "http"
+        if (strncmp(current->url, "http", 4) == 0)
+        {
+            full_url = strdup(current->url);
+        }
+        else
+        {
+            // Use sprintf to format and concatenate strings
+            full_url = malloc(strlen(url_parts.protocol) + strlen(url_parts.domain) + strlen(current->url) + 3); // Allocate space for the protocol, the host, the url, and the null terminator
+            sprintf(full_url, "%s://%s/%s", url_parts.protocol, url_parts.domain, current->url);
+        }
+        err_t res = download_rom(full_url, FLASH_ROM_LOAD_OFFSET);
         DPRINTF("Download ROM result: %d\n", res);
+
+        // No need to release the memory used. We are going to reset the board
 
         if (res == ERR_OK)
         {
-            // Free dynamically allocated memory
-            for (int i = 0; i < filtered_num_network_files; i++)
-            {
-                freeRomItem(&network_files[i]);
-            }
-            free(network_files);
-
             put_string(PARAM_BOOT_FEATURE, "ROM_EMULATOR");
             write_all_entries();
 
@@ -1142,81 +1277,6 @@ int init_firmware()
             DPRINTF("Error downloading ROM: %d\n", res);
             // Continue and graciously reset the board
         }
-    }
-
-    if (floppy_file_selected > 0)
-    {
-        DPRINTF("Floppy file selected: %d\n", floppy_file_selected);
-
-        char *old_floppy = NULL;
-        char *filename = NULL;
-        char *dir = find_entry(PARAM_FLOPPIES_FOLDER)->value;
-        filename = filtered_local_list[floppy_file_selected - 1];
-
-        size_t filename_length = strlen(filename);
-        bool is_msa = filename_length > 4 &&
-                      (strcasecmp(&filename[filename_length - 4], ".MSA") == 0);
-
-        DPRINTF("Floppy folder: %s\n", dir);
-        DPRINTF("Floppy file: %s\n", filename);
-        DPRINTF("Floppy file length: %d\n", filename_length);
-        DPRINTF("Floppy file is MSA: %s\n", is_msa ? "true" : "false");
-
-        if (is_msa)
-        {
-            // Create a filename and change the extension to .ST
-            char *stFilename = malloc(filename_length + 1);
-            strcpy(stFilename, filename);
-            strcpy(&stFilename[filename_length - 4], ".ST");
-            DPRINTF("MSA to ST: %s -> %s\n", filename, stFilename);
-            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
-            FRESULT err = MSA_to_ST(dir, filename, stFilename, true);
-            dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
-            if (err != FR_OK)
-            {
-                DPRINTF("MSA to ST error: %d\n", err);
-            }
-            else
-            {
-                old_floppy = stFilename;
-            }
-        }
-        else
-        {
-            old_floppy = filename;
-        }
-
-        if (old_floppy != NULL)
-        {
-            DPRINTF("Load file: %s\n", old_floppy);
-            char *new_floppy = NULL;
-            // Check if old_floppy ends with ".rw"
-            bool use_existing_rw = (strlen(old_floppy) > 3 && strcmp(&old_floppy[strlen(old_floppy) - 3], ".rw") == 0);
-            if (floppy_read_write && !use_existing_rw)
-            {
-                new_floppy = malloc(strlen(old_floppy) + strlen(".rw") + 1); // Allocate space for the old string, the new suffix, and the null terminator
-                sprintf(new_floppy, "%s.rw", old_floppy);                    // Create the new string with the .rw suffix
-                dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, false);
-                FRESULT result = copy_file(dir, old_floppy, new_floppy, false); // Do not overwrite if exists
-                dma_channel_set_irq1_enabled(lookup_data_rom_dma_channel, true);
-            }
-            else
-            {
-                new_floppy = strdup(old_floppy);
-            }
-            DPRINTF("Floppy Read/Write: %s\n", floppy_read_write ? "true" : "false");
-
-            put_string("FLOPPY_IMAGE_A", new_floppy);
-            put_string(PARAM_BOOT_FEATURE, "FLOPPY_EMULATOR");
-            write_all_entries();
-
-            release_memory_files(file_list, num_files);
-            release_memory_files(filtered_local_list, filtered_num_local_files);
-
-            free(new_floppy);
-            fflush(stdout);
-        }
-        *((volatile uint32_t *)(memory_area)) = random_token;
     }
 
     if (rtc_boot)
@@ -1240,5 +1300,5 @@ int init_firmware()
         *((volatile uint32_t *)(memory_area)) = random_token;
     }
     // Release memory from the protocol
-    terminate_protocol_parser();
+    // terminate_protocol_parser();
 }
