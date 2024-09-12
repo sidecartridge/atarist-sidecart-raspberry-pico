@@ -39,24 +39,18 @@ ConnectionStatus get_previous_connection_status()
 void network_swap_auth_data(uint16_t *dest_ptr_word)
 {
     // +2 is for the auth_mode type
-    swap_words(dest_ptr_word, MAX_SSID_LENGTH + MAX_SSID_LENGTH + 2);
+    CHANGE_ENDIANESS_BLOCK16(dest_ptr_word, MAX_SSID_LENGTH + MAX_PASSWORD_LENGTH + 2);
 }
 void network_swap_data(uint16_t *dest_ptr_word, uint16_t total_items)
 {
     // +4 is for the MAGIC and +2 each entry COUNT
-    swap_words(dest_ptr_word, total_items * (MAX_SSID_LENGTH + MAX_BSSID_LENGTH + 2) + 4);
+    CHANGE_ENDIANESS_BLOCK16(dest_ptr_word, total_items * (MAX_SSID_LENGTH + MAX_BSSID_LENGTH + 2) + 4);
 }
 
 void network_swap_connection_data(uint16_t *dest_ptr_word)
 {
     // No need to swap the uint16_t
-    swap_words(dest_ptr_word, sizeof(ConnectionData) - sizeof(uint16_t) * 6);
-}
-
-void network_swap_json_data(uint16_t *dest_ptr_word)
-{
-    // No need to swap the connection status
-    swap_words(dest_ptr_word, 4096);
+    CHANGE_ENDIANESS_BLOCK16(dest_ptr_word, sizeof(ConnectionData) - sizeof(uint16_t) * 6);
 }
 
 uint32_t get_country_code(char *c, char **valid_country_str)
@@ -117,7 +111,7 @@ void network_init()
     DPRINTF("STA network mode enabled\n");
 
     // Set hostname
-    char *hostname = find_entry("HOSTNAME")->value;
+    char *hostname = find_entry(PARAM_HOSTNAME)->value;
     netif_set_hostname(netif_default, hostname + '\0');
     DPRINTF("Hostname: %s\n", hostname);
 
@@ -573,57 +567,16 @@ void show_connection_data(ConnectionData *connection_data)
             connection_data->file_downloading_timeout);
 }
 
-RomInfo parseRomItem(cJSON *json_item)
+static void remove_quotes(char *token)
 {
-    RomInfo item = {0};
-
-    cJSON *url = cJSON_GetObjectItemCaseSensitive(json_item, "url");
-    cJSON *name = cJSON_GetObjectItemCaseSensitive(json_item, "name");
-    cJSON *description = cJSON_GetObjectItemCaseSensitive(json_item, "description");
-    cJSON *tags = cJSON_GetObjectItemCaseSensitive(json_item, "tags");
-    cJSON *size_kb = cJSON_GetObjectItemCaseSensitive(json_item, "size_kb");
-
-    if (cJSON_IsString(url) && url->valuestring)
+    size_t len = strlen(token);
+    if (len > 1 && token[0] == '"' && token[len - 1] == '"')
     {
-        item.url = strdup(url->valuestring);
+        // Shift the string left by one position to remove the opening quote
+        memmove(token, token + 1, len - 2);
+        // Null-terminate the string after removing the closing quote
+        token[len - 2] = '\0';
     }
-    if (cJSON_IsString(name) && name->valuestring)
-    {
-        item.name = strdup(name->valuestring);
-    }
-    if (cJSON_IsString(description) && description->valuestring)
-    {
-        item.description = strdup(description->valuestring);
-    }
-    // The tags is an array, read the array content and concatenate it in a single string
-    if (cJSON_IsArray(tags))
-    {
-        int tags_count = cJSON_GetArraySize(tags);
-        char *tags_str = malloc(256);
-        for (int i = 0; i < tags_count; i++)
-        {
-            cJSON *tag = cJSON_GetArrayItem(tags, i);
-            if (cJSON_IsString(tag) && tag->valuestring)
-            {
-                if (i == 0)
-                {
-                    strcpy(tags_str, tag->valuestring);
-                }
-                else
-                {
-                    strcat(tags_str, ", ");
-                    strcat(tags_str, tag->valuestring);
-                }
-            }
-        }
-        item.tags = tags_str;
-    }
-    if (cJSON_IsNumber(size_kb))
-    {
-        item.size_kb = size_kb->valueint;
-    }
-
-    return item;
 }
 
 void freeRomItem(RomInfo *item)
@@ -636,22 +589,7 @@ void freeRomItem(RomInfo *item)
         free(item->description);
 }
 
-// Comparator function for sorting RomInfo based on 'name' and then 'url'
-int compareRomInfo(const void *a, const void *b)
-{
-    RomInfo *itemA = (RomInfo *)a;
-    RomInfo *itemB = (RomInfo *)b;
-
-    int nameComparison = strcmp(itemA->name, itemB->name);
-    if (nameComparison != 0)
-    {
-        return nameComparison;
-    }
-
-    return strcmp(itemA->url, itemB->url);
-}
-
-static int split_url(const char *url, UrlParts *parts)
+int split_url(const char *url, UrlParts *parts)
 {
     if (!url || !parts)
         return -1;
@@ -812,13 +750,12 @@ char *download_latest_release(const char *url)
     while (!complete)
     {
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_lwip_begin();
-        network_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
-        cyw43_arch_lwip_end();
-#else
-        sleep_ms(100);
+        cyw43_arch_poll();
 #endif
+        cyw43_arch_lwip_begin();
+        cyw43_arch_lwip_check();
+        cyw43_arch_lwip_end();
+        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     char *newline_pos = strchr(buff, '\n');
@@ -856,13 +793,66 @@ char *get_latest_release(void)
     return formatted_release ? formatted_release : latest_release;
 }
 
-void get_json_files(RomInfo **items, int *itemCount, const char *url)
+static char *next_token(char **line_ptr)
 {
-    char *buff = malloc(32768);
+    char *line = *line_ptr;
+    if (!line || *line == '\0')
+        return NULL;
+
+    char *token;
+    if (*line == '"')
+    {
+        // Token starts with a quote, find the closing quote
+        token = ++line;
+        while (*line && (*line != '"' || *(line + 1) == '"'))
+        {
+            if (*line == '"' && *(line + 1) == '"')
+            {
+                // Handle escaped quote
+                memmove(line, line + 1, strlen(line));
+            }
+            line++;
+        }
+        if (*line == '"')
+        {
+            *line = '\0';
+            line++;
+            if (*line == ',')
+                line++;
+        }
+    }
+    else
+    {
+        // Token does not start with a quote, find the next comma
+        token = line;
+        while (*line && *line != ',')
+        {
+            line++;
+        }
+        if (*line)
+        {
+            *line = '\0';
+            line++;
+        }
+    }
+
+    // Trim leading spaces in the next token
+    while (isspace(*line))
+        line++;
+
+    *line_ptr = line;
+    return token;
+}
+
+err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url)
+{
+    char buff[32768] = {0};
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
     bool complete = false;
+    err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
     UrlParts parts;
+    u32_t content_len = 0;
 
     err_t headers(httpc_state_t * connection, void *arg,
                   struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
@@ -874,10 +864,12 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
                 u32_t rx_content_len, u32_t srv_res, err_t err)
 
     {
+        content_len = rx_content_len;
         complete = true;
         if (srv_res != 200)
         {
             DPRINTF("JSON something went wrong. HTTP error: %d\n", srv_res);
+            callback_error = srv_res;
         }
         else
         {
@@ -906,7 +898,7 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
     if (split_url(url, &parts) != 0)
     {
         DPRINTF("Failed to split URL\n");
-        return;
+        return -1;
     }
 
     DPRINTF("Protocol %s\n", parts.protocol);
@@ -934,61 +926,127 @@ void get_json_files(RomInfo **items, int *itemCount, const char *url)
     {
         DPRINTF("HTTP GET failed: %d\n", err);
         free_url_parts(&parts);
-        return;
+        return -1;
     }
     while (!complete)
     {
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_lwip_begin();
         cyw43_arch_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
-#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
-        cyw43_arch_lwip_begin();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
-#else
-        sleep_ms(1000);
 #endif
+        cyw43_arch_lwip_begin();
+        cyw43_arch_lwip_check();
+        cyw43_arch_lwip_end();
+        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     free_url_parts(&parts);
 
-    cJSON *json = cJSON_Parse(buff);
-    if (json != NULL)
+    if (callback_error != ERR_OK)
     {
-
-        *itemCount = cJSON_GetArraySize(json);
-        *items = (RomInfo *)malloc(sizeof(RomInfo) * *itemCount);
-
-        for (int i = 0; i < *itemCount; i++)
-        {
-            cJSON *json_item = cJSON_GetArrayItem(json, i);
-            (*items)[i] = parseRomItem(json_item);
-        }
-
-        // Sort the RomInfo items array
-        qsort(*items, *itemCount, sizeof(RomInfo), compareRomInfo);
-
-        cJSON_Delete(json);
-        free(buff);
-
-        // Print parsed data as a test
-        // for (int i = 0; i < *itemCount; i++)
-        // {
-        //     DPRINTF("URL: %s\n", (*items)[i].url);
-        //     DPRINTF("Name: %s\n", (*items)[i].name);
-        //     DPRINTF("Description: %s\n", (*items)[i].description);
-        //     DPRINTF("Size (KB): %d\n", (*items)[i].size_kb);
-        // }
-
-        // Free dynamically allocated memory
-        // for (int i = 0; i < *itemCount; i++)
-        // {
-        //     freeRomItem(&items[i]);
-        // }
-        // free(items);
+        return callback_error;
     }
+
+    // First, count the number of entries
+    int count = 0;
+    const char *p = buff;
+    for (int i = 0; i < content_len; i++)
+    {
+        if (*p == '\n')
+            count++;
+        p++;
+    }
+    *itemCount = count - 1; // The first line is the header
+
+    DPRINTF("Found %d entries\n", *itemCount);
+    if (*itemCount == 0)
+    {
+        // If no entries found, short circuit and return
+        return -1;
+    }
+
+    RomInfo *current = NULL;
+    // Allocate memory for the first RomInfo structure
+    *items = malloc(sizeof(RomInfo));
+    if (*items == NULL)
+    {
+        DPRINTF("Failed to allocate memory for RomInfo\n");
+        return -1;
+    }
+
+    current = *items; // Point to the first RomInfo structure
+    char *buff_parse = buff;
+    char *line = NULL;
+    // Skip the first line
+    line = strtok(buff_parse, "\n");
+    if (line == NULL)
+    {
+        DPRINTF("No lines found. Empty file.\n");
+        return -1;
+    }
+    // Increment the buff structure position after the line
+    buff_parse += strlen(line) + 1;
+    DPRINTF("Header: %s\n", line);
+    line = strtok(buff_parse, "\n");
+    for (size_t items_count = 0; items_count < *itemCount; items_count++)
+    {
+        if (line == NULL)
+            break; // Ensure line is valid
+        buff_parse += strlen(line) + 1;
+        DPRINTF("Line: %s\n", line);
+        for (size_t token_count = 0; token_count < 5; token_count++)
+        {
+            // Parse the line splitting by comma
+            char *token = next_token(&line);
+            if (!token)
+                break;
+            // DPRINTF("Token(%d): %s\n", token_count, token);
+            switch (token_count)
+            {
+            case 0:
+                current->url = strdup(token);
+                break;
+            case 1:
+                current->name = strdup(token);
+                break;
+                // Ignore the description, we don't use it for now
+                //            case 2:
+                //
+                //                current->description = strdup(token);
+                // break;
+            case 3:
+                current->tags = strdup(token);
+                break;
+            case 4:
+                current->size_kb = atoi(token);
+                break;
+            default:
+                break;
+            }
+            // Increment the buff structure position after the token
+        }
+        // Allocate memory for the next RomInfo structure
+        if (items_count < *itemCount - 1)
+        {
+            RomInfo *next = malloc(sizeof(RomInfo));
+            if (!next)
+            {
+                DPRINTF("Memory allocation failed\n");
+                return -1;
+            }
+            *next = (RomInfo){0};
+            current->next = next;
+            current = next;
+        }
+        else
+        {
+            current->next = NULL;
+        }
+        line = strtok(buff_parse, "\n");
+    }
+    DPRINTF("Parsing complete\n");
+
+    DPRINTF("Returning %d items\n", *itemCount);
+    return callback_error;
 }
 
 int download_rom(const char *url, uint32_t rom_load_offset)
@@ -1124,6 +1182,7 @@ int download_rom(const char *url, uint32_t rom_load_offset)
         return ERR_OK;
     }
     DPRINTF("Downloading ROM image from %s\n", url);
+    fflush(stdout);
     if (split_url(url, &parts) != 0)
     {
         DPRINTF("Failed to split URL\n");
@@ -1178,17 +1237,12 @@ int download_rom(const char *url, uint32_t rom_load_offset)
     {
         tight_loop_contents();
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_lwip_begin();
         cyw43_arch_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
-#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
-        cyw43_arch_lwip_begin();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
-#else
-        sleep_ms(1000);
 #endif
+        cyw43_arch_lwip_begin();
+        cyw43_arch_lwip_check();
+        cyw43_arch_lwip_end();
+        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     free_url_parts(&parts);
@@ -1284,18 +1338,14 @@ err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *u
     }
     while (!complete)
     {
+
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_lwip_begin();
         cyw43_arch_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
-#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
-        cyw43_arch_lwip_begin();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
-#else
-        sleep_ms(1000);
 #endif
+        cyw43_arch_lwip_begin();
+        cyw43_arch_lwip_check();
+        cyw43_arch_lwip_end();
+        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     free_url_parts(&parts);
@@ -1532,17 +1582,12 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
     {
         tight_loop_contents();
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_lwip_begin();
         cyw43_arch_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
-#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
-        cyw43_arch_lwip_begin();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
-#else
-        sleep_ms(1000);
 #endif
+        cyw43_arch_lwip_begin();
+        cyw43_arch_lwip_check();
+        cyw43_arch_lwip_end();
+        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     // Close open file

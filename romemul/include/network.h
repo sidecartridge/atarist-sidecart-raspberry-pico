@@ -18,8 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "cJSON/cJSON.h"
-
 #include "pico/stdlib.h"
 #include "hardware/clocks.h"
 #include "hardware/vreg.h"
@@ -31,9 +29,12 @@
 #include "sd_card.h"
 #include "f_util.h"
 
+#include "memfunc.h"
+
 #define MAX_NETWORKS 100
-#define MAX_SSID_LENGTH 36
+#define MAX_SSID_LENGTH 36 // SSID can have up to 32 characters + null terminator + padding
 #define MAX_BSSID_LENGTH 20
+#define MAX_PASSWORD_LENGTH 68 // Password can have up to 64 characters + null terminator + padding
 #define IPV4_ADDRESS_LENGTH 16
 #define IPV6_ADDRESS_LENGTH 40
 #define WIFI_SCAN_POLL_COUNTER 15 // 15 seconds
@@ -74,9 +75,9 @@ typedef struct
 
 typedef struct
 {
-    char ssid[MAX_SSID_LENGTH];     // SSID to connect
-    char password[MAX_SSID_LENGTH]; // Password
-    uint16_t auth_mode;             // auth mode
+    char ssid[MAX_SSID_LENGTH];         // SSID to connect
+    char password[MAX_PASSWORD_LENGTH]; // Password
+    uint16_t auth_mode;                 // auth mode
 } WifiNetworkAuthInfo;
 
 typedef struct
@@ -116,6 +117,7 @@ typedef struct
     // Ignoring tags as per your request
     char *tags;
     int size_kb;
+    void *next;
 } RomInfo;
 
 typedef struct
@@ -143,7 +145,6 @@ ConnectionStatus get_previous_connection_status();
 void network_swap_auth_data(uint16_t *dest_ptr_word);
 void network_swap_data(uint16_t *dest_ptr_word, uint16_t total_items);
 void network_swap_connection_data(uint16_t *dest_ptr_word);
-void network_swap_json_data(uint16_t *dest_ptr_word);
 
 void network_init();
 void network_scan();
@@ -160,7 +161,9 @@ void get_connection_data(ConnectionData *connection_data);
 void show_connection_data(ConnectionData *connection_data);
 uint16_t get_wifi_scan_poll_secs();
 uint32_t get_network_status_polling_ms();
-void get_json_files(RomInfo **items, int *itemCount, const char *url);
+
+int split_url(const char *url, UrlParts *parts);
+err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url);
 char *get_latest_release(void);
 int download_rom(const char *url, uint32_t rom_load_offset);
 int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag);
