@@ -64,3 +64,4 @@ roms.md
 build/
 dist/
 secrets.sh
+my_fsdata.c
