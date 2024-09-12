@@ -302,67 +302,12 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.21.bin",
-        "name": "Falcon Diagnostic v1.21",
-        "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
-        "tags": [
-            "diagnostic",
-            "tool",
-            "falcon"
-        ],
-        "size_kb": 64
-    },
-    {
-        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.20.bin",
-        "name": "Falcon Diagnostic v1.20",
-        "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
-        "tags": [
-            "diagnostic",
-            "tool",
-            "falcon"
-        ],
-        "size_kb": 64
-    },
-    {
-        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.6.bin",
-        "name": "TT Diagnostic v1.6",
-        "description": "A diagnostic tool tailored for the Atari TT computer series.",
-        "tags": [
-            "diagnostic",
-            "tool",
-            "TT"
-        ],
-        "size_kb": 64
-    },
-    {
         "url": "http://roms.sidecartridge.com/SYSINFO.STC",
         "name": "SYSINFO",
         "description": "System information tool",
         "tags": [
             "system",
             "tool"
-        ],
-        "size_kb": 64
-    },
-    {
-        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.25.bin",
-        "name": "Falcon Diagnostic v1.25",
-        "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
-        "tags": [
-            "diagnostic",
-            "tool",
-            "falcon"
-        ],
-        "size_kb": 128
-    },
-    {
-        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.5.bin",
-        "name": "TT Diagnostic v1.5",
-        "description": "A diagnostic tool tailored for the Atari TT computer series.",
-        "tags": [
-            "diagnostic",
-            "tool",
-            "TT"
         ],
         "size_kb": 64
     },
@@ -375,28 +320,6 @@
             "arcade"
         ],
         "size_kb": 128
-    },
-    {
-        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.4.bin",
-        "name": "TT Diagnostic v1.4",
-        "description": "A diagnostic tool tailored for the Atari TT computer series.",
-        "tags": [
-            "diagnostic",
-            "tool",
-            "TT"
-        ],
-        "size_kb": 64
-    },
-    {
-        "url": "http://roms.sidecartridge.com/YAART_TT.STC",
-        "name": "Yet Another Atari RAM Test for TT",
-        "description": "Yet Another Atari RAM Test for TT series",
-        "tags": [
-            "diagnostic",
-            "tool",
-            "TT"
-        ],
-        "size_kb": 64
     },
     {
         "url": "http://roms.sidecartridge.com/ULTIBOOT.STC",
@@ -462,17 +385,6 @@
         "size_kb": 64
     },
     {
-        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.27b.bin",
-        "name": "Falcon Diagnostic v1.27b",
-        "description": "A diagnostic tool tailored for the Atari Falcon computer series.",
-        "tags": [
-            "diagnostic",
-            "tool",
-            "falcon"
-        ],
-        "size_kb": 128
-    },
-    {
         "url": "http://roms.sidecartridge.com/ST%20Diagnostic%20v4.3.bin",
         "name": "ST Diagnostic v4.3",
         "description": "A comprehensive diagnostic tool for the Atari ST computer series.",
@@ -523,5 +435,71 @@
             "office"
         ],
         "size_kb": 16
+    },
+    {
+        "url": "http://roms.sidecartridge.com/wsdetect.rom",
+        "name": "Wakestate detect v1.0 by Troed/SYNC. ROM by tIn",
+        "description": "Wakestate detection at boot time. Helps with demo coding.",
+        "tags": [
+            "demo",
+            "tool"
+        ],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.21.bin",
+        "name": "Falcon Diagnostic v1.21",
+        "description": "",
+        "tags": [],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.20.bin",
+        "name": "Falcon Diagnostic v1.20",
+        "description": "",
+        "tags": [],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.6.bin",
+        "name": "TT Diagnostic v1.6",
+        "description": "",
+        "tags": [],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.25.bin",
+        "name": "Falcon Diagnostic v1.25",
+        "description": "",
+        "tags": [],
+        "size_kb": 128
+    },
+    {
+        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.5.bin",
+        "name": "TT Diagnostic v1.5",
+        "description": "",
+        "tags": [],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecartridge.com/TT%20Diagnostic%20v1.4.bin",
+        "name": "TT Diagnostic v1.4",
+        "description": "",
+        "tags": [],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecartridge.com/YAART_TT.STC",
+        "name": "YAART_TT",
+        "description": "",
+        "tags": [],
+        "size_kb": 64
+    },
+    {
+        "url": "http://roms.sidecartridge.com/Falcon%20Diagnostic%20v1.27b.bin",
+        "name": "Falcon Diagnostic v1.27b",
+        "description": "",
+        "tags": [],
+        "size_kb": 128
     }
 ]
