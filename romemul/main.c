@@ -52,40 +52,10 @@ int main()
     // Load the config from FLASH
     load_all_entries();
 
-    // #ifndef _DEBUG
-    //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
-    if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
-    {
-        DPRINTF("USB connected\n");
-        ConfigEntry *sd_card_mass_storage_enabled = find_entry(PARAM_SD_MASS_STORAGE);
-        if ((sd_card_mass_storage_enabled != NULL) && (sd_card_mass_storage_enabled->value[0] == 't' || sd_card_mass_storage_enabled->value[0] == 'T'))
-        {
-            DPRINTF("USB Mass storage flag set to enabled\n");
-            // Initialize SD card
-            bool microsd_initialized = sd_init_driver();
-            if (!microsd_initialized)
-            {
-                DPRINTF("ERROR: Could not initialize SD card\r\n");
-            }
-            else
-            {
-                DPRINTF("SD card initialized\n");
-                // Turn on the LED
-                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-                // Start the USB Mass storage device
-                usb_mass_init();
-            }
-        }
-        else
-        {
-            DPRINTF("USB Mass storage flag set to disabled\n");
-        }
-    }
-    // #endif
     ConfigEntry *default_config_entry = find_entry(PARAM_BOOT_FEATURE);
     DPRINTF("BOOT_FEATURE: %s\n", default_config_entry->value);
 
-    ConfigEntry *default_config_reboot_mode = find_entry("SAFE_CONFIG_REBOOT");
+    ConfigEntry *default_config_reboot_mode = find_entry(PARAM_SAFE_CONFIG_REBOOT);
     DPRINTF("SAFE_CONFIG_REBOOT: %s\n", default_config_reboot_mode->value);
 
     bool safe_config_reboot = default_config_reboot_mode->value[0] == 't' || default_config_reboot_mode->value[0] == 'T';
@@ -251,6 +221,37 @@ int main()
     {
         DPRINTF("SELECT button pressed. Launch configurator.\n");
 
+        // #ifndef _DEBUG
+        //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
+        if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
+        {
+            DPRINTF("USB connected\n");
+            ConfigEntry *sd_card_mass_storage_enabled = find_entry(PARAM_SD_MASS_STORAGE);
+            if ((sd_card_mass_storage_enabled != NULL) && (sd_card_mass_storage_enabled->value[0] == 't' || sd_card_mass_storage_enabled->value[0] == 'T'))
+            {
+                DPRINTF("USB Mass storage flag set to enabled\n");
+                // Initialize SD card
+                bool microsd_initialized = sd_init_driver();
+                if (!microsd_initialized)
+                {
+                    DPRINTF("ERROR: Could not initialize SD card\r\n");
+                }
+                else
+                {
+                    DPRINTF("SD card initialized\n");
+                    // Turn on the LED
+                    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+                    // Start the USB Mass storage device
+                    usb_mass_init();
+                }
+            }
+            else
+            {
+                DPRINTF("USB Mass storage flag set to disabled\n");
+            }
+        }
+        // #endif
+
         init_firmware();
 
         // Now the user needs to reset or poweroff the board to load the ROMs
@@ -262,7 +263,7 @@ int main()
 
         reboot();
         while (1)
-            ;
+            6;
         return 0;
     }
 }
