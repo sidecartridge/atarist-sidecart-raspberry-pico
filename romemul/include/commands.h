@@ -37,17 +37,24 @@
 #define BOOT_RTC 23             // Boot the RTC emulator
 #define CLEAN_START 24          // Start the configurator when the app starts
 #define BOOT_GEMDRIVE 25        // Boot the GEMDRIVE emulator
+#define REBOOT 26               // Reboot the device
 
 // APP_ROMEMUL commands
 // No commands
 
 // APP_FLOPPYEMUL commands
-#define FLOPPYEMUL_SAVE_VECTORS (APP_FLOPPYEMUL << 8 | 0)  // Save the vectors of the floppy emulator
-#define FLOPPYEMUL_SET_BPB (APP_FLOPPYEMUL << 8 | 1)       // Set the BPB of the floppy emulator
-#define FLOPPYEMUL_READ_SECTORS (APP_FLOPPYEMUL << 8 | 2)  // Read sectors from the floppy emulator
-#define FLOPPYEMUL_WRITE_SECTORS (APP_FLOPPYEMUL << 8 | 3) // Write sectors to the floppy emulator
-#define FLOPPYEMUL_PING (APP_FLOPPYEMUL << 8 | 4)          // Ping the floppy emulator
-#define FLOPPYEMUL_SAVE_HARDWARE (APP_FLOPPYEMUL << 8 | 5) // Save the hardware of the floppy emulator
+#define FLOPPYEMUL_SAVE_VECTORS (APP_FLOPPYEMUL << 8 | 0)      // Save the vectors of the floppy emulator
+#define FLOPPYEMUL_READ_SECTORS (APP_FLOPPYEMUL << 8 | 1)      // Read sectors from the floppy emulator
+#define FLOPPYEMUL_WRITE_SECTORS (APP_FLOPPYEMUL << 8 | 2)     // Write sectors to the floppy emulator
+#define FLOPPYEMUL_PING (APP_FLOPPYEMUL << 8 | 3)              // Ping the floppy emulator
+#define FLOPPYEMUL_SAVE_HARDWARE (APP_FLOPPYEMUL << 8 | 4)     // Save the hardware of the floppy emulator
+#define FLOPPYEMUL_SET_SHARED_VAR (APP_FLOPPYEMUL << 8 | 5)    // Set a shared variable
+#define FLOPPYEMUL_RESET (APP_FLOPPYEMUL << 8 | 6)             // Reset the floppy emulator
+#define FLOPPYEMUL_MOUNT_DRIVE_A (APP_FLOPPYEMUL << 8 | 7)     // Mount the drive A of the floppy emulator
+#define FLOPPYEMUL_UNMOUNT_DRIVE_A (APP_FLOPPYEMUL << 8 | 8)   // Unmount the drive A of the floppy emulator
+#define FLOPPYEMUL_MOUNT_DRIVE_B (APP_FLOPPYEMUL << 8 | 9)     // Mount the drive B of the floppy emulator
+#define FLOPPYEMUL_UNMOUNT_DRIVE_B (APP_FLOPPYEMUL << 8 | 10)  // Unmount the drive B of the floppy emulator
+#define FLOPPYEMUL_SHOW_VECTOR_CALL (APP_FLOPPYEMUL << 8 | 11) // Show the vector call of the floppy emulator
 
 // APP_RTCEMUL commands
 #define RTCEMUL_TEST_NTP (APP_RTCEMUL << 8 | 0)     // Test if the network is ready to use NTP
