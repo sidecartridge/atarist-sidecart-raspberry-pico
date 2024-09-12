@@ -438,7 +438,7 @@ int init_rtcemul(bool safe_config_reboot)
     FATFS fs;
 
     srand(time(0));
-    char *rtc_type_str = find_entry("RTC_TYPE")->value;
+    char *rtc_type_str = find_entry(PARAM_RTC_TYPE)->value;
 
     if (strcmp(rtc_type_str, "DALLAS") == 0)
     {
@@ -492,7 +492,7 @@ int init_rtcemul(bool safe_config_reboot)
 
     if (microsd_mounted)
     {
-        FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
+        FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content, MAX_WIFI_PASSWORD_LENGTH);
         if (err == FR_OK)
         {
             DPRINTF("Wifi password file found. Content: %s\n", wifi_password_file_content);
@@ -516,13 +516,13 @@ int init_rtcemul(bool safe_config_reboot)
     bool rtc_error = false;
     u_int16_t network_poll_counter = 0;
 
-    ntp_server_host = find_entry("RTC_NTP_SERVER_HOST")->value;
-    ntp_server_port = atoi(find_entry("RTC_NTP_SERVER_PORT")->value);
+    ntp_server_host = find_entry(PARAM_RTC_NTP_SERVER_HOST)->value;
+    ntp_server_port = atoi(find_entry(PARAM_RTC_NTP_SERVER_PORT)->value);
 
     DPRINTF("NTP server host: %s\n", ntp_server_host);
     DPRINTF("NTP server port: %d\n", ntp_server_port);
 
-    char *utc_offset_entry = find_entry("RTC_UTC_OFFSET")->value;
+    char *utc_offset_entry = find_entry(PARAM_RTC_UTC_OFFSET)->value;
     if (strlen(utc_offset_entry) > 0)
     {
         // The offset can be in decimal format
@@ -663,7 +663,7 @@ int init_rtcemul(bool safe_config_reboot)
         }
 
         // If SELECT button is pressed, launch the configurator
-        if (gpio_get(5) != 0)
+        if (gpio_get(SELECT_GPIO) != 0)
         {
             select_button_action(safe_config_reboot, write_config_only_once);
             // Write config only once to avoid hitting the flash too much

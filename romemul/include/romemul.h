@@ -11,6 +11,7 @@
 
 #include "debug.h"
 #include "constants.h"
+#include "memfunc.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
