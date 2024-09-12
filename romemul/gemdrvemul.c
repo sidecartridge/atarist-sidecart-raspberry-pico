@@ -229,16 +229,6 @@ static void __not_in_flash_func(cleanDTAHashTable)()
     }
 }
 
-static void __not_in_flash_func(swap_string_endiannes)(const char *origin, char *swap_str)
-{
-    // Obtain the fspec string and keep it in memory
-    for (int i = 0; i < 64; i += 2)
-    {
-        swap_str[i] = (char)*(origin + i + 1);
-        swap_str[i + 1] = (char)*(origin + i);
-    }
-}
-
 static void __not_in_flash_func(seach_path_2_st)(const char *fspec_str, char *internal_path, char *path_forwardslash, char *name_pattern)
 {
     char drive[2] = {0};
@@ -305,13 +295,13 @@ static void __not_in_flash_func(populate_dta)(uint32_t memory_address_dta, uint3
             {
                 *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + i)) = (uint8_t)data->d_name[i];
             }
-            swap_words((uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30), 14);
+            CHANGE_ENDIANESS_BLOCK16(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30, 14);
             *((volatile uint32_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 12)) = data->d_offset_drive;
             *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 16)) = data->d_curbyt;
             *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 18)) = data->d_curcl;
             *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 20)) = data->d_attr;
             *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 21)) = data->d_attrib;
-            swap_words((uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 20), 2);
+            CHANGE_ENDIANESS_BLOCK16(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 20, 2);
             *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 22)) = data->d_time;
             *((volatile uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 24)) = data->d_date;
             // Assuming memory_address_dta is a byte-addressable pointer (e.g., uint8_t*)
@@ -323,7 +313,7 @@ static void __not_in_flash_func(populate_dta)(uint32_t memory_address_dta, uint3
             {
                 *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30 + i)) = (uint8_t)data->d_fname[i];
             }
-            swap_words((uint16_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30), 14);
+            CHANGE_ENDIANESS_BLOCK16(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 30, 14);
             char attribs_str[7] = "";
             get_attribs_st_str(attribs_str, *((volatile uint8_t *)(memory_address_dta + GEMDRVEMUL_DTA_TRANSFER + 21)));
             DPRINTF("Populate DTA. addr: %x - attrib: %s - time: %d - date: %d - length: %x - filename: %s\n",
@@ -526,15 +516,9 @@ static void __not_in_flash_func(get_local_full_pathname)(char *tmp_filepath)
     // Obtain the fname string and keep it in memory
     // concatenated path and filename
     char path_filename[MAX_FOLDER_LENGTH] = {0};
-
     char tmp_path[MAX_FOLDER_LENGTH] = {0};
 
-    char *origin = (char *)payloadPtr;
-    for (int i = 0; i < MAX_FOLDER_LENGTH / 2; i += 2)
-    {
-        path_filename[i] = (char)*(origin + i + 1);
-        path_filename[i + 1] = (char)*(origin + i);
-    }
+    COPY_AND_CHANGE_ENDIANESS_BLOCK16(payloadPtr, path_filename, MAX_FOLDER_LENGTH);
     DPRINTF("dpath_string: %s\n", dpath_string);
     DPRINTF("path_filename: %s\n", path_filename);
     if (path_filename[1] == ':')
@@ -746,22 +730,7 @@ void __not_in_flash_func(gemdrvemul_dma_irq_handler_lookup_callback)(void)
     dma_hw->ints1 = 1u << lookup_data_rom_dma_channel;
 }
 
-int copy_gemdrv_firmware_to_RAM()
-{
-    // Need to initialize the ROM4 section with the firmware data
-    extern uint16_t __rom_in_ram_start__;
-    uint16_t *rom4_dest = &__rom_in_ram_start__;
-    uint16_t *rom4_src = (uint16_t *)gemdrvemulROM;
-    for (int i = 0; i < gemdrvemulROM_length; i++)
-    {
-        uint16_t value = *rom4_src++;
-        *rom4_dest++ = value;
-    }
-    DPRINTF("GEMDRIVE firmware copied to RAM.\n");
-    return 0;
-}
-
-int init_gemdrvemul(bool safe_config_reboot)
+void init_gemdrvemul(bool safe_config_reboot)
 {
     FRESULT fr; /* FatFs function common result code */
     FATFS fs;
@@ -812,7 +781,7 @@ int init_gemdrvemul(bool safe_config_reboot)
     {
         gemdrive_timeout_sec = atoi(gemdrive_timeout->value);
     }
-    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_TIMEOUT_SEC, gemdrive_timeout_sec);
+    WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_TIMEOUT_SEC, gemdrive_timeout_sec);
     gemdrive_timeout_sec = gemdrive_timeout_sec * 0.7; // Adjust the timeout to 70% of the value
     DPRINTF("Timeout in seconds: %d\n", gemdrive_timeout_sec);
 
@@ -826,7 +795,7 @@ int init_gemdrvemul(bool safe_config_reboot)
         }
         else
         {
-            FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content);
+            FRESULT err = read_and_trim_file(WIFI_PASS_FILE_NAME, &wifi_password_file_content, MAX_WIFI_PASSWORD_LENGTH);
             if (err == FR_OK)
             {
                 DPRINTF("Wifi password file found. Content: %s\n", wifi_password_file_content);
@@ -843,13 +812,13 @@ int init_gemdrvemul(bool safe_config_reboot)
         // Start the internal RTC
         rtc_init();
 
-        ntp_server_host = find_entry("RTC_NTP_SERVER_HOST")->value;
-        ntp_server_port = atoi(find_entry("RTC_NTP_SERVER_PORT")->value);
+        ntp_server_host = find_entry(PARAM_RTC_NTP_SERVER_HOST)->value;
+        ntp_server_port = atoi(find_entry(PARAM_RTC_NTP_SERVER_PORT)->value);
 
         DPRINTF("NTP server host: %s\n", ntp_server_host);
         DPRINTF("NTP server port: %d\n", ntp_server_port);
 
-        char *utc_offset_entry = find_entry("RTC_UTC_OFFSET")->value;
+        char *utc_offset_entry = find_entry(PARAM_RTC_UTC_OFFSET)->value;
         if (strlen(utc_offset_entry) > 0)
         {
             // The offset can be in decimal format
@@ -869,15 +838,12 @@ int init_gemdrvemul(bool safe_config_reboot)
         {
             tight_loop_contents();
 #if PICO_CYW43_ARCH_POLL
-            cyw43_arch_lwip_begin();
             network_poll();
-            cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
-            cyw43_arch_lwip_end();
-#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
-            cyw43_arch_lwip_begin();
-            cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-            cyw43_arch_lwip_end();
 #endif
+            cyw43_arch_lwip_begin();
+            cyw43_arch_lwip_check();
+            cyw43_arch_lwip_end();
+
             if (get_net_time()->ntp_server_found && dns_query_done)
             {
                 DPRINTF("NTP server found. Connecting to NTP server...\n");
@@ -1158,10 +1124,10 @@ int init_gemdrvemul(bool safe_config_reboot)
                 // Calculate the total number of free bytes
                 uint64_t freeBytes = fre_clust * fs->csize * NUM_BYTES_PER_SECTOR;
                 DPRINTF("Total clusters: %d, free clusters: %d, bytes per sector: %d, sectors per cluster: %d\n", fs->n_fatent - 2, fre_clust, NUM_BYTES_PER_SECTOR, fs->csize);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT, fre_clust);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT + 4, fs->n_fatent - 2);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT + 8, NUM_BYTES_PER_SECTOR);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DFREE_STRUCT + 12, fs->csize);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_DFREE_STRUCT, fre_clust);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_DFREE_STRUCT + 4, fs->n_fatent - 2);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_DFREE_STRUCT + 8, NUM_BYTES_PER_SECTOR);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_DFREE_STRUCT + 12, fs->csize);
                 *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_DFREE_STATUS)) = GEMDOS_EOK;
             }
             write_random_token(memory_shared_address);
@@ -1180,13 +1146,7 @@ int init_gemdrvemul(bool safe_config_reboot)
 
             DPRINTF("Dpath backslash string: %s\n", tmp_path);
 
-            // Copy the content of the path variable to memory_shared_address + GEMDRVEMUL_DEFAULT_PATH
-            for (int i = 0; i < MAX_FOLDER_LENGTH; i++)
-            {
-                *((volatile uint8_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH + i)) = tmp_path[i];
-            }
-            // Swap the bytes
-            swap_words((uint16_t *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH), MAX_FOLDER_LENGTH);
+            COPY_AND_CHANGE_ENDIANESS_BLOCK16(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH, tmp_path, MAX_FOLDER_LENGTH);
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
@@ -1195,13 +1155,8 @@ int init_gemdrvemul(bool safe_config_reboot)
         {
             payloadPtr += 6; // Skip six words
             // Obtain the fname string and keep it in memory
-            char *origin = (char *)payloadPtr;
             char dpath_tmp[MAX_FOLDER_LENGTH] = {};
-            for (int i = 0; i < 64; i += 2)
-            {
-                dpath_tmp[i] = (char)*(origin + i + 1);
-                dpath_tmp[i + 1] = (char)*(origin + i);
-            }
+            COPY_AND_CHANGE_ENDIANESS_BLOCK16(payloadPtr, dpath_tmp, MAX_FOLDER_LENGTH);
             DPRINTF("Default path string: %s\n", dpath_tmp);
             // Check if the directory exists
             char tmp_path[MAX_FOLDER_LENGTH] = {0};
@@ -1360,7 +1315,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             uint32_t ndta = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0];
             bool ndta_exists = lookupDTA(ndta);
             DPRINTF("DTA %x exists: %s\n", ndta, (ndta_exists) ? "TRUE" : "FALSE");
-            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DTA_EXIST, (ndta_exists ? ndta : 0));
+            WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_DTA_EXIST, (ndta_exists ? ndta : 0));
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
@@ -1377,7 +1332,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             }
             nullify_dta(memory_shared_address);
 
-            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_DTA_RELEASE, countDTA());
+            WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_DTA_RELEASE, countDTA());
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
@@ -1396,7 +1351,8 @@ int init_gemdrvemul(bool safe_config_reboot)
             char fspec_string[MAX_FOLDER_LENGTH] = {0};
             char tmp_string[MAX_FOLDER_LENGTH] = {0};
             char path_forwardslash[MAX_FOLDER_LENGTH] = {0};
-            swap_string_endiannes((char *)payloadPtr, tmp_string);
+            // swap_string_endiannes((char *)payloadPtr, tmp_string);
+            COPY_AND_CHANGE_ENDIANESS_BLOCK16(payloadPtr, tmp_string, MAX_FOLDER_LENGTH);
             DPRINTF("Fspec string: %s\n", tmp_string);
             back_2_forwardslash(tmp_string);
             DPRINTF("Fspec string backslash: %s\n", tmp_string);
@@ -1658,7 +1614,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 break;
             default:
                 DPRINTF("ERROR: Invalid mode: %x\n", fopen_mode);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EACCDN);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EACCDN);
                 break;
             }
             DPRINTF("FatFs open mode: %x\n", fatfs_open_mode);
@@ -1670,7 +1626,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 if (fr != FR_OK)
                 {
                     DPRINTF("ERROR: Could not open file (%d)\r\n", fr);
-                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EFILNF);
+                    WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EFILNF);
                 }
                 else
                 {
@@ -1682,14 +1638,14 @@ int init_gemdrvemul(bool safe_config_reboot)
                     {
                         DPRINTF("Memory allocation failed for new FileDescriptors\n");
                         DPRINTF("ERROR: Could not add file to the list of open files\n");
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EINTRN);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FOPEN_HANDLE, GEMDOS_EINTRN);
                     }
                     else
                     {
                         add_file(&fdescriptors, newFDescriptor, tmp_filepath, file_object, fd_counter);
                         DPRINTF("File opened with file descriptor: %d\n", fd_counter);
                         // Return the file descriptor
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FOPEN_HANDLE, fd_counter);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FOPEN_HANDLE, fd_counter);
                     }
                 }
             }
@@ -1769,7 +1725,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 {
                     DPRINTF("Memory allocation failed for new FileDescriptors\n");
                     DPRINTF("ERROR: Could not add file to the list of open files\n");
-                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FCREATE_HANDLE, GEMDOS_EINTRN);
+                    WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FCREATE_HANDLE, GEMDOS_EINTRN);
                 }
                 else
                 {
@@ -1863,7 +1819,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (file == NULL)
             {
                 DPRINTF("ERROR: File descriptor not found\n");
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FSEEK_STATUS, GEMDOS_EIHNDL);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FSEEK_STATUS, GEMDOS_EIHNDL);
             }
             else
             {
@@ -1892,12 +1848,12 @@ int init_gemdrvemul(bool safe_config_reboot)
                 if (fr != FR_OK)
                 {
                     DPRINTF("ERROR: Could not seek file (%d)\r\n", fr);
-                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FSEEK_STATUS, GEMDOS_EINTRN);
+                    WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FSEEK_STATUS, GEMDOS_EINTRN);
                 }
                 else
                 {
                     DPRINTF("File seeked\n");
-                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FSEEK_STATUS, file->offset);
+                    WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FSEEK_STATUS, file->offset);
                 }
             }
             write_random_token(memory_shared_address);
@@ -1924,12 +1880,12 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (fr != FR_OK)
             {
                 DPRINTF("ERROR: Could not get file attributes (%d)\r\n", fr);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FATTRIB_STATUS, GEMDOS_EFILNF);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FATTRIB_STATUS, GEMDOS_EFILNF);
             }
             else
             {
                 uint32_t fattrib_st = attribs_fat2st(fno.fattrib);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FATTRIB_STATUS, fattrib_st);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FATTRIB_STATUS, fattrib_st);
                 char fattrib_st_str[7] = "";
                 get_attribs_st_str(fattrib_st_str, fattrib_st);
                 if (fattrib_flag == FATTRIB_INQUIRE)
@@ -1948,7 +1904,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                     if (fr != FR_OK)
                     {
                         DPRINTF("ERROR: Could not set file attributes (%d)\r\n", fr);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FATTRIB_STATUS, GEMDOS_EACCDN);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FATTRIB_STATUS, GEMDOS_EACCDN);
                     }
                 }
             }
@@ -1963,16 +1919,8 @@ int init_gemdrvemul(bool safe_config_reboot)
             char *origin = (char *)payloadPtr;
             char frename_fname_src[MAX_FOLDER_LENGTH] = {0};
             char frename_fname_dst[MAX_FOLDER_LENGTH] = {0};
-            for (int i = 0; i < MAX_FOLDER_LENGTH; i += 2)
-            {
-                frename_fname_src[i] = (char)*(origin + i + 1);
-                frename_fname_src[i + 1] = (char)*(origin + i);
-            }
-            for (int i = MAX_FOLDER_LENGTH; i < MAX_FOLDER_LENGTH * 2; i += 2)
-            {
-                frename_fname_dst[i - MAX_FOLDER_LENGTH] = (char)*(origin + i + 1);
-                frename_fname_dst[i - MAX_FOLDER_LENGTH + 1] = (char)*(origin + i);
-            }
+            COPY_AND_CHANGE_ENDIANESS_BLOCK16(origin, frename_fname_src, MAX_FOLDER_LENGTH);
+            COPY_AND_CHANGE_ENDIANESS_BLOCK16(origin + MAX_FOLDER_LENGTH, frename_fname_dst, MAX_FOLDER_LENGTH);
             // DPRINTF("Renaming file: %s to %s\n", frename_fname_src, frename_fname_dst);
             // get_local_full_pathname(frename_fname_src);
             // get_local_full_pathname(frename_fname_dst);
@@ -2054,9 +2002,9 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (fd == NULL)
             {
                 DPRINTF("ERROR: File descriptor not found\n");
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EIHNDL);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EIHNDL);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_DATE, 0);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_TIME, 0);
             }
             else
             {
@@ -2082,16 +2030,16 @@ int init_gemdrvemul(bool safe_config_reboot)
 
                         DPRINTF("Get file date and time: %02d:%02d:%02d %02d/%02d/%02d\n", hour, minute, second * 2, day, month, year + 1980);
 #endif
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EOK);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, fno.fdate);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, fno.ftime);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EOK);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_DATE, fno.fdate);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_TIME, fno.ftime);
                     }
                     else
                     {
                         DPRINTF("ERROR: Could not get file date and time from file %s (%d)\r\n", fd->fpath, fr);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EFILNF);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EFILNF);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_DATE, 0);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_TIME, 0);
                     }
                 }
                 else
@@ -2120,16 +2068,16 @@ int init_gemdrvemul(bool safe_config_reboot)
                         // File exists and date and time set
                         // So now we can return the status
                         DPRINTF("Set the file date and time: %02d:%02d:%02d %02d/%02d/%02d\n", hour, minute, second * 2, day, month, year + 1980);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EOK);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EOK);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_DATE, 0);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_TIME, 0);
                     }
                     else
                     {
                         DPRINTF("ERROR: Could not set file date and time to file %s (%d)\r\n", fd->fpath, fr);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EFILNF);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_DATE, 0);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_FDATETIME_TIME, 0);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_STATUS, GEMDOS_EFILNF);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_DATE, 0);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_FDATETIME_TIME, 0);
                     }
                 }
             }
@@ -2155,7 +2103,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (file == NULL)
             {
                 DPRINTF("ERROR: File descriptor not found\n");
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_READ_BYTES, GEMDOS_EIHNDL);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_READ_BYTES, GEMDOS_EIHNDL);
             }
             else
             {
@@ -2166,7 +2114,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 if (fr != FR_OK)
                 {
                     DPRINTF("ERROR: Could not change read offset of the file (%d)\r\n", fr);
-                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_READ_BYTES, GEMDOS_EINTRN);
+                    WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_READ_BYTES, GEMDOS_EINTRN);
                 }
                 else
                 {
@@ -2177,7 +2125,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                     if (fr != FR_OK)
                     {
                         DPRINTF("ERROR: Could not read file (%d)\r\n", fr);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_READ_BYTES, GEMDOS_EINTRN);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_READ_BYTES, GEMDOS_EINTRN);
                     }
                     else
                     {
@@ -2186,9 +2134,9 @@ int init_gemdrvemul(bool safe_config_reboot)
                         uint32_t current_offset = file->offset;
                         DPRINTF("New offset: x%x after reading x%x bytes\n", current_offset, bytes_read);
                         // Change the endianness of the bytes read
-                        swap_words((uint16_t *)(memory_shared_address + GEMDRVEMUL_READ_BUFF), ((buff_size + 1) * 2) / 2);
+                        CHANGE_ENDIANESS_BLOCK16(memory_shared_address + GEMDRVEMUL_READ_BUFF, ((buff_size + 1) * 2) / 2);
                         // Return the number of bytes read
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_READ_BYTES, bytes_read);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_READ_BYTES, bytes_read);
                     }
                 }
             }
@@ -2210,7 +2158,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (file == NULL)
             {
                 DPRINTF("ERROR: File descriptor not found\n");
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, GEMDOS_EIHNDL);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_WRITE_BYTES, GEMDOS_EIHNDL);
             }
             else
             {
@@ -2221,7 +2169,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 if (fr != FR_OK)
                 {
                     DPRINTF("ERROR: Could not change write offset of the file (%d)\r\n", fr);
-                    set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, GEMDOS_EINTRN);
+                    WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_WRITE_BYTES, GEMDOS_EINTRN);
                 }
                 else
                 {
@@ -2247,19 +2195,19 @@ int init_gemdrvemul(bool safe_config_reboot)
                         chk += pending_long_word & (0x00FF << (pending_bytes * 8));
                     }
                     // Change the endianness of the bytes read
-                    swap_words(target, ((buff_size + 1) * 2) / 2);
+                    CHANGE_ENDIANESS_BLOCK16(target, ((buff_size + 1) * 2) / 2);
                     // Write the bytes
                     DPRINTF("Write x%x bytes from the file at offset x%x\n", buff_size, writebuff_offset);
                     fr = f_write(&file->fobject, (void *)target, buff_size, &bytes_write);
                     if (fr != FR_OK)
                     {
                         DPRINTF("ERROR: Could not write file (%d)\r\n", fr);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, GEMDOS_EINTRN);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_WRITE_BYTES, GEMDOS_EINTRN);
                     }
                     else
                     {
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_CHK, (uint32_t)chk);
-                        set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_BYTES, bytes_write);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_WRITE_CHK, (uint32_t)chk);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_WRITE_BYTES, bytes_write);
                     }
                 }
             }
@@ -2278,7 +2226,7 @@ int init_gemdrvemul(bool safe_config_reboot)
             if (file == NULL)
             {
                 DPRINTF("ERROR: File descriptor not found\n");
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_CONFIRM_STATUS, GEMDOS_EIHNDL);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_WRITE_CONFIRM_STATUS, GEMDOS_EIHNDL);
             }
             else
             {
@@ -2286,7 +2234,7 @@ int init_gemdrvemul(bool safe_config_reboot)
                 file->offset += writebuff_forward_bytes;
                 uint32_t current_offset = file->offset;
                 DPRINTF("New offset: x%x after writing x%x bytes\n", current_offset, writebuff_forward_bytes);
-                set_and_swap_longword(memory_shared_address + GEMDRVEMUL_WRITE_CONFIRM_STATUS, GEMDOS_EOK);
+                WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_WRITE_CONFIRM_STATUS, GEMDOS_EOK);
             }
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
@@ -2309,10 +2257,10 @@ int init_gemdrvemul(bool safe_config_reboot)
             DPRINTF("Pexec cmdline: %x\n", pexec_cmdline);
             DPRINTF("Pexec envstr: %x\n", pexec_envstr);
             *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_PEXEC_MODE)) = pexec_mode;
-            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_PEXEC_STACK_ADDR, pexec_stack_addr);
-            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_PEXEC_FNAME, pexec_fname);
-            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_PEXEC_CMDLINE, pexec_cmdline);
-            set_and_swap_longword(memory_shared_address + GEMDRVEMUL_PEXEC_ENVSTR, pexec_envstr);
+            WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_PEXEC_STACK_ADDR, pexec_stack_addr);
+            WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_PEXEC_FNAME, pexec_fname);
+            WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_PEXEC_CMDLINE, pexec_cmdline);
+            WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_PEXEC_ENVSTR, pexec_envstr);
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
@@ -2404,7 +2352,7 @@ int init_gemdrvemul(bool safe_config_reboot)
         // }
 #endif
         // If SELECT button is pressed, launch the configurator
-        if (gpio_get(5) != 0)
+        if (gpio_get(SELECT_GPIO) != 0)
         {
             select_button_action(safe_config_reboot, write_config_only_once);
             // Write config only once to avoid hitting the flash too much

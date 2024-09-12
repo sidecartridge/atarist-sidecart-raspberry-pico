@@ -35,10 +35,9 @@
 #include "tprotocol.h"
 #include "commands.h"
 #include "config.h"
+#include "memfunc.h"
 #include "filesys.h"
 #include "rtcemul.h"
-
-#define SWAP_LONGWORD(data) ((((uint32_t)data << 16) & 0xFFFF0000) | (((uint32_t)data >> 16) & 0xFFFF))
 
 #define DEFAULT_FOPEN_READ_BUFFER_SIZE 16384
 #define DEFAULT_FWRITE_BUFFER_SIZE 2048
@@ -48,19 +47,11 @@
 #define SHARED_VARIABLES_SIZE 6
 #define DTA_SIZE_ON_ST 44
 
-// Size of the shared variables of the shared functions
-#define SHARED_VARIABLE_SHARED_FUNCTIONS_SIZE 16 // Leave a gap for the shared variables of the shared functions
-
-// Index for the shared variables
-#define SHARED_VARIABLE_HARDWARE_TYPE 0
-#define SHARED_VARIABLE_SVERSION 1
-
 // Now the index for the shared variables of the program
 #define SHARED_VARIABLE_FIRST_FILE_DESCRIPTOR SHARED_VARIABLE_SHARED_FUNCTIONS_SIZE + 0
 #define SHARED_VARIABLE_DRIVE_LETTER SHARED_VARIABLE_SHARED_FUNCTIONS_SIZE + 1
 #define SHARED_VARIABLE_DRIVE_NUMBER SHARED_VARIABLE_SHARED_FUNCTIONS_SIZE + 2
-#define SHARED_VARIABLE_BUFFER_TYPE SHARED_VARIABLE_SHARED_FUNCTIONS_SIZE + 3
-#define SHARED_VARIABLE_PEXEC_RESTORE SHARED_VARIABLE_SHARED_FUNCTIONS_SIZE + 4
+#define SHARED_VARIABLE_PEXEC_RESTORE SHARED_VARIABLE_SHARED_FUNCTIONS_SIZE + 3
 
 #define GEMDRVEMUL_RANDOM_TOKEN (0x0)                                   // Offset from 0x0000
 #define GEMDRVEMUL_RANDOM_TOKEN_SEED (GEMDRVEMUL_RANDOM_TOKEN + 4)      // random_token + 4 bytes
@@ -269,10 +260,7 @@ extern int lookup_data_rom_dma_channel;
 // Interrupt handler callback for DMA completion
 void __not_in_flash_func(gemdrvemul_dma_irq_handler_lookup_callback)(void);
 
-// Copy the Atari ST floopy emulator firmware to RAM
-int copy_floppy_firmware_to_RAM();
-
 // Function Prototypes
-int init_gemdrvemul(bool safe_config_reboot);
+void init_gemdrvemul(bool safe_config_reboot);
 
 #endif // GEMDRVEMUL_H
