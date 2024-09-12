@@ -194,29 +194,6 @@ static int init_rom_emulator(PIO pio, IRQInterceptionCallback requestCallback, I
     return smReadROM;
 }
 
-static int copy_FLASH_to_RAM()
-{
-    // I don't know why, but after a power on the DMA copy from FLASH to RAM
-    // seems not to work as expected. The classic copy of the FLASH to RAM
-    // works and is fast enough to place the ROM code before starting the computer.
-    // So, we copy the FLASH to RAM iterating.
-
-    // Need to initialize the ROM4 section with the data from FLASH
-    uint32_t rom_in_ram_dest = ROM_IN_RAM_ADDRESS;
-    uint32_t rom_in_ram_src = (XIP_BASE + FLASH_ROM_LOAD_OFFSET);
-    for (int i = 0; i < ROM_SIZE_WORDS * ROM_BANKS; i++)
-    {
-        uint16_t value = *((uint16_t *)rom_in_ram_src);
-        rom_in_ram_src += sizeof(uint16_t); // Increment by 2 bytes for a word
-
-        *((uint16_t *)rom_in_ram_dest) = value;
-        rom_in_ram_dest += sizeof(uint16_t); // Increment by 2 bytes for a word
-    }
-
-    DPRINTF("FLASH copied to RAM.\n");
-    return 0;
-}
-
 int init_romemul(IRQInterceptionCallback requestCallback, IRQInterceptionCallback responseCallback, bool copyFlashToRAM)
 {
     // Grant high bus priority to the DMA, so it can shove the processors out
@@ -227,7 +204,10 @@ int init_romemul(IRQInterceptionCallback requestCallback, IRQInterceptionCallbac
     // Copy the content of the FLASH to RAM before initializing the emulator code
     // If not initialized, assume somebody else will copy "something" to RAM eventually...
     if (copyFlashToRAM)
-        copy_FLASH_to_RAM();
+    {
+        const uint16_t *src_addr = (const uint16_t *)(XIP_BASE + FLASH_ROM_LOAD_OFFSET);
+        COPY_FIRMWARE_TO_RAM(src_addr, ROM_SIZE_WORDS * ROM_BANKS);
+    }
 
     int smMonitorROM4 = init_monitor_rom4(default_pio);
     if (smMonitorROM4 < 0)
