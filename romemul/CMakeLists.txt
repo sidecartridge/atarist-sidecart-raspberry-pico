@@ -61,6 +61,7 @@ pico_add_extra_outputs(${PROJECT_NAME})
 pico_generate_pio_header(${PROJECT_NAME} ${CMAKE_CURRENT_LIST_DIR}/romemul.pio)
 
 target_sources(${PROJECT_NAME} PRIVATE lwipopts.h)
+target_sources(${PROJECT_NAME} PRIVATE ffconf.h)
 target_sources(${PROJECT_NAME} PRIVATE hw_config.c)
 target_sources(${PROJECT_NAME} PRIVATE commands.c)
 target_sources(${PROJECT_NAME} PRIVATE constants.c)
@@ -86,7 +87,7 @@ add_subdirectory($ENV{FATFS_SDK_PATH}/src build)
 
 # Link to pico_stdlib (gpio, time, etc. functions)
 target_link_libraries(${PROJECT_NAME} PRIVATE
-        FatFs_SPI                # for SD card access
+        no-OS-FatFS-SD-SDIO-SPI-RPi-Pico # for SD card access
         pico_stdlib              # for core functionality
         hardware_pio             # for GPIO
         hardware_dma             # for DMA

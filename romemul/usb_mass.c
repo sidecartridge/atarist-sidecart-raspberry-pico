@@ -20,6 +20,9 @@ void usb_mass_init(void)
     // init device stack on configured roothub port
     tud_init(BOARD_TUD_RHPORT);
 
+    // Turn on the LED
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+
     // Loop while the USB is connected and the VBUS is high
     // Exit when the VBUS is low and reset the device
     while (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))

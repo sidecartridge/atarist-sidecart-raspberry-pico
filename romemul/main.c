@@ -219,8 +219,6 @@ int main()
     }
     else
     {
-        DPRINTF("SELECT button pressed. Launch configurator.\n");
-
         // #ifndef _DEBUG
         //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
         if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
@@ -231,16 +229,17 @@ int main()
             {
                 DPRINTF("USB Mass storage flag set to enabled\n");
                 // Initialize SD card
-                bool microsd_initialized = sd_init_driver();
-                if (!microsd_initialized)
+                // Physical drive number
+                BYTE const pdrv = 0;
+                // Initialize the disk subsystem
+                DSTATUS ds = disk_initialize(pdrv);
+                if (!(0 == (ds & STA_NOINIT)))
                 {
-                    DPRINTF("ERROR: Could not initialize SD card\r\n");
+                    DPRINTF("ERROR: Could not initialize SD card in block storage mode\r\n");
                 }
                 else
                 {
                     DPRINTF("SD card initialized\n");
-                    // Turn on the LED
-                    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
                     // Start the USB Mass storage device
                     usb_mass_init();
                 }
@@ -251,6 +250,8 @@ int main()
             }
         }
         // #endif
+
+        DPRINTF("SELECT button pressed. Launch configurator.\n");
 
         init_firmware();
 
