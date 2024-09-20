@@ -25,7 +25,8 @@ void usb_mass_init(void)
 
     // Loop while the USB is connected and the VBUS is high
     // Exit when the VBUS is low and reset the device
-    while (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
+    // while (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
+    while (1)
     {
         tud_task(); // tinyusb device task
         cdc_task();
@@ -129,8 +130,8 @@ void tud_msc_inquiry_cb(uint8_t lun, uint8_t vendor_id[8], uint8_t product_id[16
 {
     (void)lun;
 
-    const char vid[] = "SidecarTridge Multidevice";
-    const char pid[] = "Mass Storage";
+    const char vid[] = "SidecarT";
+    const char pid[] = "MultideviceMass";
     const char rev[] = RELEASE_VERSION;
 
     memcpy(vendor_id, vid, strlen(vid));
