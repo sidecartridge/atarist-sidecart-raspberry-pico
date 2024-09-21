@@ -5,24 +5,24 @@
 This version will be the last Beta before the final v1.0.0 release. This version has major changes and improvements, specially in the Floppy Emulation mode. It has been tested throughly, but please report any issues you find. We can consider this version as a Release Candidate, so only minor changes to the codebase will be made before the final v1.0.0 release.
 
 ### Changes
-- **Issue 123**: Changed ROM catalog from JSON to CVS format for performance reasons.
-- **Issue 134**: Mass Storage device now only detected when powered on in configurator mode.
+- **Issue #123**: Changed ROM catalog from JSON to CVS format for performance reasons.
+- **Issue #134**: Mass Storage device now only detected when powered on in configurator mode.
 - The Floppy Emulation code has been recoded to improve performance and stability.
 - All memory swapping routines have been rewritten to improve performance and stability.
 - New httpd server for the web management interface in Floppy Emulation mode.
 - All memory management routines have reviewed to solve memory leaks and improve performance.
 
 ### New Features
-- **Issue 51**: Added dual virtual floppy drive support. Now you can switch between two floppy images in the Floppy Emulation mode.
-- **Issue 92**: Checksum verification at protocol level in GEMDRIVE and Floppy Emulation mode.
-- **Issue 105**: Floppy Emulation mode now supports any combination of virtual and physical floppy drives.
-- **Issue 124**: Added a new web management interface for the Floppy emulation. Now you can insert and eject floppy images from the web interface.
+- **Issue #51**: Added dual virtual floppy drive support. Now you can switch between two floppy images in the Floppy Emulation mode.
+- **Issue #92**: Checksum verification at protocol level in GEMDRIVE and Floppy Emulation mode.
+- **Issue #105**: Floppy Emulation mode now supports any combination of virtual and physical floppy drives.
+- **Issue #124**: Added a new web management interface for the Floppy emulation. Now you can insert and eject floppy images from the web interface.
 
 ### Fixes
-- **Issue 77**: Fixed problem opening floppy directories in TOS 1.00 and TOS 1.02.
-- **Issue 122**: Fixed duplicate filename errors when copying files in GEMDRIVE mode.
-- **Issue 125**: Fixed failed floppy emulation under EmuTOS 1.x.
-- **Issue 133**: Fixed error in the maximum WiFi password length in the Configurator.
+- **Issue #77**: Fixed problem opening floppy directories in TOS 1.00 and TOS 1.02.
+- **Issue #122**: Fixed duplicate filename errors when copying files in GEMDRIVE mode.
+- **Issue #125**: Fixed failed floppy emulation under EmuTOS 1.x.
+- **Issue #133**: Fixed error in the maximum WiFi password length in the Configurator.
 
 ## BETA 0.0.17 (2024-06-18) - Mass Storage Device Support
 ### Changes

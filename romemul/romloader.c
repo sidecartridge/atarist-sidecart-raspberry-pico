@@ -1257,7 +1257,7 @@ int init_firmware()
         else
         {
             // Use sprintf to format and concatenate strings
-            full_url = malloc(strlen(url_parts.protocol) + strlen(url_parts.domain) + strlen(current->url) + 3); // Allocate space for the protocol, the host, the url, and the null terminator
+            full_url = malloc(strlen(url_parts.protocol) + strlen(url_parts.domain) + strlen(current->url) + 4); // Allocate space for the protocol, the host, the url, and the null terminator
             sprintf(full_url, "%s://%s/%s", url_parts.protocol, url_parts.domain, current->url);
         }
         err_t res = download_rom(full_url, FLASH_ROM_LOAD_OFFSET);
