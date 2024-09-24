@@ -112,7 +112,13 @@ void network_init()
 
     // Set hostname
     char *hostname = find_entry(PARAM_HOSTNAME)->value;
-    netif_set_hostname(netif_default, hostname + '\0');
+
+    cyw43_arch_lwip_begin();
+    struct netif *n = &cyw43_state.netif[CYW43_ITF_STA];
+    netif_set_hostname(n, hostname);
+    netif_set_up(n);
+    cyw43_arch_lwip_end();
+
     DPRINTF("Hostname: %s\n", hostname);
 
     // Initialize the scan data
