@@ -470,7 +470,7 @@ int init_firmware()
 
     DPRINTF("\033[2J\033[H"); // Clear Screen
     DPRINTF("\n> ");
-    printf("Initializing Configurator...\n"); // Always this print message to the console
+    DPRINTF("Initializing Configurator...\n"); // Always this print message to the console
     stdio_flush();
 
     // Print the config

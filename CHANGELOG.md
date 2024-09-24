@@ -1,5 +1,11 @@
 # Changelog
 
+## BETA 0.0.18b (2024-09-25) - SDSC Card Support Re-enabled
+
+This release is a hotfix for version 0.0.18, bringing back support for SDSC cards. These cards were inadvertently disabled in the previous version due to an upgrade of the `no-OS-FatFS-SD-SDIO-SPI-RPi-Pico` library to version 2.6.0. In this release, the library has been reverted to version 1.2.4 to restore SDSC compatibility.
+
+The upcoming v1.0.0 release will also remain pinned to version 1.2.4 to ensure SDSC support. However, **starting from v2.x.x, we will officially drop SDSC support and upgrade the library to version 2.6.0 or higher.**
+
 ## BETA 0.0.18 (2024-09-13) - Multi-floppy support and web management
 
 This version will be the last Beta before the final v1.0.0 release. This version has major changes and improvements, specially in the Floppy Emulation mode. It has been tested throughly, but please report any issues you find. We can consider this version as a Release Candidate, so only minor changes to the codebase will be made before the final v1.0.0 release.

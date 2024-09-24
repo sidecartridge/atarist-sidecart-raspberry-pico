@@ -10,7 +10,8 @@ echo "Pinning the SDK versions..."
 cd fatfs-sdk
 #git checkout tags/v1.1.1
 #git checkout v1.2.4
-git checkout v2.6.0
+#git checkout v2.6.0
+git checkout v1.2.4
 
 cd ../pico-sdk
 git checkout tags/1.5.1
