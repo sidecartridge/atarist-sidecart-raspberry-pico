@@ -1601,76 +1601,137 @@ void forward_2_backslash(char *path)
     }
 }
 
+static void sanitize_dos_name(char *name)
+{
+    const char *invalid_chars = "<>:\"/\\|?*";
+    for (size_t i = 0; name[i]; i++)
+    {
+        if (name[i] <= 31 || strchr(invalid_chars, name[i]))
+        {
+            name[i] = '_';
+        }
+    }
+}
+
 /**
  * @brief Shortens a long file name to a DOS 8.3 filename format in uppercase and stores it in a provided array.
  *
- * This function takes a long file name, shortens it to the first seven characters, appends a '~' symbol,
- * and then appends the original file's extension (assumed to be 3 characters long including the dot).
- * The shortened file name is converted to uppercase and stored in a provided char array of size 12.
- * The function is designed to handle file names in the format commonly used in Windows file systems.
+ * This function takes a long file name, shortens it to comply with the DOS 8.3 format, and stores it in uppercase
+ * in the provided array. For filenames with multiple dots, it uses the last dot as the extension separator,
+ * replaces other dots with underscores in the name part, and formats the name accordingly.
  *
  * @param originalName A pointer to a constant character array containing the original long file name.
  *                     The name should include the extension and must be null-terminated.
- * @param shortenedName A pointer to a character array of size 12 where the shortened file name will be stored.
+ * @param shortenedName A pointer to a character array of size 13 where the shortened file name will be stored.
  *                      This array will be modified by the function to contain the new file name.
  *
  * Example usage:
- *     char shortenedFileName[12];
- *     shorten_fname("longfilename.txt", shortenedFileName);
- *     printf("Shortened File Name: %s\n", shortenedFileName);
+ *     char shortenedFileName[13];
+ *     shorten_fname("file.with.many.dots.ext", shortenedFileName);
+ *     printf("Shortened File Name: %s\n", shortenedFileName); // Output: FILE_W~1.EXT
  */
-void shorten_fname(const char *originalName, char shortenedName[14])
+void shorten_fname(const char *originalName, char shortenedName[13])
 {
-    char namePart[9]; // 8 chars for name + null terminator
-    char extPart[5];  // dot + 3 chars for extension + null terminator
-    const char *dot;
+    char namePart[9];   // 8 characters for name + null terminator
+    char extPart[4];    // 3 characters for extension + null terminator
+    char tempName[256]; // Temporary buffer to process the name part
 
-    // Initialize the shortenedName array
-    memset(shortenedName, 0, 14);
+    // Initialize the arrays
+    memset(namePart, 0, sizeof(namePart));
+    memset(extPart, 0, sizeof(extPart));
+    memset(tempName, 0, sizeof(tempName));
+    memset(shortenedName, 0, 13);
 
-    // Find the dot for the extension
-    dot = strrchr(originalName, '.');
-    if (dot && strlen(dot) <= 4)
-    {                             // Check if extension is 3 chars + dot
-        strncpy(extPart, dot, 4); // Copy extension
-        extPart[4] = '\0';        // Null-terminate
+    // Find the last dot in the filename to separate name and extension
+    const char *dot = strrchr(originalName, '.');
+    size_t nameLength;
+    size_t originalNameLength = strlen(originalName);
 
-        int nameLength = dot - originalName; // Calculate the length of the name part
-        if (nameLength > 8)
-        {
-            // If name part is longer than 8 characters, shorten it
-            strncpy(namePart, originalName, 7); // Copy first 7 characters of the name
-            namePart[7] = '~';                  // Add '~'
-            namePart[8] = '\0';                 // Null-terminate
-        }
-        else
-        {
-            // If name part is 8 characters or less, copy it as is
-            strncpy(namePart, originalName, nameLength);
-            namePart[nameLength] = '\0'; // Null-terminate
-        }
+    if (dot && dot != originalName)
+    {
+        // Calculate the length of the name part
+        nameLength = dot - originalName;
 
-        // Convert name part to uppercase
-        for (int i = 0; namePart[i] != '\0'; i++)
-        {
-            namePart[i] = toupper((unsigned char)namePart[i]);
-        }
-        // Convert extension part to uppercase
-        for (int i = 0; extPart[i] != '\0'; i++)
-        {
-            extPart[i] = toupper((unsigned char)extPart[i]);
-        }
+        // Copy the extension part (exclude the dot)
+        size_t extLength = strlen(dot + 1);
+        if (extLength > 3)
+            extLength = 3; // Truncate extension to 3 characters
 
-        // Format shortened file name
-        snprintf(shortenedName, 14, "%s%s", namePart, extPart);
+        strncpy(extPart, dot + 1, extLength);
+        extPart[extLength] = '\0';
     }
     else
     {
-        // If no dot is found, copy the original name as is
-        strncpy(shortenedName, originalName, 8);
-        shortenedName[8] = '\0'; // Null-terminate
+        // No extension found
+        nameLength = originalNameLength;
     }
-    //    DPRINTF("Original file name: %s, Shortened file name: %s\n", originalName, shortenedName);
+
+    // Copy the name part into tempName
+    if (nameLength >= sizeof(tempName))
+        nameLength = sizeof(tempName) - 1; // Prevent overflow
+    strncpy(tempName, originalName, nameLength);
+    tempName[nameLength] = '\0';
+
+    // Replace any dots in tempName with underscores
+    for (size_t i = 0; tempName[i]; i++)
+    {
+        if (tempName[i] == '.')
+            tempName[i] = '_';
+    }
+
+    // Sanitize namePart and extPart by replacing invalid characters
+    void sanitize_dos_name(char *name)
+    {
+        const char *invalid_chars = "<>:\"/\\|?*";
+        for (size_t i = 0; name[i]; i++)
+        {
+            if (name[i] <= 31 || strchr(invalid_chars, name[i]))
+            {
+                name[i] = '_';
+            }
+        }
+    }
+
+    sanitize_dos_name(tempName);
+    sanitize_dos_name(extPart);
+
+    // Now process tempName to fit into namePart
+    size_t tempNameLength = strlen(tempName);
+
+    if (tempNameLength > 8)
+    {
+        // Use the first 6 characters, then '~1' to make 8 characters
+        strncpy(namePart, tempName, 6);
+        namePart[6] = '~';
+        namePart[7] = '1'; // In a real implementation, this should be incremented to avoid collisions
+        namePart[8] = '\0';
+    }
+    else
+    {
+        // Copy the name part as is
+        strncpy(namePart, tempName, 8);
+        namePart[8] = '\0';
+    }
+
+    // Convert name and extension to uppercase
+    for (size_t i = 0; namePart[i]; i++)
+        namePart[i] = toupper((unsigned char)namePart[i]);
+
+    for (size_t i = 0; extPart[i]; i++)
+        extPart[i] = toupper((unsigned char)extPart[i]);
+
+    // Format the shortened filename
+    if (extPart[0] != '\0')
+    {
+        // Include the extension
+        snprintf(shortenedName, 13, "%s.%s", namePart, extPart);
+    }
+    else
+    {
+        // No extension
+        strncpy(shortenedName, namePart, 13);
+        shortenedName[12] = '\0'; // Ensure null-termination
+    }
 }
 
 /**
