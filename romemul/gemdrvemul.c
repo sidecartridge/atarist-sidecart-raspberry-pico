@@ -265,6 +265,20 @@ static void __not_in_flash_func(seach_path_2_st)(const char *fspec_str, char *in
     }
 }
 
+static void __not_in_flash_func(remove_trailing_spaces)(char *str)
+{
+    int len = strlen(str);
+
+    // Start from the end of the string and move backwards
+    while (len > 0 && str[len - 1] == ' ')
+    {
+        len--;
+    }
+
+    // Null-terminate the string at the new length
+    str[len] = '\0';
+}
+
 static void __not_in_flash_func(populate_dta)(uint32_t memory_address_dta, uint32_t dta_address, int16_t gemdos_err_code)
 {
     nullify_dta(memory_address_dta);
@@ -1347,7 +1361,7 @@ void init_gemdrvemul(bool safe_config_reboot)
             payloadPtr += 2;                                                  // Skip two words
             char attribs_str[7] = "";
             char internal_path[MAX_FOLDER_LENGTH * 2] = {0};
-            char pattern[32] = {0};
+            char pattern[MAX_FOLDER_LENGTH] = {0};
             char fspec_string[MAX_FOLDER_LENGTH] = {0};
             char tmp_string[MAX_FOLDER_LENGTH] = {0};
             char path_forwardslash[MAX_FOLDER_LENGTH] = {0};
@@ -1356,7 +1370,15 @@ void init_gemdrvemul(bool safe_config_reboot)
             DPRINTF("Fspec string: %s\n", tmp_string);
             back_2_forwardslash(tmp_string);
             DPRINTF("Fspec string backslash: %s\n", tmp_string);
-            if (tmp_string[0] == '/' || tmp_string[1] == ':')
+
+            if (tmp_string[1] == ':')
+            {
+                // If the path has the drive letter, jump two positions
+                // and ignore the dpath_string
+                snprintf(tmp_string, MAX_FOLDER_LENGTH, "%s", tmp_string + 2);
+                DPRINTF("New path_filename: %s\n", tmp_string);
+            }
+            if (tmp_string[0] == '/')
             {
                 DPRINTF("Root folder found. Ignoring default path.\n");
                 strcpy(fspec_string, tmp_string);
@@ -1379,8 +1401,11 @@ void init_gemdrvemul(bool safe_config_reboot)
             // DPRINTF("Old dpath string: %s, new dpath string: %s\n", dpath_string, path_forwardslash);
             // strcpy(dpath_string, path_forwardslash);
 
+            // Remove all the trailing spaces in the pattern
+            remove_trailing_spaces(pattern);
+
             DPRINTF("Fsfirst ndta: %x, attribs: %s, fspec: %x, fspec string: %s\n", ndta, attribs_str, fspec, fspec_string);
-            DPRINTF("Fsfirst Full internal path: %s, filename pattern: %s\n", internal_path, pattern);
+            DPRINTF("Fsfirst Full internal path: %s, filename pattern: %s[%d]\n", internal_path, pattern, strlen(pattern));
 
             bool ndta_exists = lookupDTA(ndta) ? true : false;
 
