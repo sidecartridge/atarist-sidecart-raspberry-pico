@@ -651,6 +651,12 @@ void init_floppyemul(bool safe_config_reboot)
     {
         buffer_type_value = atoi(buffer_type->value);
     }
+    ConfigEntry *network_enabled = find_entry(PARAM_FLOPPY_NET_ENABLED);
+    bool floppy_network_enabled = true;
+    if (network_enabled != NULL)
+    {
+        floppy_network_enabled = (network_enabled->value[0] == 't' || network_enabled->value[0] == 'T');
+    }
 
     SET_SHARED_VAR(SHARED_VARIABLE_BUFFER_TYPE, buffer_type_value, memory_shared_address, FLOPPYEMUL_SHARED_VARIABLES); // 0: _diskbuff, 1: heap
     SET_SHARED_PRIVATE_VAR(FLOPPYEMUL_SVAR_XBIOS_TRAP_ENABLED, floppy_xbios_enabled ? 0xFFFFFFFF : 0, memory_shared_address, FLOPPYEMUL_SHARED_VARIABLES);
@@ -681,9 +687,12 @@ void init_floppyemul(bool safe_config_reboot)
     DPRINTF("Timeout in seconds: %d\n", floppy_network_timeout_sec);
     CLEAR_FLAG(PING_RECEIVED_FLAG);
 
+    DPRINTF("Floppy network enabled? %s\n", floppy_network_enabled ? "YES" : "NO");
+
     bool show_blink = true;
     // Only try to get the datetime from the network if the wifi is configured
-    if (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
+    // and the network configuration is enabled
+    if ((strlen(find_entry(PARAM_WIFI_SSID)->value) > 0) && (floppy_network_enabled))
     {
         // Initialize SD card
         if (!sd_init_driver())
