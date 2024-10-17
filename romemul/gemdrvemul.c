@@ -967,10 +967,18 @@ void init_gemdrvemul(bool safe_config_reboot)
         buffer_type = atoi(buffer_type_conf->value);
     }
 
+    ConfigEntry *virtual_fake_floppy_conf = find_entry(PARAM_GEMDRIVE_FAKEFLOPPY);
+    uint16_t virtual_fake_floppy = 0; // 0: No, 1: Yes
+    if (virtual_fake_floppy_conf != NULL)
+    {
+        virtual_fake_floppy = virtual_fake_floppy_conf->value[0] == 't' || virtual_fake_floppy_conf->value[0] == 'T';
+    }
+
     set_shared_var(SHARED_VARIABLE_FIRST_FILE_DESCRIPTOR, FIRST_FILE_DESCRIPTOR, memory_shared_address);
     set_shared_var(SHARED_VARIABLE_DRIVE_LETTER, drive_letter_num, memory_shared_address);
     set_shared_var(SHARED_VARIABLE_DRIVE_NUMBER, drive_number, memory_shared_address);
     set_shared_var(SHARED_VARIABLE_BUFFER_TYPE, buffer_type, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_FAKE_FLOPPY, virtual_fake_floppy, memory_shared_address);
 
     for (int i = 0; i < SHARED_VARIABLES_SIZE; i++)
     {
