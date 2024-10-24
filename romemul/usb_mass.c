@@ -13,7 +13,35 @@ static DWORD sz_sect = 0;
 
 void cdc_task(void);
 
-void usb_mass_init(void)
+void usb_mass_init()
+{
+    ConfigEntry *sd_card_mass_storage_enabled = find_entry(PARAM_SD_MASS_STORAGE);
+    if ((sd_card_mass_storage_enabled != NULL) && (sd_card_mass_storage_enabled->value[0] == 't' || sd_card_mass_storage_enabled->value[0] == 'T'))
+    {
+        DPRINTF("USB Mass storage flag set to enabled\n");
+        // Initialize SD card
+        // Physical drive number
+        BYTE const pdrv = 0;
+        // Initialize the disk subsystem
+        DSTATUS ds = disk_initialize(pdrv);
+        if (!(0 == (ds & STA_NOINIT)))
+        {
+            DPRINTF("ERROR: Could not initialize SD card in block storage mode\r\n");
+        }
+        else
+        {
+            DPRINTF("SD card initialized\n");
+            // Start the USB Mass storage device
+            usb_mass_start();
+        }
+    }
+    else
+    {
+        DPRINTF("USB Mass storage flag set to disabled\n");
+    }
+}
+
+void usb_mass_start(void)
 {
     // Init USB
     DPRINTF("Init USB\n");
