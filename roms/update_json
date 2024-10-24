@@ -36,6 +36,8 @@ def upload_to_s3(directory: str, bucket_name: str):
         and file_name != "update_json"
         and file_name != "roms.md"
         and file_name != "create_roms_markdown"
+        and file_name != "create_roms_csv"
+        and file_name != "upload_roms"
     )
 
     # Get a list of all files currently in the S3 bucket
