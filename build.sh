@@ -75,7 +75,7 @@ mkdir build
 
 # Build the project
 cd build
-cmake ../romemul
+cmake ../romemul -DCMAKE_BUILD_TYPE=RelWithDebInfo
 make -j4
 
 # Copy the built firmware to the /dist folder

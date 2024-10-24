@@ -246,8 +246,9 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         DPRINTF("Command CONNECT_NETWORK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         wifi_auth = malloc(sizeof(WifiNetworkAuthInfo));
         memcpy(wifi_auth, protocol->payload, sizeof(WifiNetworkAuthInfo));
+        uint32_t old_auth_mode = wifi_auth->auth_mode;
         network_swap_auth_data((__uint16_t *)wifi_auth);
-        DPRINTF("SSID:%s - Pass: %s - Auth: %d\n", wifi_auth->ssid, wifi_auth->password, wifi_auth->auth_mode);
+        DPRINTF("SSID:%s - Pass: %s - Auth: %x / %x\n", wifi_auth->ssid, wifi_auth->password, wifi_auth->auth_mode, old_auth_mode);
         break;
     case GET_IP_DATA:
         // Get IPv4 and IPv6 and SSID info
@@ -481,8 +482,6 @@ int init_firmware()
     int num_files = 0;
     char **file_list = NULL;
 
-    network_init();
-
     // Initialize SD card
     microsd_initialized = sd_init_driver();
     if (!microsd_initialized)
@@ -516,8 +515,7 @@ int init_firmware()
     // two 0x00 bytes.
 
     // Configure polling times
-    u_int64_t wifi_scan_poll_counter_mcs = 0; // Force the first scan to be done in the loop
-    u_int16_t wifi_scan_poll_counter = get_wifi_scan_poll_secs();
+    u_int16_t wifi_scan_poll_polling_ms = get_wifi_scan_poll_secs() * 1000;
     u_int32_t network_status_polling_ms = get_network_status_polling_ms();
 
     SdCardData sd_data = {0}; // Lazy initalization
@@ -548,34 +546,28 @@ int init_firmware()
     }
 
     // Start the network.
-    network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+    bool wifi_init = true;
+    network_init(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
 
     bool show_blink_code = true;
     while (!clean_start)
     {
         // Wait until the clean start command is received
-        tight_loop_contents();
         if (show_blink_code)
         {
             show_blink_code = false;
             // The "C" character stands for "Configurator"
             blink_morse('C');
         }
-        sleep_ms(100);
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_lwip_begin();
-        network_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
-        cyw43_arch_lwip_end();
-#elif PICO_CYW43_ARCH_THREADSAFE_BACKGROUND
-        cyw43_arch_lwip_begin();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
-        cyw43_arch_lwip_end();
+        network_safe_poll();
 #endif
     }
 
-    u_int32_t network_poll_counter = 0;
-    u_int32_t storage_poll_counter = 0;
+    absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(storage_poll_counter, 0);
+    absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(network_poll_counter, 0);
+    absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(wifi_scan_poll_counter, wifi_scan_poll_polling_ms);
+    absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(reconnect_t, 0);
     while ((rom_file_selected < 0) &&
            (rom_network_selected < 0) &&
            (!reset_default) && (!rtc_boot) && (!gemdrive_boot) &&
@@ -584,56 +576,52 @@ int init_firmware()
         tight_loop_contents();
 
 #if PICO_CYW43_ARCH_POLL
-        network_poll();
+        network_safe_poll();
 #endif
-        cyw43_arch_lwip_begin();
-        cyw43_arch_lwip_check();
-        cyw43_arch_lwip_end();
-        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(1));
 
-        if ((time_us_64() - wifi_scan_poll_counter_mcs) > (wifi_scan_poll_counter * 1000000))
+        // Check if the network is disconnected and scan the networks
+        if (time_passed(&wifi_scan_poll_counter, wifi_scan_poll_polling_ms))
         {
+            wifi_scan_poll_counter = make_timeout_time_ms(0);
             if (get_network_connection_status() == DISCONNECTED)
             {
                 DPRINTF("Wifi scan polling...\n");
                 network_scan();
-                wifi_scan_poll_counter = get_wifi_scan_poll_secs();
-                wifi_scan_poll_counter_mcs = time_us_64();
             }
         }
+
+        // If the wifi_auth is not NULL, then connect save the auth info and connect to the network
+        // This is done when the user enters the wifi credentials to start the connection process
         if (wifi_auth != NULL)
         {
+            DPRINTF("WHAT THE FUCK");
             DPRINTF("Connecting to network...\n");
             put_string(PARAM_WIFI_SSID, wifi_auth->ssid);
             put_string(PARAM_WIFI_PASSWORD, wifi_auth->password);
             put_integer(PARAM_WIFI_AUTH, wifi_auth->auth_mode);
             write_all_entries();
 
-            network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+            network_init(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
             free(wifi_auth);
             wifi_auth = NULL;
         }
+
+        // Restart the network and reconnect
         if (restart_network)
         {
             restart_network = false;
             // Force  network disconnection
-            network_disconnect();
-            // Need to deinit and init again the full network stack to be able to scan again
-            cyw43_arch_deinit();
-            cyw43_arch_init();
-            network_init();
-
-            network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+            network_terminate();
+            network_init(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
         }
+
+        // Fully disconnect from the network, clean credentials and start scanning for 
+        // other networks around
         if (disconnect_network)
         {
             disconnect_network = false;
             // Force  network disconnection
-            network_disconnect();
-            // Need to deinit and init again the full network stack to be able to scan again
-            cyw43_arch_deinit();
-            cyw43_arch_init();
-            network_init();
+            network_terminate();
 
             network_scan();
 
@@ -643,64 +631,57 @@ int init_firmware()
             put_integer(PARAM_WIFI_AUTH, 0);
             write_all_entries();
         }
-        if (network_poll_counter == 0)
+
+        // Poll the network status and reconnect if needed
+        if (time_passed(&network_poll_counter, network_status_polling_ms))
         {
+            network_poll_counter = make_timeout_time_ms(0);
             if (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
             {
                 // Only display when changes status to avoid flooding the console
                 ConnectionStatus previous_status = get_previous_connection_status();
                 ConnectionStatus current_status = get_network_connection_status();
-                DPRINTF("Network status: %d\n", current_status);
                 if (current_status != previous_status)
                 {
-                    DPRINTF("Network status: %d\n", current_status);
-                    DPRINTF("Network previous status: %d\n", previous_status);
-                    ConnectionData *connection_data = malloc(sizeof(ConnectionData));
-                    get_connection_data(connection_data);
-                    show_connection_data(connection_data);
-                    free(connection_data);
-                    if (current_status == BADAUTH_ERROR)
+#if defined(_DEBUG) && (_DEBUG != 0)
+                    ConnectionData connection_data = {0};
+                    get_connection_data(&connection_data);
+                    DPRINTF("Status: %d - Prev: %d - SSID: %s - IPv4: %s - GW:%s - Mask:%s - MAC:%s\n",
+                            current_status,
+                            previous_status,
+                            connection_data.ssid,
+                            connection_data.ipv4_address,
+                            print_ipv4(get_gateway()),
+                            print_ipv4(get_netmask()),
+                            print_mac(get_mac_address()));
+#endif
+                    if ((current_status == GENERIC_ERROR) || (current_status == CONNECT_FAILED_ERROR) || (current_status == BADAUTH_ERROR))
                     {
-                        DPRINTF("Bad authentication. Should enter again the credentials...\n");
-                        network_disconnect();
-
-                        // Need to deinit and init again the full network stack to be able to scan again
-                        cyw43_arch_deinit();
-                        cyw43_arch_init();
-                        network_init();
-
-                        network_scan();
-
-                        // Clean the credentials configuration
-                        put_string(PARAM_WIFI_SSID, "");
-                        put_string(PARAM_WIFI_PASSWORD, "");
-                        put_integer(PARAM_WIFI_AUTH, 0);
-                        write_all_entries();
-
-                        // Start the network.
-                        network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+                        if (wifi_init)
+                        {
+                            network_terminate();
+                            wifi_init = false;
+                            reconnect_t = make_timeout_time_ms(0);
+                            DPRINTF("Connection failed. Retrying...\n");
+                        }
                     }
                 }
-                else if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
+                if ((!wifi_init) && (time_passed(&reconnect_t, 3000) == 1))
                 {
-                    DPRINTF("Connection failed. Resetting network...\n");
-                    network_disconnect();
-
-                    // Need to deinit and init again the full network stack to be able to scan again
-                    cyw43_arch_deinit();
-                    cyw43_arch_init();
-                    network_init();
-
-                    network_scan();
-                    // Start the network.
-                    network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+                    network_init(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+                    reconnect_t = make_timeout_time_ms(0);
+                    wifi_init = true;
                 }
             }
         }
-        if (storage_poll_counter == 0)
+
+        // Poll the storage status in the SD card
+        if (time_passed(&storage_poll_counter, STORAGE_POLL_INTERVAL))
         {
+            storage_poll_counter = make_timeout_time_ms(0);
             update_sd_status(&fs, &sd_data);
         }
+
         if (get_config_call)
         {
             get_config_call = false;
@@ -1186,10 +1167,6 @@ int init_firmware()
             floppy_file_selected = -1;
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
-
-        // Increase the counter and reset it if it reaches the limit
-        network_poll_counter >= network_status_polling_ms ? network_poll_counter = 0 : network_poll_counter++;
-        storage_poll_counter >= STORAGE_POLL_INTERVAL ? storage_poll_counter = 0 : storage_poll_counter++;
 
         // Store the seed of the random number generator in the ROM memory space
         *((volatile uint32_t *)(memory_area - RANDOM_SEED_SIZE)) = rand() % 0xFFFFFFFF;

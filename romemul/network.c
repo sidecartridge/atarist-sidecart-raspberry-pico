@@ -3,6 +3,29 @@
 static ConnectionStatus connection_status = DISCONNECTED;
 static ConnectionStatus previous_connection_status = NOT_SUPPORTED;
 WifiScanData wifiScanData;
+static char wifi_hostname[32];
+static ip_addr_t current_ip;
+static uint8_t cyw43_mac[6];
+static bool cyw43_initialized = false;
+
+int time_passed(absolute_time_t *t, uint32_t ms)
+{
+    if (t == NULL)
+        return -1; // Error: invalid pointer
+
+    absolute_time_t t_now = get_absolute_time(); // Get the current time
+
+    // If *t is not initialized, or if the desired time has passed
+    if (to_us_since_boot(*t) == 0 ||
+        absolute_time_diff_us(*t, t_now) >= (ms * 1000))
+    {
+
+        *t = t_now; // Reset *t to the current time for the next check
+        return 1;   // Time has passed
+    }
+
+    return 0; // Time has not yet passed
+}
 
 u_int32_t get_auth_pico_code(u_int16_t connect_code)
 {
@@ -38,13 +61,49 @@ ConnectionStatus get_previous_connection_status()
 
 void network_swap_auth_data(uint16_t *dest_ptr_word)
 {
-    // +2 is for the auth_mode type
-    CHANGE_ENDIANESS_BLOCK16(dest_ptr_word, MAX_SSID_LENGTH + MAX_PASSWORD_LENGTH + 2);
+    // We need to change the endianness of the ssid and password
+    char *base = (char *)(dest_ptr_word);
+    WifiNetworkAuthInfo *authInfo = (WifiNetworkAuthInfo *)base;
+
+    // Create a temporary buffer to hold the SSID data
+    char tmp[MAX_SSID_LENGTH] = {0};
+    memcpy(tmp, authInfo->ssid, MAX_SSID_LENGTH);    // Copy the SSID data to the temporary buffer
+    CHANGE_ENDIANESS_BLOCK16(&tmp, MAX_SSID_LENGTH); // Swap the SSID data
+    // Write the result back to the SSID field safely
+    memcpy(authInfo->ssid, tmp, MAX_SSID_LENGTH);
+
+    // Create a temporary buffer to hold the password data
+    char tmp_password[MAX_PASSWORD_LENGTH] = {0};
+    memcpy(tmp_password, authInfo->password, MAX_PASSWORD_LENGTH); // Copy the password data to the temporary buffer
+    CHANGE_ENDIANESS_BLOCK16(&tmp_password, MAX_PASSWORD_LENGTH);  // Swap the password data
+    // Write the result back to the password field safely
+    memcpy(authInfo->password, tmp_password, MAX_PASSWORD_LENGTH);
+
+    // No need to swap the auth_mode uint16_t
 }
+
 void network_swap_data(uint16_t *dest_ptr_word, uint16_t total_items)
 {
-    // +4 is for the MAGIC and +2 each entry COUNT
-    CHANGE_ENDIANESS_BLOCK16(dest_ptr_word, total_items * (MAX_SSID_LENGTH + MAX_BSSID_LENGTH + 2) + 4);
+    // Skip the MAGIC number (assumed to be a 32-bit value)
+    char *ssid_base = (char *)(dest_ptr_word) + sizeof(uint32_t);
+    WifiNetworkInfo *netInfo = (WifiNetworkInfo *)ssid_base;
+
+    for (uint16_t i = 0; i < total_items; i++)
+    {
+        // Create a temporary buffer to hold the SSID data
+        char tmp[MAX_SSID_LENGTH] = {0};
+        memcpy(tmp, netInfo[i].ssid, MAX_SSID_LENGTH);   // Copy the SSID data to the temporary buffer
+        CHANGE_ENDIANESS_BLOCK16(&tmp, MAX_SSID_LENGTH); // Swap the SSID data
+        // Write the result back to the SSID field safely
+        memcpy(netInfo[i].ssid, tmp, MAX_SSID_LENGTH);
+
+        // Create a temporary buffer to hold the BSSID data
+        char tmp_bssid[MAX_BSSID_LENGTH] = {0};
+        memcpy(tmp_bssid, netInfo[i].bssid, MAX_BSSID_LENGTH);  // Copy the BSSID data to the temporary buffer
+        CHANGE_ENDIANESS_BLOCK16(&tmp_bssid, MAX_BSSID_LENGTH); // Swap the BSSID data
+        // Write the result back to the BSSID field safely
+        memcpy(netInfo[i].bssid, tmp_bssid, MAX_BSSID_LENGTH);
+    }
 }
 
 void network_swap_connection_data(uint16_t *dest_ptr_word)
@@ -91,8 +150,68 @@ uint32_t get_country_code(char *c, char **valid_country_str)
     return CYW43_COUNTRY_WORLDWIDE;
 }
 
-void network_init()
+const char *pico_serial_str()
 {
+    static char buf[PICO_UNIQUE_BOARD_ID_SIZE_BYTES * 2 + 1];
+    pico_unique_board_id_t board_id;
+
+    memset(&board_id, 0, sizeof(board_id));
+    pico_get_unique_board_id(&board_id);
+    for (int i = 0; i < PICO_UNIQUE_BOARD_ID_SIZE_BYTES; i++)
+        snprintf(&buf[i * 2], 3, "%02x", board_id.id[i]);
+
+    return buf;
+}
+
+static int16_t get_rssi(void)
+{
+    static absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(rssi_poll_counter, 0);
+    static int32_t rssi_tmp = 0;
+    static int32_t rssi_polling_interval = 0;
+
+    if (rssi_polling_interval == 0)
+    {
+        rssi_polling_interval = get_network_status_polling_ms();
+    }
+
+    if (time_passed(&rssi_poll_counter, rssi_polling_interval))
+    {
+        cyw43_ioctl(&cyw43_state, 254, sizeof rssi_tmp, (uint8_t *)&rssi_tmp, CYW43_ITF_STA);
+    }
+    return (int16_t)rssi_tmp;
+}
+
+void wifi_link_callback(struct netif *netif)
+{
+    DPRINTF("WiFi Link: %s\n", (netif_is_link_up(netif) ? "UP" : "DOWN"));
+}
+
+void network_status_callback(struct netif *netif)
+{
+    if (netif_is_up(netif))
+    {
+        DPRINTF("WiFi Status: UP (%s)\n", ipaddr_ntoa(netif_ip_addr4(netif)));
+        ip_addr_set(&current_ip, netif_ip_addr4(netif));
+    }
+    else
+    {
+        DPRINTF("WiFi Status: DOWN\n");
+    }
+}
+
+// We MUST call this function and avoid the cy43_arch_deinit() function to avoid a crash
+void network_terminate()
+{
+    // This flag is important, because calling a cyw43 function before the initialization will cause a crash
+    cyw43_initialized = false;
+    cyw43_arch_deinit();
+}
+
+int network_wifi_init()
+{
+    // This flag is important, because calling a cyw43 function before the initialization will cause a crash
+    cyw43_initialized = true;
+    DPRINTF("CYW43 Logging level: %d\n", CYW43_VERBOSE_DEBUG);
     uint32_t country = CYW43_COUNTRY_WORLDWIDE;
     ConfigEntry *country_entry = find_entry(PARAM_WIFI_COUNTRY);
     if (country_entry != NULL)
@@ -101,35 +220,182 @@ void network_init()
         country = get_country_code(country_entry->value, &valid);
         put_string(PARAM_WIFI_COUNTRY, valid);
     }
-    cyw43_wifi_set_up(&cyw43_state,
-                      CYW43_ITF_STA,
-                      true,
-                      country);
 
-    // Enable the STA mode
+    int res;
+    DPRINTF("Initialization WiFi...\n");
+
+    if ((res = cyw43_arch_init_with_country(country)))
+    {
+        DPRINTF("Failed to initialize WiFi: %d\n", res);
+        return -1;
+    }
+    DPRINTF("Country: %s\n", country_entry->value);
+
+    DPRINTF("Enabling STA mode...\n");
     cyw43_arch_enable_sta_mode();
-    DPRINTF("STA network mode enabled\n");
+
+    // Setting the power management
+    uint32_t pm_value = 0xa11140; // 0: Disable PM
+    ConfigEntry *pm_entry = find_entry(PARAM_WIFI_POWER);
+    if (pm_entry != NULL)
+    {
+        pm_value = strtoul(pm_entry->value, NULL, 16);
+    }
+    if (pm_value < 5)
+    {
+        switch (pm_value)
+        {
+        case 0:
+            pm_value = 0xa11140; // DISABLED_PM
+            break;
+        case 1:
+            pm_value = CYW43_PERFORMANCE_PM; // PERFORMANCE_PM
+            break;
+        case 2:
+            pm_value = CYW43_AGGRESSIVE_PM; // AGGRESSIVE_PM
+            break;
+        case 3:
+            pm_value = CYW43_DEFAULT_PM; // DEFAULT_PM
+            break;
+        default:
+            pm_value = CYW43_NO_POWERSAVE_MODE; // NO_POWERSAVE_MODE
+            break;
+        }
+    }
+    DPRINTF("Setting power management to: %08x\n", pm_value);
+    cyw43_wifi_pm(&cyw43_state, pm_value);
+}
+
+int network_init(bool force, bool async, char **pass)
+{
+    if (!cyw43_initialized)
+    {
+        // Setup the underlying WiFi stack
+        network_wifi_init();
+    }
+
+    int res;
 
     // Set hostname
     char *hostname = find_entry(PARAM_HOSTNAME)->value;
 
-    cyw43_arch_lwip_begin();
     struct netif *n = &cyw43_state.netif[CYW43_ITF_STA];
-    netif_set_hostname(n, hostname);
+
+    cyw43_arch_lwip_begin();
+
+    if ((hostname != NULL) && (strlen(hostname) > 0))
+    {
+        strncpy(wifi_hostname, hostname, sizeof(wifi_hostname));
+    }
+    else
+    {
+        snprintf(wifi_hostname, sizeof(wifi_hostname), "SidecarT-%s", pico_serial_str());
+    }
+    DPRINTF("Hostname: %s\n", wifi_hostname);
+    netif_set_hostname(n, wifi_hostname);
+
+    // Set callbacks
+    netif_set_link_callback(n, wifi_link_callback);
+    netif_set_status_callback(n, network_status_callback);
+
+    // DHCP or static IP
+    if ((find_entry(PARAM_WIFI_DHCP) != NULL) && (find_entry(PARAM_WIFI_DHCP)->value[0] == 't' || find_entry(PARAM_WIFI_DHCP)->value[0] == 'T'))
+    {
+        DPRINTF("DHCP enabled\n");
+    }
+    else
+    {
+        DPRINTF("Static IP enabled\n");
+        dhcp_stop(n);
+        ip_addr_t ipaddr, netmask, gw;
+        ipaddr.addr = ipaddr_addr(find_entry(PARAM_WIFI_IP)->value);
+        netmask.addr = ipaddr_addr(find_entry(PARAM_WIFI_NETMASK)->value);
+        gw.addr = ipaddr_addr(find_entry(PARAM_WIFI_GATEWAY)->value);
+        netif_set_addr(n, &ipaddr, &netmask, &gw);
+        DPRINTF("IP: %s\n", ipaddr_ntoa(&ipaddr));
+        DPRINTF("Netmask: %s\n", ipaddr_ntoa(&netmask));
+        DPRINTF("Gateway: %s\n", ipaddr_ntoa(&gw));
+    }
     netif_set_up(n);
+
     cyw43_arch_lwip_end();
 
-    DPRINTF("Hostname: %s\n", hostname);
+    // Get the MAC address
+    if ((res = cyw43_wifi_get_mac(&cyw43_state, CYW43_ITF_STA, cyw43_mac)))
+    {
+        DPRINTF("Failed to get MAC address: %d\n", res);
+        cyw43_arch_deinit();
+        return -2;
+    }
 
-    // Initialize the scan data
-    wifiScanData.magic = NETWORK_MAGIC;
-    memset(wifiScanData.networks, 0, sizeof(wifiScanData.networks));
-    wifiScanData.count = 0;
-    DPRINTF("Scan data initialized\n");
+    ConfigEntry *ssid = find_entry(PARAM_WIFI_SSID);
+    if (strlen(ssid->value) == 0)
+    {
+        DPRINTF("No SSID found in config. Can't connect\n");
+        return -3;
+    }
+    ConfigEntry *auth_mode = find_entry(PARAM_WIFI_AUTH);
+    if (strlen(auth_mode->value) == 0)
+    {
+        DPRINTF("No auth mode found in config. Can't connect\n");
+        return -4;
+    }
+    char *password_value = NULL;
+    if (*pass == NULL)
+    {
+        ConfigEntry *password = find_entry(PARAM_WIFI_PASSWORD);
+        if (strlen(password->value) > 0)
+        {
+            password_value = strdup(password->value);
+        }
+        else
+        {
+            DPRINTF("No password found in config. Trying to connect without password\n");
+        }
+    }
+    else
+    {
+        password_value = strdup(*pass);
+    }
+    DPRINTF("The password is: %s\n", password_value);
+
+    uint32_t auth_value = get_auth_pico_code(atoi(auth_mode->value));
+    int error_code = 0;
+    if (!async)
+    {
+        uint32_t network_timeout = NETWORK_CONNECTION_TIMEOUT;
+        if (find_entry(PARAM_WIFI_CONNECT_TIMEOUT) != NULL)
+        {
+            network_timeout = atoi(find_entry(PARAM_WIFI_CONNECT_TIMEOUT)->value) * 1000;
+        }
+        uint16_t retries = 3;
+        do
+        {
+            DPRINTF("Connecting to SSID=%s, password=%s, auth=%08x. SYNC. Retry: %d\n", ssid->value, password_value, auth_value, retries);
+            error_code = cyw43_arch_wifi_connect_timeout_ms(ssid->value, password_value, auth_value, network_timeout);
+        } while (error_code != 0 && retries--);
+    }
+    else
+    {
+        DPRINTF("Connecting to SSID=%s, password=%s, auth=%08x. ASYNC\n", ssid->value, password_value, auth_value);
+        error_code = cyw43_arch_wifi_connect_async(ssid->value, password_value, auth_value);
+    }
+    free(password_value);
+    if (error_code != 0)
+    {
+        DPRINTF("Failed to connect to WiFi: %d\n", error_code);
+        return -5;
+    }
+    DPRINTF("Connected. Check the connection status...\n");
+    return 0;
 }
 
 void network_scan()
 {
+    if (!cyw43_initialized)
+    {
+        network_wifi_init();
+    }
     int scan_result(void *env, const cyw43_ev_scan_result_t *result)
     {
         int bssid_exists(WifiNetworkInfo * network)
@@ -157,6 +423,9 @@ void network_scan()
             // Store authentication mode
             network.auth_mode = result->auth_mode;
 
+            // Store signal strength
+            network.rssi = result->rssi;
+
             // Check if BSSID already exists
             if (!bssid_exists(&network))
             {
@@ -164,7 +433,7 @@ void network_scan()
                 {
                     wifiScanData.networks[wifiScanData.count] = network;
                     wifiScanData.count++;
-                    DPRINTF("Found network %s\n", network.ssid);
+                    DPRINTF("FOUND NETWORK %s (%s) with auth %d and RSSI %d\n", network.ssid, network.bssid, network.auth_mode, network.rssi);
                 }
             }
         }
@@ -190,7 +459,19 @@ void network_scan()
     }
 }
 
-void network_disconnect()
+void dhcp_set_ntp_servers(u8_t num_ntp_servers, const ip4_addr_t *ntp_server_addrs)
+{
+    if (num_ntp_servers > LWIP_DHCP_MAX_NTP_SERVERS)
+    {
+        num_ntp_servers = LWIP_DHCP_MAX_NTP_SERVERS;
+    }
+    for (u8_t i = 0; i < num_ntp_servers; i++)
+    {
+        DPRINTF("Reading NTP server %d: %s\n", i, ip4addr_ntoa(&ntp_server_addrs[i]));
+    }
+}
+
+void network_wifi_disconnect()
 {
     // The library seems to have a bug when disconnecting. It doesn't work. So I'm using the ioctl directly
     int custom_cyw43_wifi_leave(cyw43_t * self, int itf)
@@ -215,109 +496,14 @@ void network_disconnect()
     connection_status = DISCONNECTED;
 }
 
-void network_connect(bool force, bool async, char **pass)
+inline void wait_cyw43_with_polling(uint32_t milliseconds)
 {
-    if (!force)
+    uint64_t start_time = time_us_64();
+    cyw43_arch_poll();
+    cyw43_arch_wait_for_work_until(make_timeout_time_ms(milliseconds * 0.1));
+    while (time_us_64() - start_time < 1000 * milliseconds * 0.9)
     {
-        if ((connection_status == CONNECTED_WIFI_IP))
-        {
-            DPRINTF("Already connected\n");
-            return;
-        }
-    }
-
-    ConfigEntry *ssid = find_entry(PARAM_WIFI_SSID);
-    if (strlen(ssid->value) == 0)
-    {
-        DPRINTF("No SSID found in config. Can't connect\n");
-        connection_status = DISCONNECTED;
-        return;
-    }
-    ConfigEntry *auth_mode = find_entry(PARAM_WIFI_AUTH);
-    connection_status = CONNECTING;
-    char *password_value = NULL;
-    if (*pass == NULL)
-    {
-        ConfigEntry *password = find_entry(PARAM_WIFI_PASSWORD);
-        if (strlen(password->value) > 0)
-        {
-            password_value = strdup(password->value);
-        }
-        else
-        {
-            DPRINTF("No password found in config. Trying to connect without password\n");
-        }
-    }
-    else
-    {
-        password_value = strdup(*pass);
-    }
-    DPRINTF("The password is: %s\n", password_value);
-    uint32_t auth_value = get_auth_pico_code(atoi(auth_mode->value));
-    DPRINTF("Connecting to SSID=%s, password=%s, auth=%08x\n", ssid->value, password_value, auth_value);
-    int error_code = 0;
-    if (!async)
-    {
-        error_code = cyw43_arch_wifi_connect_timeout_ms(ssid->value, password_value, auth_value, NETWORK_CONNECTION_TIMEOUT);
-    }
-    else
-    {
-        error_code = cyw43_arch_wifi_connect_async(ssid->value, password_value, auth_value);
-    }
-
-    if ((error_code == 0) && (async))
-    {
-        connection_status = CONNECTING;
-        DPRINTF("Connecting to SSID=%s\n", ssid->value);
-    }
-    else
-    {
-        switch (error_code)
-        {
-        case PICO_ERROR_TIMEOUT:
-            DPRINTF("Failed to connect to SSID=%s. Timeout\n", ssid->value);
-            connection_status = TIMEOUT_ERROR;
-            break;
-        case PICO_ERROR_GENERIC:
-            DPRINTF("Failed to connect to SSID=%s. Generic error\n", ssid->value);
-            connection_status = GENERIC_ERROR;
-            break;
-        case PICO_ERROR_NO_DATA:
-            DPRINTF("Failed to connect to SSID=%s. No data\n", ssid->value);
-            connection_status = NO_DATA_ERROR;
-            break;
-        case PICO_ERROR_NOT_PERMITTED:
-            DPRINTF("Failed to connect to SSID=%s. Not permitted\n", ssid->value);
-            connection_status = NOT_PERMITTED_ERROR;
-            break;
-        case PICO_ERROR_INVALID_ARG:
-            DPRINTF("Failed to connect to SSID=%s. Invalid argument\n", ssid->value);
-            connection_status = INVALID_ARG_ERROR;
-            break;
-        case PICO_ERROR_IO:
-            DPRINTF("Failed to connect to SSID=%s. IO error\n", ssid->value);
-            connection_status = IO_ERROR;
-            break;
-        case PICO_ERROR_BADAUTH:
-            DPRINTF("Failed to connect to SSID=%s. Bad auth\n", ssid->value);
-            connection_status = BADAUTH_ERROR;
-            break;
-        case PICO_ERROR_CONNECT_FAILED:
-            DPRINTF("Failed to connect to SSID=%s. Connect failed\n", ssid->value);
-            connection_status = CONNECT_FAILED_ERROR;
-            break;
-        case PICO_ERROR_INSUFFICIENT_RESOURCES:
-            DPRINTF("Failed to connect to SSID=%s. Insufficient resources\n", ssid->value);
-            connection_status = INSUFFICIENT_RESOURCES_ERROR;
-            break;
-        default:
-            connection_status = CONNECTED_WIFI;
-            DPRINTF("Connected to SSID=%s\n", ssid->value);
-        }
-    }
-    if (password_value != NULL)
-    {
-        free(password_value);
+        sleep_ms(10);
     }
 }
 
@@ -325,7 +511,7 @@ ConnectionStatus get_network_connection_status()
 {
     ConnectionStatus old_previous_connection_status = previous_connection_status;
     previous_connection_status = connection_status;
-    int link_status = cyw43_wifi_link_status(&cyw43_state, CYW43_ITF_STA);
+    int link_status = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
     switch (link_status)
     {
     case CYW43_LINK_DOWN:
@@ -333,10 +519,12 @@ ConnectionStatus get_network_connection_status()
         break;
     case CYW43_LINK_JOIN:
         connection_status = CONNECTED_WIFI;
-        if (get_ip_address() != 0x0)
-        {
-            connection_status = CONNECTED_WIFI_IP;
-        }
+        break;
+    case CYW43_LINK_NOIP:
+        connection_status = CONNECTED_WIFI_NO_IP;
+        break;
+    case CYW43_LINK_UP:
+        connection_status = CONNECTED_WIFI_IP;
         break;
     case CYW43_LINK_FAIL:
         connection_status = GENERIC_ERROR;
@@ -361,6 +549,12 @@ ConnectionStatus get_network_connection_status()
         case CYW43_LINK_JOIN:
             DPRINTF("Link join. Connected!\n");
             break;
+        case CYW43_LINK_NOIP:
+            DPRINTF("Link no IP\n");
+            break;
+        case CYW43_LINK_UP:
+            DPRINTF("Link up\n");
+            break;
         case CYW43_LINK_FAIL:
             DPRINTF("Link fail\n");
             break;
@@ -377,9 +571,12 @@ ConnectionStatus get_network_connection_status()
     return connection_status;
 }
 
-void network_poll()
+void network_safe_poll()
 {
-    cyw43_arch_poll();
+    if (cyw43_initialized)
+    {
+        cyw43_arch_poll();
+    }
 }
 
 uint32_t get_network_status_polling_ms()
@@ -425,27 +622,32 @@ uint16_t get_wifi_scan_poll_secs()
 
 u_int32_t get_ip_address()
 {
+    DPRINTF("IP: %s\n", ipaddr_ntoa(&current_ip));
     return cyw43_state.netif[0].ip_addr.addr;
 }
 
 u_int8_t *get_mac_address()
 {
+    DPRINTF("MAC: %02X:%02X:%02X:%02X:%02X:%02X\n", cyw43_mac[0], cyw43_mac[1], cyw43_mac[2], cyw43_mac[3], cyw43_mac[4], cyw43_mac[5]);
     return cyw43_state.mac;
 }
 
 u_int32_t get_netmask()
 {
+    DPRINTF("Netmask: %s\n", ipaddr_ntoa(&cyw43_state.netif[0].netmask));
     return cyw43_state.netif[0].netmask.addr;
 }
 
 u_int32_t get_gateway()
 {
+    DPRINTF("Gateway: %s\n", ipaddr_ntoa(&cyw43_state.netif[0].gw));
     return cyw43_state.netif[0].gw.addr;
 }
 
 u_int32_t get_dns()
 {
     const ip_addr_t *dns_ip = dns_getserver(0);
+    DPRINTF("DNS: %s\n", ipaddr_ntoa(dns_ip));
     return dns_ip->addr;
 }
 
@@ -477,6 +679,7 @@ void get_connection_data(ConnectionData *connection_data)
     ConfigEntry *network_status_scan_interval = find_entry(PARAM_NETWORK_STATUS_SEC);
     ConfigEntry *file_downloading_timeout = find_entry(PARAM_DOWNLOAD_TIMEOUT_SEC);
     ConfigEntry *wifi_country = find_entry(PARAM_WIFI_COUNTRY);
+    ConfigEntry *wifi_rssi_visible = find_entry(PARAM_WIFI_RSSI);
     connection_data->network_status = (u_int16_t)connection_status;
     snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Not connected" + '\0');
     snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Not connected" + '\0');
@@ -488,6 +691,7 @@ void get_connection_data(ConnectionData *connection_data)
     connection_data->wifi_scan_interval = get_wifi_scan_poll_secs();
     connection_data->network_status_poll_interval = (uint16_t)(get_network_status_polling_ms() / 1000);
     connection_data->file_downloading_timeout = (uint16_t)atoi(file_downloading_timeout->value);
+    connection_data->rssi = 0;
 
     // If the country is empty, set it to XX. Otherwise, copy the first two characters
     if (wifi_country->value[0] == '\0')
@@ -502,6 +706,7 @@ void get_connection_data(ConnectionData *connection_data)
     switch (connection_status)
     {
     case CONNECTED_WIFI_IP:
+    {
         snprintf(connection_data->ssid, sizeof(connection_data->ssid), "%s", ssid->value);
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", print_ipv4(get_ip_address()));
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Not implemented" + '\0');
@@ -512,8 +717,18 @@ void get_connection_data(ConnectionData *connection_data)
         snprintf(connection_data->netmask_ipv6_address, sizeof(connection_data->netmask_ipv6_address), "%s", "Not implemented" + '\0');
         snprintf(connection_data->dns_ipv4_address, sizeof(connection_data->dns_ipv4_address), "%s", print_ipv4(get_dns()));
         snprintf(connection_data->dns_ipv6_address, sizeof(connection_data->dns_ipv6_address), "%s", "Not implemented" + '\0');
+        if ((wifi_rssi_visible != NULL) && (wifi_rssi_visible->value[0] == 't' || wifi_rssi_visible->value[0] == 'T'))
+        {
+            connection_data->rssi = get_rssi();
+        }
+        else {
+            connection_data->rssi = 0;
+        }
         break;
+    }
     case CONNECTED_WIFI:
+    case CONNECTED_WIFI_NO_IP:
+    {
         snprintf(connection_data->ssid, sizeof(connection_data->ssid), "%s", ssid->value);
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Waiting address" + '\0');
         snprintf(connection_data->ipv6_address, sizeof(connection_data->ipv6_address), "%s", "Waiting address" + '\0');
@@ -524,7 +739,15 @@ void get_connection_data(ConnectionData *connection_data)
         snprintf(connection_data->netmask_ipv6_address, sizeof(connection_data->netmask_ipv6_address), "%s", "Waiting address" + '\0');
         snprintf(connection_data->dns_ipv4_address, sizeof(connection_data->dns_ipv4_address), "%s", "Waiting address" + '\0');
         snprintf(connection_data->dns_ipv6_address, sizeof(connection_data->dns_ipv6_address), "%s", "Waiting address" + '\0');
+        if ((wifi_rssi_visible != NULL) && (wifi_rssi_visible->value[0] == 't' || wifi_rssi_visible->value[0] == 'T'))
+        {
+            connection_data->rssi = get_rssi();
+        }
+        else {
+            connection_data->rssi = 0;
+        }
         break;
+    }
     case CONNECTING:
         snprintf(connection_data->ssid, MAX_SSID_LENGTH, "%s", "Initializing" + '\0');
         snprintf(connection_data->ipv4_address, sizeof(connection_data->ipv4_address), "%s", "Initializing" + '\0');
@@ -556,8 +779,9 @@ void get_connection_data(ConnectionData *connection_data)
 
 void show_connection_data(ConnectionData *connection_data)
 {
-    DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s DNS:%s\n",
+    DPRINTF("SSID: %s (%ddb) - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s DNS:%s\n",
             connection_data->ssid,
+            connection_data->rssi,
             connection_data->network_status,
             connection_data->ipv4_address,
             connection_data->ipv6_address,
@@ -900,7 +1124,7 @@ err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url)
         return ERR_OK;
     }
 
-    DPRINTF("Downloading JSON file from %s\n", url);
+    DPRINTF("Downloading CSV file from %s\n", url);
     if (split_url(url, &parts) != 0)
     {
         DPRINTF("Failed to split URL\n");
@@ -937,12 +1161,8 @@ err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url)
     while (!complete)
     {
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_poll();
+        network_safe_poll();
 #endif
-        cyw43_arch_lwip_begin();
-        cyw43_arch_lwip_check();
-        cyw43_arch_lwip_end();
-        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     free_url_parts(&parts);
@@ -1241,14 +1461,9 @@ int download_rom(const char *url, uint32_t rom_load_offset)
     }
     while (!complete)
     {
-        tight_loop_contents();
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_poll();
+        network_safe_poll();
 #endif
-        cyw43_arch_lwip_begin();
-        cyw43_arch_lwip_check();
-        cyw43_arch_lwip_end();
-        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     free_url_parts(&parts);
@@ -1346,12 +1561,8 @@ err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *u
     {
 
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_poll();
+        network_safe_poll();
 #endif
-        cyw43_arch_lwip_begin();
-        cyw43_arch_lwip_check();
-        cyw43_arch_lwip_end();
-        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     free_url_parts(&parts);
@@ -1586,14 +1797,9 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
     }
     while (!complete)
     {
-        tight_loop_contents();
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_poll();
+        network_safe_poll();
 #endif
-        cyw43_arch_lwip_begin();
-        cyw43_arch_lwip_check();
-        cyw43_arch_lwip_end();
-        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     // Close open file

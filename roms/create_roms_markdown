@@ -13,7 +13,7 @@ sorted_data = sorted(data, key=lambda x: x["name"].lower())
 with open("roms.md", "w") as output_file:
     # Write the header
     output_file.write(
-        """----
+        """---
 layout: basic
 title: ROMS list
 permalink: /roms/

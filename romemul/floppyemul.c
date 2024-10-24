@@ -683,7 +683,7 @@ void init_floppyemul(bool safe_config_reboot)
     }
     // The ping timeout is the same as the network timeout
     SET_SHARED_PRIVATE_VAR(FLOPPYEMUL_SVAR_PING_TIMEOUT, floppy_network_timeout_sec, memory_shared_address, FLOPPYEMUL_SHARED_VARIABLES);
-    floppy_network_timeout_sec = floppy_network_timeout_sec * 0.7; // Adjust the timeout to 70% of the value
+    floppy_network_timeout_sec = floppy_network_timeout_sec;
     DPRINTF("Timeout in seconds: %d\n", floppy_network_timeout_sec);
     CLEAR_FLAG(PING_RECEIVED_FLAG);
 
@@ -712,59 +712,55 @@ void init_floppyemul(bool safe_config_reboot)
             }
         }
 
-        // Start the network.
         cyw43_arch_deinit();
-        cyw43_arch_init();
-        network_init();
-        network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+
+        network_init(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+        absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(reconnect_t, 0);
+        absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(second_t, 0);
+        bool wifi_init = true;
+        uint32_t time_to_connect_again = 1000; // 1 second
         network_ready = false;
-
-        blink_morse('F');
-
         // Wait until timeout
         while ((!network_ready) && (floppy_network_timeout_sec > 0) && (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0))
         {
-            tight_loop_contents();
 #if PICO_CYW43_ARCH_POLL
-            network_poll();
+            cyw43_arch_poll();
 #endif
-            cyw43_arch_lwip_begin();
-            cyw43_arch_lwip_check();
-            cyw43_arch_lwip_end();
-            sleep_ms(1000); // Wait 1 sec per test
-
             // Only display when changes status to avoid flooding the console
             ConnectionStatus previous_status = get_previous_connection_status();
             ConnectionStatus current_status = get_network_connection_status();
             if (current_status != previous_status)
             {
-                DPRINTF("Network status: %d\n", current_status);
-                DPRINTF("Network previous status: %d\n", previous_status);
                 get_connection_data(&connection_data);
-                DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s\n",
+#if defined(_DEBUG) && (_DEBUG != 0)
+                DPRINTF("Status: %d - Prev: %d - SSID: %s - IPv4: %s - GW:%s - Mask:%s - MAC:%s\n",
+                        current_status,
+                        previous_status,
                         connection_data.ssid,
-                        connection_data.network_status,
                         connection_data.ipv4_address,
-                        connection_data.ipv6_address,
                         print_ipv4(get_gateway()),
                         print_ipv4(get_netmask()),
                         print_mac(get_mac_address()));
-                if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
+#endif
+                if ((current_status == GENERIC_ERROR) || (current_status == CONNECT_FAILED_ERROR) || (current_status == BADAUTH_ERROR))
                 {
-                    DPRINTF("Connection failed. Retrying...\n");
-                    // Need to deinit and init again the full network stack to be able to scan again
-                    cyw43_arch_deinit();
-                    sleep_ms(1000);
-                    cyw43_arch_init();
-                    network_init();
-                    // Start the network.
-                    network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+                    if (wifi_init)
+                    {
+                        reconnect_t = make_timeout_time_ms(0);
+                        time_to_connect_again = time_to_connect_again * 2;
+                        wifi_init = false;
+                        DPRINTF("Connection failed. Retrying in %d ms...\n", time_to_connect_again);
+                        cyw43_arch_deinit();
+                    }
                 }
             }
             network_ready = (current_status == CONNECTED_WIFI_IP);
-            floppy_network_timeout_sec--;
-            DPRINTF("Timeout in seconds: %d\n", floppy_network_timeout_sec);
-
+            if (time_passed(&second_t, 1000) == 1)
+            {
+                DPRINTF("Timeout in seconds: %d\n", floppy_network_timeout_sec);
+                floppy_network_timeout_sec--;
+                second_t = make_timeout_time_ms(0);
+            }
             if (IS_FLAG_SET(PING_RECEIVED_FLAG))
             {
                 DPRINTF("Ping received, but forced not ready yet.\n");
@@ -780,14 +776,21 @@ void init_floppyemul(bool safe_config_reboot)
                 // Write config only once to avoid hitting the flash too much
                 write_config_only_once = false;
             }
+
+            if ((!wifi_init) && (time_passed(&reconnect_t, time_to_connect_again) == 1))
+            {
+                network_init(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+                reconnect_t = make_timeout_time_ms(0);
+                wifi_init = true;
+            }
         }
         if (floppy_network_timeout_sec == 0)
         {
             DPRINTF("Timeout reached. No network.\n");
             // Just be sure to deinit the network stack
-            network_disconnect();
             blink_morse('F');
             cyw43_arch_deinit();
+
             // Null connection_data
             memset(&connection_data, 0, sizeof(ConnectionData));
             DPRINTF("No wifi configured. Skipping network initialization.\n");
@@ -796,7 +799,6 @@ void init_floppyemul(bool safe_config_reboot)
     else
     {
         // Just be sure to deinit the network stack
-        network_disconnect();
         blink_morse('F');
         cyw43_arch_deinit();
         // Null connection_data
@@ -806,9 +808,6 @@ void init_floppyemul(bool safe_config_reboot)
 
     if (network_ready)
     {
-        // Start the httpd server
-        httpd_server_init(ssi_tags, LWIP_ARRAYSIZE(ssi_tags), ssi_handler, cgi_handlers, LWIP_ARRAYSIZE(cgi_handlers));
-
         // Copy the ip address and host
         char *ip_address = connection_data.ipv4_address;
         char *host = find_entry(PARAM_HOSTNAME)->value;
@@ -816,13 +815,22 @@ void init_floppyemul(bool safe_config_reboot)
         {
             int ip_address_words_len = ((strlen(ip_address) / 2) + 1) * 2;
             int host_words_len = ((strlen(host) / 2) + 1) * 2;
-            memset((void *)(memory_shared_address + FLOPPYEMUL_IP_ADDRESS), 0, 128);
-            memset((void *)(memory_shared_address + FLOPPYEMUL_HOSTNAME), 0, 128);
             memcpy((void *)(memory_shared_address + FLOPPYEMUL_IP_ADDRESS), ip_address, ip_address_words_len);
             memcpy((void *)(memory_shared_address + FLOPPYEMUL_HOSTNAME), host, host_words_len);
             CHANGE_ENDIANESS_BLOCK16(memory_shared_address + FLOPPYEMUL_IP_ADDRESS, ip_address_words_len);
             CHANGE_ENDIANESS_BLOCK16(memory_shared_address + FLOPPYEMUL_HOSTNAME, host_words_len);
             DPRINTF("IP Address: %s - Host: %s\n", ip_address, host);
+
+            cyw43_arch_lwip_begin();
+
+            // Start the httpd server
+            httpd_server_init(ssi_tags, LWIP_ARRAYSIZE(ssi_tags), ssi_handler, cgi_handlers, LWIP_ARRAYSIZE(cgi_handlers));
+
+            cyw43_arch_lwip_end();
+        }
+        else
+        {
+            DPRINTF("No IP address found. Skipping network initialization.\n");
         }
     }
 
@@ -844,7 +852,7 @@ void init_floppyemul(bool safe_config_reboot)
     }
 
     // Create list of floppy images
-    if (!error)
+    if (!error && network_ready)
     {
         char *dir = find_entry(PARAM_FLOPPIES_FOLDER)->value;
         floppyemul_filelist(dir, &fs, &floppy_catalog);
@@ -857,15 +865,11 @@ void init_floppyemul(bool safe_config_reboot)
     {
         // *((volatile uint32_t *)(memory_shared_address + FLOPPYEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
         WRITE_LONGWORD(memory_shared_address, FLOPPYEMUL_RANDOM_TOKEN_SEED, rand() % 0xFFFFFFFF);
-        tight_loop_contents();
         if (network_ready)
         {
 #if PICO_CYW43_ARCH_POLL
-            network_poll();
+            cyw43_arch_poll();
 #endif
-            cyw43_arch_lwip_begin();
-            cyw43_arch_lwip_check();
-            cyw43_arch_lwip_end();
         }
         if (IS_FLAG_SET(SHOW_VECTOR_CALL_FLAG))
         {

@@ -19,12 +19,15 @@
 #include <string.h>
 
 #include "pico/stdlib.h"
+#include "pico/time.h"
 #include "hardware/clocks.h"
 #include "hardware/vreg.h"
+#include "pico/unique_id.h"
 
 #include "pico/cyw43_arch.h"
 #include "lwip/apps/http_client.h"
 #include "lwip/dns.h"
+#include "lwip/prot/dhcp.h"
 
 #include "sd_card.h"
 #include "f_util.h"
@@ -43,8 +46,9 @@
 #define NETWORK_POLL_INTERVAL 5      // seconds
 #define NETWORK_POLL_INTERVAL_STR STRINGIFY(NETWORK_POLL_INTERVAL)
 #define NETWORK_POLL_INTERVAL_MIN 3 // seconds
-#define NETWORK_CONNECTION_ASYNC true
-#define NETWORK_CONNECTION_TIMEOUT 5000 // 5000 milliseconds
+#define NETWORK_CONNECTION_ASYNC 1
+#define NETWORK_CONNECTION_SYNC 0
+#define NETWORK_CONNECTION_TIMEOUT 5000 // 1000 milliseconds
 #define FIRMWARE_RELEASE_VERSION_URL "https://api.github.com/repos/diegoparrilla/atarist-sidecart-raspberry-pico/releases/latest"
 
 typedef enum
@@ -71,6 +75,7 @@ typedef struct
     char ssid[MAX_SSID_LENGTH];   // SSID can have up to 32 characters + null terminator
     char bssid[MAX_BSSID_LENGTH]; // BSSID in the format xx:xx:xx:xx:xx:xx + null terminator
     uint16_t auth_mode;           // MSB is not used, the data is in the LSB
+    int16_t rssi;                 // Received Signal Strength Indicator
 } WifiNetworkInfo;
 
 typedef struct
@@ -106,7 +111,7 @@ typedef struct connection_data
     uint16_t network_status_poll_interval;          // Network status poll interval in seconds
     uint16_t network_status;                        // Network connection status
     uint16_t file_downloading_timeout;              // File downloading timeout in seconds
-    uint16_t padding;                               // Padding to align to 4 bytes
+    int16_t rssi;                                   // Received Signal Strength Indicator
 } ConnectionData;
 
 typedef struct
@@ -146,11 +151,13 @@ void network_swap_auth_data(uint16_t *dest_ptr_word);
 void network_swap_data(uint16_t *dest_ptr_word, uint16_t total_items);
 void network_swap_connection_data(uint16_t *dest_ptr_word);
 
-void network_init();
 void network_scan();
-void network_connect(bool force, bool async, char **pass);
-void network_disconnect();
+void network_wifi_disconnect();
 void network_poll();
+void network_safe_poll();
+void network_terminate();
+int network_init(bool force, bool async, char **pass);
+
 u_int32_t get_ip_address();
 u_int32_t get_netmask();
 u_int32_t get_gateway();
@@ -161,6 +168,7 @@ void get_connection_data(ConnectionData *connection_data);
 void show_connection_data(ConnectionData *connection_data);
 uint16_t get_wifi_scan_poll_secs();
 uint32_t get_network_status_polling_ms();
+void wait_cyw43_with_polling(uint32_t milliseconds);
 
 int split_url(const char *url, UrlParts *parts);
 err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url);
@@ -170,5 +178,9 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
 err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url);
 
 void freeRomItem(RomInfo *item);
+
+int time_passed(absolute_time_t *t, uint32_t ms);
+
+void dhcp_set_ntp_servers(u8_t num_ntp_servers, const ip4_addr_t *ntp_server_addrs);
 
 #endif // NETWORK_H

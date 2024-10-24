@@ -45,6 +45,9 @@ def upload_to_s3(directory: str, bucket_name: str):
 
     # Files in local but not in S3 are new files that need to be uploaded.
     to_upload = local_files - s3_files
+    # Add the roms.csv and roms.json files
+    to_upload.add("roms.csv")
+    to_upload.add("roms.json")
     for file_name in to_upload:
         file_path = os.path.join(directory, file_name)
         with open(file_path, "rb") as file_data:
@@ -58,65 +61,13 @@ def upload_to_s3(directory: str, bucket_name: str):
         print(f"Deleted {file_name} from S3 bucket {bucket_name}")
 
 
-def update_roms(directory: str, base_url: str):
-    """Updates roms.json with new files and their URLs."""
-    # Allowed file extensions
-    allowed_extensions = [".img", ".bin", ".stc", ".rom"]
-
-    # If roms.json exists, load it. Otherwise, create an empty list.
-    roms_data = []
-    json_path = os.path.join(directory, "roms.json")
-
-    if "roms.json" in os.listdir(directory):
-        with open(json_path, "r", encoding="utf-8") as f:
-            roms_data = json.load(f)
-
-    current_files = [rom["url"].split("/")[-1].lower() for rom in roms_data]
-
-    # Loop through each file in the directory, excluding roms.json
-    for file_name in os.listdir(directory):
-        file_base_name, file_ext = os.path.splitext(file_name)
-
-        if (
-            file_name != "roms.json"
-            and quote(file_name).lower() not in current_files
-            and file_ext.lower() in allowed_extensions
-        ):
-            file_size_kb = int(
-                os.path.getsize(os.path.join(directory, file_name)) / 1024
-            )
-            # Construct the URL
-            url = os.path.join(base_url, quote(file_name))
-            roms_data.append(
-                {
-                    "url": url,
-                    "name": file_base_name,  # Use the base name (without the extension) for the name field
-                    "description": "",
-                    "tags": [],
-                    "size_kb": file_size_kb,
-                }
-            )
-
-    # Save the updated data back to roms.json
-    with open(json_path, "w", encoding="utf-8") as f:
-        json.dump(roms_data, f, indent=4)
-
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Update roms.json with new files and their URLs."
-    )
+    parser = argparse.ArgumentParser(description="Upload changed files")
     parser.add_argument(
         "--path",
         type=str,
         default=os.getcwd(),
         help="Path to the directory you want to process.",
-    )
-    parser.add_argument(
-        "--url",
-        type=str,
-        default="",
-        help="Base URL to use for constructing file URLs.",
     )
     parser.add_argument(
         "--s3-upload",
@@ -125,8 +76,5 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    update_roms(args.path, args.url)
 
-    # If the --s3-upload flag is set, upload the files to S3.
-    if args.s3_upload:
-        upload_to_s3(args.path, "roms.sidecartridge.com")
+    upload_to_s3(args.path, "roms.sidecartridge.com")
