@@ -30,7 +30,7 @@
 // Warning. There will be an issue when reaching the maximum number of entries for 4Kbytes of flash memory
 // The maximum number of entries is 46
 // Change the memory size of the config structure to 8Kbytes when reaching the maximum number of entries
-#define MAX_ENTRIES 39
+#define MAX_ENTRIES 46
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
@@ -69,8 +69,15 @@
 #define PARAM_SD_MASS_STORAGE "SD_MASS_STORAGE"
 #define PARAM_SD_BAUD_RATE_KB "SD_BAUD_RATE_KB"
 #define PARAM_WIFI_AUTH "WIFI_AUTH"
+#define PARAM_WIFI_CONNECT_TIMEOUT "WIFI_CONNECT_TIMEOUT"
 #define PARAM_WIFI_COUNTRY "WIFI_COUNTRY"
+#define PARAM_WIFI_DHCP "WIFI_DHCP"
+#define PARAM_WIFI_IP "WIFI_IP"
+#define PARAM_WIFI_NETMASK "WIFI_NETMASK"
+#define PARAM_WIFI_GATEWAY "WIFI_GATEWAY"
 #define PARAM_WIFI_PASSWORD "WIFI_PASSWORD"
+#define PARAM_WIFI_POWER "WIFI_POWER"
+#define PARAM_WIFI_RSSI "WIFI_RSSI"
 #define PARAM_WIFI_SCAN_SECONDS "WIFI_SCAN_SECONDS"
 #define PARAM_WIFI_SSID "WIFI_SSID"
 
