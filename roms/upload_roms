@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+
+import os
+import json
+import argparse
+import boto3
+from urllib.parse import quote
+
+# Ensure the following environment variables are set:
+# AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN (if you're using temporary credentials)
+
+# Don't forget to install boto3
+# pip install boto3
+
+# Initialize the S3 client
+s3 = boto3.client("s3")
+
+
+def get_s3_files(bucket_name: str):
+    """Returns a set of file names currently in the S3 bucket."""
+    s3_files = set()
+    result = s3.list_objects(Bucket=bucket_name)
+    for content in result.get("Contents", []):
+        s3_files.add(content["Key"])
+    return s3_files
+
+
+def upload_to_s3(directory: str, bucket_name: str):
+    """Uploads all files from directory to the specified S3 bucket."""
+
+    # Get a list of all local files not starting with "." and not equal to "update_json"
+    local_files = set(
+        file_name
+        for file_name in os.listdir(directory)
+        if not file_name.startswith(".")
+        and file_name != "update_json"
+        and file_name != "roms.md"
+        and file_name != "create_roms_markdown"
+        and file_name != "create_roms_csv"
+        and file_name != "upload_roms"
+    )
+
+    # Get a list of all files currently in the S3 bucket
+    s3_files = get_s3_files(bucket_name)
+
+    # Files in local but not in S3 are new files that need to be uploaded.
+    to_upload = local_files - s3_files
+    # Add the roms.csv and roms.json files
+    to_upload.add("roms.csv")
+    to_upload.add("roms.json")
+    for file_name in to_upload:
+        file_path = os.path.join(directory, file_name)
+        with open(file_path, "rb") as file_data:
+            s3.upload_fileobj(file_data, bucket_name, file_name)
+        print(f"Uploaded {file_name} to S3 bucket {bucket_name}")
+
+    # Files in S3 but not in local are deleted files that need to be removed from S3.
+    to_delete = s3_files - local_files
+    for file_name in to_delete:
+        s3.delete_object(Bucket=bucket_name, Key=file_name)
+        print(f"Deleted {file_name} from S3 bucket {bucket_name}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Upload changed files")
+    parser.add_argument(
+        "--path",
+        type=str,
+        default=os.getcwd(),
+        help="Path to the directory you want to process.",
+    )
+    parser.add_argument(
+        "--s3-upload",
+        action="store_true",
+        help="Set this flag if you want to upload to the S3 bucket.",
+    )
+
+    args = parser.parse_args()
+
+    upload_to_s3(args.path, "roms.sidecartridge.com")
