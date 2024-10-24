@@ -60,188 +60,185 @@ int main()
 
     bool safe_config_reboot = default_config_reboot_mode->value[0] == 't' || default_config_reboot_mode->value[0] == 'T';
 
-    // No SELECT button pressed or CONFIGURATOR entry found in config. Normal boot
-    if (strcmp(default_config_entry->value, "CONFIGURATOR") != 0)
+// Check the different modes
+    DPRINTF("Testing the different modes\n");
+    if (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0)
     {
-        DPRINTF("No SELECT button pressed.\n");
-        if (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0)
+        DPRINTF("No SELECT button pressed. ROM_EMULATOR entry found in config. Launching.\n");
+
+        // Check if Delay ROM emulation (ripper style boot) is true
+        ConfigEntry *rom_delay_config_entry = find_entry(PARAM_DELAY_ROM_EMULATION);
+        DPRINTF("DELAY_ROM_EMULATION: %s\n", rom_delay_config_entry->value);
+        if ((strcmp(rom_delay_config_entry->value, "true") == 0) || (strcmp(rom_delay_config_entry->value, "TRUE") == 0) || (strcmp(rom_delay_config_entry->value, "T") == 0))
         {
-            DPRINTF("No SELECT button pressed. ROM_EMULATOR entry found in config. Launching.\n");
+            DPRINTF("Delaying ROM emulation.\n"); // Always print this line
+            // The "D" character stands for "Delay"
+            blink_morse('D');
 
-            // Check if Delay ROM emulation (ripper style boot) is true
-            ConfigEntry *rom_delay_config_entry = find_entry(PARAM_DELAY_ROM_EMULATION);
-            DPRINTF("DELAY_ROM_EMULATION: %s\n", rom_delay_config_entry->value);
-            if ((strcmp(rom_delay_config_entry->value, "true") == 0) || (strcmp(rom_delay_config_entry->value, "TRUE") == 0) || (strcmp(rom_delay_config_entry->value, "T") == 0))
-            {
-                DPRINTF("Delaying ROM emulation.\n"); // Always print this line
-                // The "D" character stands for "Delay"
-                blink_morse('D');
-
-                // While until the user presses the SELECT button again to launch the ROM emulator
-                while (gpio_get(SELECT_GPIO) == 0)
-                {
-                    tight_loop_contents();
-                    sleep_ms(1000); // Give me a break... to display the message
-                }
-
-                DPRINTF("SELECT button pressed.\n");
-                // Now wait for the user to release the SELECT button
-                while (gpio_get(SELECT_GPIO) != 0)
-                {
-                    tight_loop_contents();
-                }
-
-                DPRINTF("SELECT button released. Launching ROM emulator.\n");
-            }
-
-            // Canonical way to initialize the ROM emulator:
-            // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
-            init_romemul(NULL, NULL, true);
-
-            DPRINTF("ROM Emulation started.\n"); // Always print this line
-
-            // The "E" character stands for "Emulator"
-            blink_morse('E');
-
-            // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
-            cyw43_arch_deinit();
-
-            bool write_config_only_once = true;
-            // Loop forever and block until the state machine put data into the FIFO
-            while (true)
+            // While until the user presses the SELECT button again to launch the ROM emulator
+            while (gpio_get(SELECT_GPIO) == 0)
             {
                 tight_loop_contents();
                 sleep_ms(1000); // Give me a break... to display the message
-                if (gpio_get(SELECT_GPIO) != 0)
-                {
-                    select_button_action(safe_config_reboot, write_config_only_once);
-                    // Write config only once to avoid hitting the flash too much
-                    write_config_only_once = false;
-                }
             }
-        }
 
-        if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
-        {
-            DPRINTF("FLOPPY_EMULATOR entry found in config. Launching.\n");
-
-            // Copy the ST floppy firmware emulator to RAM
-            // Copy the firmware to RAM
-            COPY_FIRMWARE_TO_RAM((uint16_t *)floppyemulROM, floppyemulROM_length);
-
-            // Reserve memory for the protocol parser
-            init_protocol_parser();
-            DPRINTF("Floppy emulation started.\n"); // Print always
-
-            // Hybrid way to initialize the ROM emulator:
-            // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
-            // and start the state machine
-            init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
-
-            change_spi_speed();
-
-            DPRINTF("Ready to accept commands.\n");
-
-            init_floppyemul(safe_config_reboot);
-
-            // You should never reach this line...
-        }
-
-        if (strcmp(default_config_entry->value, "RTC_EMULATOR") == 0)
-        {
-            DPRINTF("RTC_EMULATOR entry found in config. Launching.\n");
-
-            char *rtc_type_str = find_entry(PARAM_RTC_TYPE)->value;
-            if (strcmp(rtc_type_str, "SIDECART") == 0)
+            DPRINTF("SELECT button pressed.\n");
+            // Now wait for the user to release the SELECT button
+            while (gpio_get(SELECT_GPIO) != 0)
             {
-                // Copy the ST RTC firmware emulator to RAM
-                COPY_FIRMWARE_TO_RAM((uint16_t *)rtcemulROM, rtcemulROM_length);
-            }
-            else
-            {
-                ERASE_FIRMWARE_IN_RAM();
+                tight_loop_contents();
             }
 
-            // Reserve memory for the protocol parser
-            init_protocol_parser();
-            DPRINTF("RTC emulation started.\n"); // Print always
-
-            // Hybrid way to initialize the ROM emulator:
-            // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
-            // and start the state machine
-            init_romemul(NULL, rtcemul_dma_irq_handler_lookup_callback, false);
-
-            DPRINTF("Ready to accept commands.\n");
-
-            // The "T" character stands for "TIME"
-            blink_morse('T');
-
-            init_rtcemul(safe_config_reboot);
-
-            // You should never reach this line...
+            DPRINTF("SELECT button released. Launching ROM emulator.\n");
         }
 
-        if (strcmp(default_config_entry->value, "GEMDRIVE_EMULATOR") == 0)
+        // Canonical way to initialize the ROM emulator:
+        // No IRQ handler callbacks, copy the FLASH ROMs to RAM, and start the state machine
+        init_romemul(NULL, NULL, true);
+
+        DPRINTF("ROM Emulation started.\n"); // Always print this line
+
+        // The "E" character stands for "Emulator"
+        blink_morse('E');
+
+        // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
+        cyw43_arch_deinit();
+
+        bool write_config_only_once = true;
+        // Loop forever and block until the state machine put data into the FIFO
+        while (true)
         {
-            DPRINTF("GEMDRIVE_EMULATOR entry found in config. Launching.\n");
+            tight_loop_contents();
+            sleep_ms(1000); // Give me a break... to display the message
+            if (gpio_get(SELECT_GPIO) != 0)
+            {
+                select_button_action(safe_config_reboot, write_config_only_once);
+                // Write config only once to avoid hitting the flash too much
+                write_config_only_once = false;
+            }
+        }
+    }
 
-            // Copy the GEMDRIVE firmware emulator to RAM
-            COPY_FIRMWARE_TO_RAM((uint16_t *)gemdrvemulROM, gemdrvemulROM_length);
+    if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
+    {
+        DPRINTF("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
-            // Reserve memory for the protocol parser
-            init_protocol_parser();
+        // Copy the ST floppy firmware emulator to RAM
+        // Copy the firmware to RAM
+        COPY_FIRMWARE_TO_RAM((uint16_t *)floppyemulROM, floppyemulROM_length);
 
-            // Hybrid way to initialize the ROM emulator:
-            // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
-            // and start the state machine
-            init_romemul(NULL, gemdrvemul_dma_irq_handler_lookup_callback, false);
+        // Reserve memory for the protocol parser
+        init_protocol_parser();
+        DPRINTF("Floppy emulation started.\n"); // Print always
+
+        // Hybrid way to initialize the ROM emulator:
+        // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+        // and start the state machine
+        init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
+
+        change_spi_speed();
+
+        DPRINTF("Ready to accept commands.\n");
+
+        init_floppyemul(safe_config_reboot);
+
+        // You should never reach this line...
+    }
+
+    if (strcmp(default_config_entry->value, "RTC_EMULATOR") == 0)
+    {
+        DPRINTF("RTC_EMULATOR entry found in config. Launching.\n");
+
+        char *rtc_type_str = find_entry(PARAM_RTC_TYPE)->value;
+        if (strcmp(rtc_type_str, "SIDECART") == 0)
+        {
+            // Copy the ST RTC firmware emulator to RAM
+            COPY_FIRMWARE_TO_RAM((uint16_t *)rtcemulROM, rtcemulROM_length);
+        }
+        else
+        {
+            ERASE_FIRMWARE_IN_RAM();
+        }
+
+        // Reserve memory for the protocol parser
+        init_protocol_parser();
+        DPRINTF("RTC emulation started.\n"); // Print always
+
+        // Hybrid way to initialize the ROM emulator:
+        // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+        // and start the state machine
+        init_romemul(NULL, rtcemul_dma_irq_handler_lookup_callback, false);
+
+        DPRINTF("Ready to accept commands.\n");
+
+        // The "T" character stands for "TIME"
+        blink_morse('T');
+
+        init_rtcemul(safe_config_reboot);
+
+        // You should never reach this line...
+    }
+
+    if (strcmp(default_config_entry->value, "GEMDRIVE_EMULATOR") == 0)
+    {
+        DPRINTF("GEMDRIVE_EMULATOR entry found in config. Launching.\n");
+
+        // Copy the GEMDRIVE firmware emulator to RAM
+        COPY_FIRMWARE_TO_RAM((uint16_t *)gemdrvemulROM, gemdrvemulROM_length);
+
+        // Reserve memory for the protocol parser
+        init_protocol_parser();
+
+        // Hybrid way to initialize the ROM emulator:
+        // IRQ handler callback to read the commands in ROM3, and NOT copy the FLASH ROMs to RAM
+        // and start the state machine
+        init_romemul(NULL, gemdrvemul_dma_irq_handler_lookup_callback, false);
 
 #if _DEBUG
-            //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
-            if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
-            {
-                DPRINTF("USB connected\n");
-                usb_mass_init();
-            }
-#endif
-            change_spi_speed();
-
-            DPRINTF("Ready to accept commands.\n");
-
-            // The "H" character stands for "HARDISK"
-            blink_morse('H');
-
-            init_gemdrvemul(safe_config_reboot);
-
-            // You should never reach this line...
-        }
-
-        DPRINTF("You should never see this line...\n");
-        return 0;
-    }
-    else
-    {
         //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
         if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
         {
             DPRINTF("USB connected\n");
             usb_mass_init();
         }
+#endif
+        change_spi_speed();
 
-        DPRINTF("SELECT button pressed. Launch configurator.\n");
+        DPRINTF("Ready to accept commands.\n");
 
-        // Deinit the CYW43 WiFi module. Enter clean in the firmware configurator
-        cyw43_arch_deinit();
+        // The "H" character stands for "HARDISK"
+        blink_morse('H');
 
-        init_firmware();
+        init_gemdrvemul(safe_config_reboot);
 
-        // Now the user needs to reset or poweroff the board to load the ROMs
-        DPRINTF("Rebooting the board.\n");
-        sleep_ms(1000); // Give me a break... to display the message
-
-        reboot();
-        while (1)
-            6;
-        return 0;
+        // You should never reach this line...
     }
+
+    // Now if we enter a value that is not recognized, we enter the configuration mode by default always
+
+    DPRINTF("If you are here, you must ALWAYS enter into configuration mode.\n");
+
+    //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
+    if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
+    {
+        DPRINTF("USB connected\n");
+        usb_mass_init();
+    }
+
+    DPRINTF("Launch configurator.\n");
+
+    // Deinit the CYW43 WiFi module. Enter clean in the firmware configurator
+    network_terminate();
+
+    init_firmware();
+
+    // Now the user needs to reset or poweroff the board to load the ROMs
+    DPRINTF("Rebooting the board.\n");
+
+    // Give a break to handle pending messages
+    sleep_ms(1000);
+
+    reboot();
+    while (1);
+    return 0;
 }
