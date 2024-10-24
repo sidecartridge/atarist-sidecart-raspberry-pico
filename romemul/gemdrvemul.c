@@ -704,6 +704,13 @@ static void set_shared_var(uint32_t p_shared_variable_index, uint32_t p_shared_v
     *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4))) = p_shared_variable_value >> 16;
 }
 
+static void get_shared_var(uint32_t p_shared_variable_index, uint32_t *p_shared_variable_value, uint32_t memory_shared_address)
+{
+    *p_shared_variable_value = *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4))) << 16;
+    *p_shared_variable_value |= *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4) + 2));
+    DPRINTF("Getting shared variable %d with value %x\n", p_shared_variable_index, *p_shared_variable_value);
+}
+
 inline const char *__not_in_flash_func(get_command_name)(unsigned int value)
 {
     for (int i = 0; i < numCommands; i++)
@@ -749,7 +756,6 @@ void init_gemdrvemul(bool safe_config_reboot)
     FRESULT fr; /* FatFs function common result code */
     FATFS fs;
     bool hd_folder_ready = false;
-    bool network_ready = false;
 
     char *ntp_server_host = NULL;
     int ntp_server_port = NTP_DEFAULT_PORT;
@@ -796,7 +802,6 @@ void init_gemdrvemul(bool safe_config_reboot)
         gemdrive_timeout_sec = atoi(gemdrive_timeout->value);
     }
     WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_TIMEOUT_SEC, gemdrive_timeout_sec);
-    gemdrive_timeout_sec = gemdrive_timeout_sec * 0.7; // Adjust the timeout to 70% of the value
     DPRINTF("Timeout in seconds: %d\n", gemdrive_timeout_sec);
 
     // Only try to get the datetime from the network if the wifi is configured
@@ -820,133 +825,173 @@ void init_gemdrvemul(bool safe_config_reboot)
             }
         }
 
-        // Start the network.
-        network_connect(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+        cyw43_arch_deinit();
 
-        // Start the internal RTC
-        rtc_init();
+        network_init(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+        absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(reconnect_t, 0);
+        absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(second_t, 0);
+        uint32_t time_to_connect_again = 1000; // 1 second
+        bool network_ready = false;
+        bool wifi_init = true;
+        uint32_t wifi_timeout_sec = gemdrive_timeout_sec;
 
-        ntp_server_host = find_entry(PARAM_RTC_NTP_SERVER_HOST)->value;
-        ntp_server_port = atoi(find_entry(PARAM_RTC_NTP_SERVER_PORT)->value);
-
-        DPRINTF("NTP server host: %s\n", ntp_server_host);
-        DPRINTF("NTP server port: %d\n", ntp_server_port);
-
-        char *utc_offset_entry = find_entry(PARAM_RTC_UTC_OFFSET)->value;
-        if (strlen(utc_offset_entry) > 0)
+        // Wait until timeout
+        while ((!network_ready) && (wifi_timeout_sec > 0) && (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0))
         {
-            // The offset can be in decimal format
-            set_utc_offset_seconds((long)(atoi(utc_offset_entry) * 60 * 60));
-        }
-        DPRINTF("UTC offset: %ld\n", get_utc_offset_seconds());
-
-        // Start the NTP client
-        ntp_init();
-        get_net_time()->ntp_server_found = false;
-
-        network_ready = true;
-        bool dns_query_done = false;
-
-        // Wait until the RTC is set by the NTP server
-        while (gemdrive_timeout_sec > 0 && get_rtc_time()->year == 0)
-        {
-            tight_loop_contents();
+            *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RANDOM_TOKEN_SEED)) = rand() % 0xFFFFFFFF;
 #if PICO_CYW43_ARCH_POLL
-            network_poll();
-#endif
-            cyw43_arch_lwip_begin();
-            cyw43_arch_lwip_check();
-            cyw43_arch_lwip_end();
-
-            if (get_net_time()->ntp_server_found && dns_query_done)
+            if (wifi_init)
             {
-                DPRINTF("NTP server found. Connecting to NTP server...\n");
-                get_net_time()->ntp_server_found = false;
-                set_internal_rtc();
+                cyw43_arch_poll();
             }
-
-            sleep_ms(1000); // Wait 1 sec per test
-
-            // If the NTP server is found, then send the NTP request and set the clock
-            if (network_poll_counter == 0)
+#endif
+            // Only display when changes status to avoid flooding the console
+            ConnectionStatus previous_status = get_previous_connection_status();
+            ConnectionStatus current_status = get_network_connection_status();
+            if (current_status != previous_status)
             {
-                if (strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
+#if defined(_DEBUG) && (_DEBUG != 0)
+                ConnectionData connection_data = {0};
+                get_connection_data(&connection_data);
+                DPRINTF("Status: %d - Prev: %d - SSID: %s - IPv4: %s - GW:%s - Mask:%s - MAC:%s\n",
+                        current_status,
+                        previous_status,
+                        connection_data.ssid,
+                        connection_data.ipv4_address,
+                        print_ipv4(get_gateway()),
+                        print_ipv4(get_netmask()),
+                        print_mac(get_mac_address()));
+#endif
+                if ((current_status == GENERIC_ERROR) || (current_status == CONNECT_FAILED_ERROR) || (current_status == BADAUTH_ERROR))
                 {
-                    // Only display when changes status to avoid flooding the console
-                    ConnectionStatus previous_status = get_previous_connection_status();
-                    ConnectionStatus current_status = get_network_connection_status();
-                    if (current_status != previous_status)
+                    if (wifi_init)
                     {
-                        DPRINTF("Network status: %d\n", current_status);
-                        DPRINTF("Network previous status: %d\n", previous_status);
-                        ConnectionData connection_data = {};
-                        get_connection_data(&connection_data);
-                        DPRINTF("SSID: %s - Status: %d - IPv4: %s - IPv6: %s - GW:%s - Mask:%s - MAC:%s\n",
-                                connection_data.ssid,
-                                connection_data.network_status,
-                                connection_data.ipv4_address,
-                                connection_data.ipv6_address,
-                                print_ipv4(get_gateway()),
-                                print_ipv4(get_netmask()),
-                                print_mac(get_mac_address()));
-                        if ((current_status >= TIMEOUT_ERROR) && (current_status <= INSUFFICIENT_RESOURCES_ERROR))
-                        {
-                            DPRINTF("Connection failed. Retrying...\n");
-                            // Need to deinit and init again the full network stack to be able to scan again
-                            cyw43_arch_deinit();
-                            cyw43_arch_init();
-                            network_init();
-                            // Start the network.
-                            network_connect(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
-                        }
+                        network_terminate();
+                        reconnect_t = make_timeout_time_ms(0);
+                        time_to_connect_again = time_to_connect_again * 1.2;
+                        wifi_init = false;
+                        DPRINTF("Connection failed. Retrying in %d ms...\n", time_to_connect_again);
                     }
-                    // Get the IP address from the DNS server if the wifi is connected and no IP address is found yet
-                    if (get_rtc_time()->year == 0 && current_status == CONNECTED_WIFI_IP && !(dns_query_done))
-                    {
-                        // Let's connect to ntp server
-                        DPRINTF("Querying the DNS...\n");
-                        err_t dns_ret = dns_gethostbyname(ntp_server_host, &get_net_time()->ntp_ipaddr, host_found_callback, get_net_time());
-                        if (dns_ret == ERR_ARG)
-                        {
-                            DPRINTF("Invalid DNS argument\n");
-                        }
-                        DPRINTF("DNS query done\n");
-                        dns_query_done = true;
-                    }
-                    // If connected to the wifi then set the network status to 1, otherwise set it to 0
-                    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = (current_status == CONNECTED_WIFI_IP);
                 }
             }
-            gemdrive_timeout_sec--;
+            network_ready = (current_status == CONNECTED_WIFI_IP);
+            if (time_passed(&second_t, 1000) == 1)
+            {
+                DPRINTF("Timeout in seconds: %d\n", wifi_timeout_sec);
+                wifi_timeout_sec--;
+                second_t = make_timeout_time_ms(0);
+            }
+
+            // If SELECT button is pressed, launch the configurator
+            if (gpio_get(SELECT_GPIO) != 0)
+            {
+                select_button_action(safe_config_reboot, write_config_only_once);
+                // Write config only once to avoid hitting the flash too much
+                write_config_only_once = false;
+            }
+            if ((!wifi_init) && (time_passed(&reconnect_t, time_to_connect_again) == 1))
+            {
+                network_init(true, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
+                reconnect_t = make_timeout_time_ms(0);
+                wifi_init = true;
+            }
         }
-        if (gemdrive_timeout_sec > 0)
+        if (wifi_timeout_sec <= 0)
         {
-            // Set the RTC time for the Atari ST to read
-            rtc_get_datetime(get_rtc_time());
-            uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS);
-            // Change order for the endianess
-            rtc_time_ptr[1] = 0x1b;
-            rtc_time_ptr[0] = add_bcd(to_bcd((get_rtc_time()->year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
-            rtc_time_ptr[3] = to_bcd(get_rtc_time()->month);
-            rtc_time_ptr[2] = to_bcd(get_rtc_time()->day);
-            rtc_time_ptr[5] = to_bcd(get_rtc_time()->hour);
-            rtc_time_ptr[4] = to_bcd(get_rtc_time()->min);
-            rtc_time_ptr[7] = to_bcd(get_rtc_time()->sec);
-            rtc_time_ptr[6] = 0x0;
+            // Just be sure to deinit the network stack
+            network_terminate();
+            DPRINTF("No wifi configured. Skipping network initialization.\n");
         }
         else
         {
-            DPRINTF("Timeout reached. RTC not set.\n");
-            // Just be sure to deinit the network stack
-            network_disconnect();
-            cyw43_arch_deinit();
-            DPRINTF("No wifi configured. Skipping network initialization.\n");
+            // We have network connection!
+            // Start the internal RTC
+            rtc_init();
+
+            ntp_server_host = find_entry(PARAM_RTC_NTP_SERVER_HOST)->value;
+            ntp_server_port = atoi(find_entry(PARAM_RTC_NTP_SERVER_PORT)->value);
+
+            DPRINTF("NTP server host: %s\n", ntp_server_host);
+            DPRINTF("NTP server port: %d\n", ntp_server_port);
+
+            char *utc_offset_entry = find_entry(PARAM_RTC_UTC_OFFSET)->value;
+            if (strlen(utc_offset_entry) > 0)
+            {
+                // The offset can be in decimal format
+                set_utc_offset_seconds((long)(atoi(utc_offset_entry) * 60 * 60));
+            }
+            DPRINTF("UTC offset: %ld\n", get_utc_offset_seconds());
+
+            // Start the NTP client
+            ntp_init();
+            get_net_time()->ntp_server_found = false;
+
+            bool dns_query_done = false;
+
+            // Wait until the RTC is set by the NTP server
+            while (gemdrive_timeout_sec > 0)
+            {
+
+#if PICO_CYW43_ARCH_POLL
+                cyw43_arch_poll();
+#endif
+                if (get_net_time()->ntp_server_found && dns_query_done)
+                {
+                    DPRINTF("NTP server found. Connecting to NTP server...\n");
+                    get_net_time()->ntp_server_found = false;
+                    set_internal_rtc();
+                    break;
+                }
+                // Get the IP address from the DNS server if the wifi is connected and no IP address is found yet
+                if ((get_rtc_time()->year == 0) && !(dns_query_done))
+                {
+                    // Let's connect to ntp server
+                    DPRINTF("Querying the DNS...\n");
+                    err_t dns_ret = dns_gethostbyname(ntp_server_host, &get_net_time()->ntp_ipaddr, host_found_callback, get_net_time());
+                    if (dns_ret == ERR_ARG)
+                    {
+                        DPRINTF("Invalid DNS argument\n");
+                    }
+                    DPRINTF("DNS query done\n");
+                    dns_query_done = true;
+                }
+                // If SELECT button is pressed, launch the configurator
+                if (gpio_get(SELECT_GPIO) != 0)
+                {
+                    select_button_action(safe_config_reboot, write_config_only_once);
+                    // Write config only once to avoid hitting the flash too much
+                    write_config_only_once = false;
+                }
+            }
+            if (gemdrive_timeout_sec > 0)
+            {
+                DPRINTF("RTC set by NTP server\n");
+                // Set the RTC time for the Atari ST to read
+                rtc_get_datetime(get_rtc_time());
+                uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS);
+                // Change order for the endianess
+                rtc_time_ptr[1] = 0x1b;
+                rtc_time_ptr[0] = add_bcd(to_bcd((get_rtc_time()->year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
+                rtc_time_ptr[3] = to_bcd(get_rtc_time()->month);
+                rtc_time_ptr[2] = to_bcd(get_rtc_time()->day);
+                rtc_time_ptr[5] = to_bcd(get_rtc_time()->hour);
+                rtc_time_ptr[4] = to_bcd(get_rtc_time()->min);
+                rtc_time_ptr[7] = to_bcd(get_rtc_time()->sec);
+                rtc_time_ptr[6] = 0x0;
+                // If connected to the wifi then set the network status to 1, otherwise set it to 0
+                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = 0xFFFFFFFF;
+            }
+            else
+            {
+                DPRINTF("Timeout reached. RTC not set.\n");
+                cyw43_arch_deinit();
+                DPRINTF("No wifi configured. Skipping network initialization.\n");
+            }
         }
     }
     else
     {
         // Just be sure to deinit the network stack
-        network_disconnect();
         cyw43_arch_deinit();
         DPRINTF("No wifi configured. Skipping network initialization.\n");
     }
