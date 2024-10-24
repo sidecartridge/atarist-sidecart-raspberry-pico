@@ -138,8 +138,6 @@ int main()
             // and start the state machine
             init_romemul(NULL, floppyemul_dma_irq_handler_lookup_callback, false);
 
-            network_init();
-
             change_spi_speed();
 
             DPRINTF("Ready to accept commands.\n");
@@ -173,8 +171,6 @@ int main()
             // and start the state machine
             init_romemul(NULL, rtcemul_dma_irq_handler_lookup_callback, false);
 
-            network_init();
-
             DPRINTF("Ready to accept commands.\n");
 
             // The "T" character stands for "TIME"
@@ -200,8 +196,14 @@ int main()
             // and start the state machine
             init_romemul(NULL, gemdrvemul_dma_irq_handler_lookup_callback, false);
 
-            network_init();
-
+#if _DEBUG
+            //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
+            if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
+            {
+                DPRINTF("USB connected\n");
+                usb_mass_init();
+            }
+#endif
             change_spi_speed();
 
             DPRINTF("Ready to accept commands.\n");
@@ -219,48 +221,23 @@ int main()
     }
     else
     {
-        // #ifndef _DEBUG
         //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
         if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
         {
             DPRINTF("USB connected\n");
-            ConfigEntry *sd_card_mass_storage_enabled = find_entry(PARAM_SD_MASS_STORAGE);
-            if ((sd_card_mass_storage_enabled != NULL) && (sd_card_mass_storage_enabled->value[0] == 't' || sd_card_mass_storage_enabled->value[0] == 'T'))
-            {
-                DPRINTF("USB Mass storage flag set to enabled\n");
-                // Initialize SD card
-                // Physical drive number
-                BYTE const pdrv = 0;
-                // Initialize the disk subsystem
-                DSTATUS ds = disk_initialize(pdrv);
-                if (!(0 == (ds & STA_NOINIT)))
-                {
-                    DPRINTF("ERROR: Could not initialize SD card in block storage mode\r\n");
-                }
-                else
-                {
-                    DPRINTF("SD card initialized\n");
-                    // Start the USB Mass storage device
-                    usb_mass_init();
-                }
-            }
-            else
-            {
-                DPRINTF("USB Mass storage flag set to disabled\n");
-            }
+            usb_mass_init();
         }
-        // #endif
 
         DPRINTF("SELECT button pressed. Launch configurator.\n");
+
+        // Deinit the CYW43 WiFi module. Enter clean in the firmware configurator
+        cyw43_arch_deinit();
 
         init_firmware();
 
         // Now the user needs to reset or poweroff the board to load the ROMs
         DPRINTF("Rebooting the board.\n");
         sleep_ms(1000); // Give me a break... to display the message
-
-        // Deinit the CYW43 WiFi module. DO NOT INTERRUPT, BUDDY!
-        cyw43_arch_deinit();
 
         reboot();
         while (1)
