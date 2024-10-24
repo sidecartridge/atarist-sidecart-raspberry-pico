@@ -901,7 +901,8 @@ bool check_STEEM_extension(UrlParts parts)
 
 char *download_latest_release(const char *url)
 {
-    char *buff = malloc(4096);
+    // Very small buffer to force the library to call the minimal number of times the body function
+    char *buff = malloc(512);
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
     bool complete = false;
@@ -980,12 +981,9 @@ char *download_latest_release(const char *url)
     while (!complete)
     {
 #if PICO_CYW43_ARCH_POLL
-        cyw43_arch_poll();
+        network_safe_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
-        cyw43_arch_lwip_begin();
-        cyw43_arch_lwip_check();
-        cyw43_arch_lwip_end();
-        //        cyw43_arch_wait_for_work_until(make_timeout_time_ms(10));
     }
 
     char *newline_pos = strchr(buff, '\n');
@@ -996,6 +994,29 @@ char *download_latest_release(const char *url)
 
     return latest_release_version;
 }
+
+// Function to compare version strings (vX.Y.Z format)
+int compare_versions(const char *newer_version, const char *current_version)
+{
+    int major_new, minor_new, patch_new;
+    int major_curr, minor_curr, patch_curr;
+
+    // Parse the version strings into major, minor, and patch components
+    sscanf(newer_version, "v%d.%d.%d", &major_new, &minor_new, &patch_new);
+    sscanf(current_version, "v%d.%d.%d", &major_curr, &minor_curr, &patch_curr);
+
+    // Compare major versions
+    if (major_new != major_curr)
+        return major_new - major_curr;
+
+    // Compare minor versions
+    if (minor_new != minor_curr)
+        return minor_new - minor_curr;
+
+    // Compare patch versions
+    return patch_new - patch_curr;
+}
+
 
 char *get_latest_release(void)
 {
@@ -1162,6 +1183,7 @@ err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url)
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
     }
 
@@ -1463,6 +1485,7 @@ int download_rom(const char *url, uint32_t rom_load_offset)
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
     }
 
@@ -1562,6 +1585,7 @@ err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *u
 
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
     }
 
@@ -1799,6 +1823,7 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
+        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
     }
 
