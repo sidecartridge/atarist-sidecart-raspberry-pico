@@ -34,5 +34,6 @@
 
 // Init USB Mass storage device
 void usb_mass_init(void);
+void usb_mass_start(void);
 
 #endif // USB_MASS_H
