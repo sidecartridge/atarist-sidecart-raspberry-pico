@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+
+import json
+import csv
+
+# Read the roms.json file
+with open("roms.json", "r") as file:
+    data = json.load(file)
+
+# Sort the data alphabetically ignoring case by the name key
+sorted_data = sorted(data, key=lambda x: x["name"].lower())
+
+# CSV header
+header = ["URL", "Name", "Description", "Tags", "Size (KB)"]
+
+# Base URL to check and remove if present
+base_url = "http://roms.sidecartridge.com/"
+
+# Writing to CSV file
+with open("roms.csv", "w", newline="") as file:
+    writer = csv.writer(file, quoting=csv.QUOTE_ALL, delimiter=",", quotechar='"')
+    writer.writerow(header)
+
+    for rom in sorted_data:
+        writer.writerow(
+            [
+                (
+                    rom["url"][len(base_url) :]
+                    if rom["url"].startswith(base_url)
+                    else rom["url"]
+                ),
+                rom["name"],
+                rom["description"],
+                "; ".join(rom["tags"]),
+                rom["size_kb"],
+            ]
+        )
+
+print(f"CSV file roms.csv created successfully.")
