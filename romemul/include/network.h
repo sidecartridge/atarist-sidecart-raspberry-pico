@@ -172,6 +172,7 @@ void wait_cyw43_with_polling(uint32_t milliseconds);
 
 int split_url(const char *url, UrlParts *parts);
 err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url);
+int compare_versions(const char *newer_version, const char *current_version);
 char *get_latest_release(void);
 int download_rom(const char *url, uint32_t rom_load_offset);
 int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag);
