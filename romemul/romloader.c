@@ -509,6 +509,10 @@ int init_firmware()
 
     uint8_t *memory_area = (uint8_t *)(ROM3_START_ADDRESS);
 
+    // Clean the version buffer area
+    uint16_t version_buff_size = 256;
+    memset(memory_area - version_buff_size, 0, version_buff_size);
+
     // Here comes the tricky part. We have to put in the higher section of the ROM4 memory the content
     // of the file list available in the SD card.
     // The structure is a list of chars separated with a 0x00 byte. The end of the list is marked with
@@ -679,7 +683,10 @@ int init_firmware()
         if (time_passed(&storage_poll_counter, STORAGE_POLL_INTERVAL))
         {
             storage_poll_counter = make_timeout_time_ms(0);
-            update_sd_status(&fs, &sd_data);
+            if (sd_data.sd_size == 0)
+            {
+                update_sd_status(&fs, &sd_data);
+            }
         }
 
         if (get_config_call)
@@ -710,7 +717,10 @@ int init_firmware()
         if (microsd_status)
         {
             microsd_status = false;
-            update_sd_status(&fs, &sd_data);
+            if (sd_data.sd_size == 0)
+            {
+                update_sd_status(&fs, &sd_data);
+            }
 
             memcpy(memory_area + RANDOM_SEED_SIZE, &sd_data, sizeof(SdCardData));
             SdCardData *sd_data_mem = (SdCardData *)(memory_area + RANDOM_SEED_SIZE);
@@ -728,27 +738,37 @@ int init_firmware()
         if (latest_release)
         {
             latest_release = false;
-            memset(memory_area + RANDOM_SEED_SIZE, 0, CONFIGURATOR_SHARED_MEMORY_SIZE_BYTES - RANDOM_SEED_SIZE);
-            char *latest_version = get_latest_release();
-            if (latest_version != NULL)
-            {
-                DPRINTF("Current version: %s\n", RELEASE_VERSION);
-                DPRINTF("Latest version: %s\n", latest_version);
-                if (strcmp(RELEASE_VERSION, latest_version) != 0)
+            memset(memory_area - version_buff_size, 0, version_buff_size);
+
+            // Check if we are connected
+            ConnectionStatus current_status = get_network_connection_status();
+            bool is_connected =  ((current_status == CONNECTED_WIFI_IP) || (current_status == CONNECTED_WIFI_NO_IP));
+
+            if (is_connected) {
+                char *latest_version = get_latest_release();
+                if (latest_version != NULL)
                 {
-                    DPRINTF("New version available: %s\n", latest_version);
-                    strcpy((char *)(memory_area + RANDOM_SEED_SIZE), latest_version);
-                    // Convert to motorla endian
-                    CHANGE_ENDIANESS_BLOCK16(memory_area + RANDOM_SEED_SIZE, strlen(latest_version));
+                    DPRINTF("Current version: %s\n", RELEASE_VERSION);
+                    DPRINTF("Latest version: %s\n", latest_version);
+                    if (compare_versions(latest_version, RELEASE_VERSION) > 0)
+                    {
+                        DPRINTF("New version available: %s\n", latest_version);
+                        strcpy((char *)(memory_area - version_buff_size), latest_version);
+                        // Convert to motorla endian
+                        CHANGE_ENDIANESS_BLOCK16(memory_area - version_buff_size, strlen(latest_version));
+                    }
+                    else
+                    {
+                        DPRINTF("No new version available.\n");
+                    }
                 }
-                else
+                if (latest_version != NULL)
                 {
-                    DPRINTF("No new version available.\n");
+                    free(latest_version);
                 }
             }
-            if (latest_version != NULL)
-            {
-                free(latest_version);
+            else {
+                DPRINTF("Not connected to the network. Cannot check for new releases.\n");
             }
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
@@ -1192,6 +1212,7 @@ int init_firmware()
         put_string(PARAM_BOOT_FEATURE, "ROM_EMULATOR");
         write_all_entries();
         *((volatile uint32_t *)(memory_area)) = random_token;
+        sleep_ms(1000);
     }
 
     if (rom_rescue_mode_file_content != NULL)
