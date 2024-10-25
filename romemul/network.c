@@ -315,6 +315,44 @@ int network_init(bool force, bool async, char **pass)
         DPRINTF("IP: %s\n", ipaddr_ntoa(&ipaddr));
         DPRINTF("Netmask: %s\n", ipaddr_ntoa(&netmask));
         DPRINTF("Gateway: %s\n", ipaddr_ntoa(&gw));
+
+        // Now set the DNS
+        // The values in PARAM_WIFI_DNS are separated by commas. Only one or two values are allowed
+        ConfigEntry *entry = find_entry(PARAM_WIFI_DNS);
+        if (entry == NULL || entry->value == NULL) {
+            DPRINTF("Error: DNS configuration is missing.\n");
+        }
+        else {
+            char *dns = entry->value;
+            char *dns_copy = strdup(dns); // Make a copy of the string to avoid modifying the original
+            if (dns_copy == NULL) {
+                DPRINTF("Error: Memory allocation failed.\n");
+            }
+            else {
+                char *dns1 = strtok(dns_copy, ",");
+                char *dns2 = strtok(NULL, ",");
+
+                ip_addr_t dns1_ip, dns2_ip;
+                if (dns1 == NULL || (dns1_ip.addr = ipaddr_addr(dns1)) == IPADDR_NONE) {
+                    DPRINTF("Error: Invalid DNS1 address.\n");
+                    free(dns_copy); // Free the allocated memory
+                }else {
+                    dns_setserver(0, &dns1_ip);
+                    DPRINTF("DNS1: %s\n", ipaddr_ntoa(&dns1_ip));
+
+                    if (dns2 != NULL) {
+                        if ((dns2_ip.addr = ipaddr_addr(dns2)) == IPADDR_NONE) {
+                            DPRINTF("Error: Invalid DNS2 address.\n");
+                        } else {
+                            dns_setserver(1, &dns2_ip);
+                            DPRINTF("DNS2: %s\n", ipaddr_ntoa(&dns2_ip));
+                        }
+                    }                    
+                }
+            }
+
+            free(dns_copy); // Free the copied string after use
+        }
     }
     netif_set_up(n);
 
