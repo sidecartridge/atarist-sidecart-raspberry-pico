@@ -1,0 +1,50 @@
+name: Nightly Build
+
+on:
+  schedule:
+    - cron: '0 5 * * *'  # Runs every day at 5:00 AM UTC
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v2
+        with:
+          python-version: "3.10"
+
+      - name: Install the Pico Toolchain
+        run: |
+          sudo DEBIAN_FRONTEND=noninteractive apt update
+          sudo DEBIAN_FRONTEND=noninteractive apt install -y cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential libstdc++-arm-none-eabi-newlib
+
+      - name: Install AtariST Toolkit Docker image
+        run: curl -sL https://github.com/sidecartridge/atarist-toolkit-docker/releases/download/latest/linux.sh | bash
+
+      - name: Run - remove interactive
+        run: sed -i 's/-it//' /usr/local/bin/stcmd
+
+      - name: Run - Build PICO_W release version
+        run: ./build.sh pico_w release
+
+      - name: Run - Build PICO_W debug version
+        run: ./build.sh pico_w debug
+
+      - name: Get version from version.txt
+        run: echo "RELEASE_VERSION=$(cat version.txt)" >> $GITHUB_ENV
+
+      - name: Upload the binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: dist/*
+          tag: nightly
+          release_name: Nightly Build - ${{ env.RELEASE_VERSION }}
+          file_glob: true
+          overwrite: true
+          prerelease: true
