@@ -35,6 +35,10 @@ jobs:
       - name: Run - Build PICO_W debug version
         run: ./build.sh pico_w debug
 
+      - name: Get current date
+        id: build
+        run: echo "::set-output name=date::$(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+
       - name: Get version from version.txt
         run: echo "RELEASE_VERSION=$(cat version.txt)" >> $GITHUB_ENV
 
@@ -45,6 +49,13 @@ jobs:
           file: dist/*
           tag: nightly
           release_name: Nightly Build - ${{ env.RELEASE_VERSION }}
+          body: |
+            **Disclaimer:** This is an automated nightly build generated on a daily basis. It may contain unstable or untested changes and is not guaranteed to work. Use at your own risk.
+
+            **Release Notes:**
+            - Build Date: ${{ steps.build.outputs.date }}
+            - Version: ${{ env.RELEASE_VERSION }}
+
           file_glob: true
           overwrite: true
           prerelease: true
