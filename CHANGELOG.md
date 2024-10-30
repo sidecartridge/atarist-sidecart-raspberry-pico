@@ -1,5 +1,37 @@
 # Changelog
 
+## Release 1.0.0 (2024-10-31) - Final Release
+
+We're excited to announce the final release of Sidecartridge firmware v1.0.0! This release consolidates all features and improvements developed throughout the beta phase, ensuring stability across all Atari ST models. The firmware is now feature-complete and ready for general use.
+
+### Changes
+
+- Built with the latest `atarist-toolkit-docker` v1.0.0 toolchain: [Toolkit Docker Image](https://github.com/sidecartridge/atarist-toolkit-docker)
+- Nightly builds now available for ongoing updates: [Nightly Releases](https://github.com/sidecartridge/atarist-sidecart-raspberry-pico/releases/tag/nightly)
+- Updated network stack for improved WiFi consistency in low-signal areas.
+- Removed “SidecarT” references due to trademark concerns; now officially SidecarTridge or Multi-device.
+- Floppy Emulation mode’s web interface is now labeled **EXPERIMENTAL** and is disabled by default; enable it via the Configurator menu.
+- The Configurator menu is now more responsive, with key commands made asynchronous for speed.
+
+### New Features
+
+- **Issue #138**: GEMDRIVE now supports running programs in the AUTO folder when no floppy drive is attached. Check out `[F]ake Floppy` in the GEMDRIVE menu: [Hard Disk Emulation Setup](https://docs.sidecartridge.com/sidecartridge-multidevice/userguide/#setting-up-hard-disk-emulation)
+- Static IP configuration support: [Static IP Setup](https://docs.sidecartridge.com/sidecartridge-multidevice/userguide/#monitoring-network-status)
+- Power management for WiFi module: [Power Management](https://docs.sidecartridge.com/sidecartridge-multidevice/userguide/#power-management-configuration)
+- Display RSSI signal strength for both network lists and the connected network: [Display RSSI](https://docs.sidecartridge.com/sidecartridge-multidevice/userguide/display-rssi-values)
+- GEMDRIVE has moved out of experimental status.
+- GEMDRIVE boot can now bypass the RTC check by pressing the `ESC` key.
+
+### Fixes
+
+- Fixed issue where an invalid `BOOT_FEATURE` value would cause errors; now defaults to CONFIGURATOR mode.
+- Resolved error when the `FsFirst` command was called with filenames containing trailing spaces.
+- Improved sanitation of 8.3 DOS filenames.
+- Corrected hostname setting on WiFi module.
+- Smoothed out stuttering in the blinking exclamation mark indicator.
+
+
+
 ## BETA 0.0.18b (2024-09-25) - SDSC Card Support Re-enabled
 
 This release is a hotfix for version 0.0.18, bringing back support for SDSC cards. These cards were inadvertently disabled in the previous version due to an upgrade of the `no-OS-FatFS-SD-SDIO-SPI-RPi-Pico` library to version 2.6.0. In this release, the library has been reverted to version 1.2.4 to restore SDSC compatibility.
