@@ -51,6 +51,9 @@
 #define NETWORK_CONNECTION_TIMEOUT 5000 // 1000 milliseconds
 #define FIRMWARE_RELEASE_VERSION_URL "https://api.github.com/repos/diegoparrilla/atarist-sidecart-raspberry-pico/releases/latest"
 
+#define DOWNLOAD_LISTS_TIMEOUT 10 // seconds
+#define DOWNLOAD_FILES_TIMEOUT 99 // seconds
+
 typedef enum
 {
     DISCONNECTED,
@@ -177,8 +180,6 @@ char *get_latest_release(void);
 int download_rom(const char *url, uint32_t rom_load_offset);
 int download_floppy(const char *url, const char *folder, const char *dest_filename, bool overwrite_flag);
 err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *url);
-
-void freeRomItem(RomInfo *item);
 
 int time_passed(absolute_time_t *t, uint32_t ms);
 

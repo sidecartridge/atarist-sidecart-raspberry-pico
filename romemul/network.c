@@ -847,16 +847,6 @@ static void remove_quotes(char *token)
     }
 }
 
-void freeRomItem(RomInfo *item)
-{
-    if (item->url)
-        free(item->url);
-    if (item->name)
-        free(item->name);
-    if (item->description)
-        free(item->description);
-}
-
 int split_url(const char *url, UrlParts *parts)
 {
     if (!url || !parts)
@@ -942,8 +932,8 @@ char *download_latest_release(const char *url)
     // Very small buffer to force the library to call the minimal number of times the body function
     char *buff = malloc(512);
     uint32_t buff_pos = 0;
-    httpc_state_t *connection;
-    bool complete = false;
+    volatile httpc_state_t *connection;
+    volatile bool complete = false;
     UrlParts parts;
 
     err_t headers(httpc_state_t * connection, void *arg,
@@ -998,7 +988,6 @@ char *download_latest_release(const char *url)
     settings.headers_done_fn = headers;
     settings.use_proxy = false;
 
-    complete = false;
     cyw43_arch_lwip_begin();
     err_t err = httpc_get_file_dns(
         parts.domain,
@@ -1016,12 +1005,22 @@ char *download_latest_release(const char *url)
         free_url_parts(&parts);
         return NULL;
     }
+
+    uint64_t start_time = time_us_64();
+    uint64_t timeout = DOWNLOAD_LISTS_TIMEOUT * 1000000; // N seconds timeout in microseconds
     while (!complete)
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
+        if (time_us_64() - start_time > timeout)
+        {
+            DPRINTF("Download timed out\n");
+            free_url_parts(&parts);
+            free(buff);
+            return NULL; // Timeout. No data received
+        }
     }
 
     char *newline_pos = strchr(buff, '\n');
@@ -1072,6 +1071,13 @@ char *get_latest_release(void)
     }
 
     char *latest_release = download_latest_release(entry->value);
+
+    if (latest_release == NULL)
+    {
+        DPRINTF("Failed to download latest release. Returning fake release.\n");
+        return "v0.0.0\0";
+    }
+
     char *formatted_release = malloc(strlen(latest_release) + 2);
 
     if (formatted_release)
@@ -1138,8 +1144,8 @@ err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url)
     char buff[32768] = {0};
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
-    bool complete = false;
-    err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
+    volatile bool complete = false;
+    volatile err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
     UrlParts parts;
     u32_t content_len = 0;
 
@@ -1217,12 +1223,20 @@ err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url)
         free_url_parts(&parts);
         return -1;
     }
+
+    uint64_t start_time = time_us_64();
+    uint64_t timeout = DOWNLOAD_LISTS_TIMEOUT * 1000000; // N seconds timeout in microseconds
     while (!complete)
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
+        if (time_us_64() - start_time > timeout)
+        {
+            DPRINTF("Download timed out\n");
+            return ERR_TIMEOUT;
+        }
     }
 
     free_url_parts(&parts);
@@ -1339,12 +1353,17 @@ int download_rom(const char *url, uint32_t rom_load_offset)
 {
     const int FLASH_BUFFER_SIZE = 4096;
     uint8_t *flash_buff = malloc(FLASH_BUFFER_SIZE);
+    if (flash_buff == NULL)
+    {
+        DPRINTF("Failed to allocate memory for flash buffer\n");
+        return -1;
+    }
+
     uint32_t flash_buff_pos = 0;
     bool first_chunk = true;
     bool is_steem = false;
-    httpc_state_t *connection;
-    bool complete = false;
-    err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
+    volatile bool complete = false;
+    volatile err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
     UrlParts parts;
     uint32_t dest_address = rom_load_offset; // Initialize pointer to the ROM address
 
@@ -1380,6 +1399,11 @@ int download_rom(const char *url, uint32_t rom_load_offset)
         // fflush(stdout);
 
         // Transform buffer's words from little endian to big endian inline
+        if (p == NULL)
+        {
+            DPRINTF("Received NULL pbuf\n");
+            return ERR_VAL;
+        }
         uint8_t *buffer = (uint8_t *)p->payload;
         uint16_t total_bytes_copy = p->tot_len;
         int steem_offset = 0;
@@ -1394,6 +1418,11 @@ int download_rom(const char *url, uint32_t rom_load_offset)
             first_chunk = false;
         }
         uint16_t flash_buffer_current_size = FLASH_BUFFER_SIZE - flash_buff_pos - steem_offset;
+        if (flash_buffer_current_size <= 0)
+        {
+            DPRINTF("Invalid flash buffer size calculation\n");
+            return ERR_VAL;
+        }
         if (total_bytes_copy < flash_buffer_current_size)
         {
             // DPRINTF("Copying %d bytes to address: %p...", (total_bytes_copy - steem_offset), (flash_buff + flash_buff_pos));
@@ -1413,8 +1442,9 @@ int download_rom(const char *url, uint32_t rom_load_offset)
             // Change to big endian
             for (int j = 0; j < FLASH_BUFFER_SIZE; j += 2)
             {
-                uint16_t value = *(uint16_t *)(flash_buff + j);
-                *(uint16_t *)(flash_buff + j) = (value << 8) | (value >> 8);
+                uint8_t temp = flash_buff[j];
+                flash_buff[j] = flash_buff[j + 1];
+                flash_buff[j + 1] = temp;
             }
 
             // Write chunk to flash
@@ -1423,11 +1453,9 @@ int download_rom(const char *url, uint32_t rom_load_offset)
             flash_range_program(dest_address, flash_buff, FLASH_BUFFER_SIZE);
             restore_interrupts(ints);
             dest_address += FLASH_BUFFER_SIZE;
-            flash_buff_pos = 0;
-            DPRINTF("Done.\n");
-
             // Reset the flash buffer position
             flash_buff_pos = 0;
+            DPRINTF("Done.\n");
 
             // we have total_bytes - flash_buffer_current_size left to copy!
             uint16_t bytes_left = total_bytes_copy - flash_buffer_current_size;
@@ -1439,25 +1467,6 @@ int download_rom(const char *url, uint32_t rom_load_offset)
                 // DPRINTF("Done.\n");
             }
         }
-
-        // for (int i = 0; i < total_bytes_copy; i += 2)
-        // {
-        //     uint16_t value = *(uint16_t *)(buffer + i);
-        //     value = (value << 8) | (value >> 8);
-        //     *(uint16_t *)(flash_buff + flash_buff_pos) = value;
-        //     flash_buff_pos += 2;
-        //     if (flash_buff_pos == FLASH_BUFFER_SIZE)
-        //     {
-        //         DPRINTF("Writing %d bytes to address: %p...", flash_buff_pos, dest_address);
-        //         // Disable the flash writing for now until I fix this issue
-        //         uint32_t ints = save_and_disable_interrupts();
-        //         flash_range_program(dest_address, flash_buff, FLASH_BUFFER_SIZE);
-        //         restore_interrupts(ints);
-        //         dest_address += FLASH_BUFFER_SIZE;
-        //         flash_buff_pos = 0;
-        //         DPRINTF("Done.\n");
-        //     }
-        // }
 
         tcp_recved(conn, p->tot_len);
 
@@ -1513,18 +1522,28 @@ int download_rom(const char *url, uint32_t rom_load_offset)
     {
         DPRINTF("HTTP GET failed: %d\n", err);
         free_url_parts(&parts);
+        free(flash_buff);
         return -1;
     }
     else
     {
         DPRINTF("HTTP GET sent\n");
     }
+
+    uint64_t start_time = time_us_64();
+    uint64_t timeout = DOWNLOAD_FILES_TIMEOUT * 1000000; // N seconds timeout in microseconds
     while (!complete)
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
+        if (time_us_64() - start_time > timeout)
+        {
+            DPRINTF("Download timed out\n");
+            callback_error = ERR_TIMEOUT;
+            break;
+        }
     }
 
     free_url_parts(&parts);
@@ -1538,8 +1557,8 @@ err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *u
     char *buff = malloc(BUFFER_SIZE);
     uint32_t buff_pos = 0;
     httpc_state_t *connection;
-    bool complete = false;
-    err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
+    volatile bool complete = false;
+    volatile err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
     UrlParts parts;
     u32_t content_len = 0;
 
@@ -1618,13 +1637,21 @@ err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *u
         free(buff);
         return -1;
     }
+
+    uint64_t start_time = time_us_64();
+    uint64_t timeout = DOWNLOAD_LISTS_TIMEOUT * 1000000; // N seconds timeout in microseconds
     while (!complete)
     {
-
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
+        if (time_us_64() - start_time > timeout)
+        {
+            DPRINTF("Download timed out\n");
+            callback_error = ERR_TIMEOUT;
+            break;
+        }
     }
 
     free_url_parts(&parts);
@@ -1656,7 +1683,8 @@ err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *u
     if (*itemCount == 0)
     {
         // If no entries found, short circuit and return
-        free(buff);
+        if (buff != NULL)
+            free(buff);
         return -1;
     }
 
@@ -1857,12 +1885,21 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
     {
         DPRINTF("HTTP GET sent\n");
     }
+
+    uint64_t start_time = time_us_64();
+    uint64_t timeout = DOWNLOAD_FILES_TIMEOUT * 1000000; // N seconds timeout in microseconds
     while (!complete)
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
         cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
+        if (time_us_64() - start_time > timeout)
+        {
+            DPRINTF("Download timed out\n");
+            callback_error = ERR_TIMEOUT;
+            break;
+        }
     }
 
     // Close open file

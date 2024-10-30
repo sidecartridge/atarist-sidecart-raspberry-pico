@@ -46,6 +46,7 @@ static int floppy_image_selected = -1;
 static int floppy_image_selected_status = 0;
 
 // Network variables
+static bool get_ip_data = false;
 static RomInfo *network_files;
 static int filtered_num_network_files = 0;
 
@@ -254,12 +255,7 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         // Get IPv4 and IPv6 and SSID info
         DPRINTF("Command GET_IP_DATA (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
-        ConnectionData *connection_data = malloc(sizeof(ConnectionData));
-        get_connection_data(connection_data);
-        memcpy(memory_area + RANDOM_SEED_SIZE, connection_data, sizeof(ConnectionData));
-        network_swap_connection_data((__uint16_t *)(memory_area + RANDOM_SEED_SIZE));
-        free(connection_data);
-        *((volatile uint32_t *)(memory_area)) = random_token;
+        get_ip_data = true; // now the active loop should stop and get the IP data
         break;
     case DISCONNECT_NETWORK:
         // Disconnect from the network
@@ -598,7 +594,6 @@ int init_firmware()
         // This is done when the user enters the wifi credentials to start the connection process
         if (wifi_auth != NULL)
         {
-            DPRINTF("WHAT THE FUCK");
             DPRINTF("Connecting to network...\n");
             put_string(PARAM_WIFI_SSID, wifi_auth->ssid);
             put_string(PARAM_WIFI_PASSWORD, wifi_auth->password);
@@ -735,41 +730,55 @@ int init_firmware()
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
+        if (get_ip_data) {
+            get_ip_data = false;
+            ConnectionData connection_data_tmp = {0};
+            get_connection_data(&connection_data_tmp);
+            memcpy(memory_area + RANDOM_SEED_SIZE, &connection_data_tmp, sizeof(ConnectionData));
+            network_swap_connection_data((__uint16_t *)(memory_area + RANDOM_SEED_SIZE));
+
+            *((volatile uint32_t *)(memory_area)) = random_token;
+        }
+
         if (latest_release)
         {
             latest_release = false;
             memset(memory_area - version_buff_size, 0, version_buff_size);
 
-            // Check if we are connected
-            ConnectionStatus current_status = get_network_connection_status();
-            bool is_connected =  ((current_status == CONNECTED_WIFI_IP) || (current_status == CONNECTED_WIFI_NO_IP));
+            // // Check if we are connected
+            // ConnectionStatus current_status = get_network_connection_status();
+            // bool is_connected =  ((current_status == CONNECTED_WIFI_IP) || (current_status == CONNECTED_WIFI_NO_IP));
 
-            if (is_connected) {
-                char *latest_version = get_latest_release();
-                if (latest_version != NULL)
-                {
-                    DPRINTF("Current version: %s\n", RELEASE_VERSION);
-                    DPRINTF("Latest version: %s\n", latest_version);
-                    if (compare_versions(latest_version, RELEASE_VERSION) > 0)
-                    {
-                        DPRINTF("New version available: %s\n", latest_version);
-                        strcpy((char *)(memory_area - version_buff_size), latest_version);
-                        // Convert to motorla endian
-                        CHANGE_ENDIANESS_BLOCK16(memory_area - version_buff_size, strlen(latest_version));
-                    }
-                    else
-                    {
-                        DPRINTF("No new version available.\n");
-                    }
-                }
-                if (latest_version != NULL)
-                {
-                    free(latest_version);
-                }
-            }
-            else {
-                DPRINTF("Not connected to the network. Cannot check for new releases.\n");
-            }
+            // if (is_connected) {
+            //     char *latest_version = get_latest_release();
+            //     if (latest_version != NULL)
+            //     {
+            //         DPRINTF("Current version: %s\n", RELEASE_VERSION);
+            //         DPRINTF("Latest version: %s\n", latest_version);
+            //         if (compare_versions(latest_version, RELEASE_VERSION) > 0)
+            //         {
+            //             DPRINTF("New version available: %s\n", latest_version);
+            //             strcpy((char *)(memory_area - version_buff_size), latest_version);
+            //             // Convert to motorla endian
+            //             CHANGE_ENDIANESS_BLOCK16(memory_area - version_buff_size, strlen(latest_version));
+            //         }
+            //         else
+            //         {
+            //             DPRINTF("No new version available\n");
+            //         }
+            //     }
+            //     else {
+            //         DPRINTF("Error getting the latest version\n");
+            //     }
+            //     if (latest_version != NULL)
+            //     {
+            //         free(latest_version);
+            //     }
+            // }
+            // else {
+            //     DPRINTF("Not connected to the network. Cannot check for new releases.\n");
+            // }
+            // network_poll_counter = make_timeout_time_ms(0);
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
@@ -777,19 +786,52 @@ int init_firmware()
         if (get_rom_catalog)
         {
             get_rom_catalog = false;
+            DPRINTF("Getting ROM catalog...\n");
 
             // Free dynamically allocated memory first just in case
             if (filtered_num_network_files > 0)
             {
+                DPRINTF("Freeing network files...\n");
                 RomInfo *current = network_files;
-                // Free dynamically allocated memory
+
+                // Free dynamically allocated memory for each node in the list
                 while (current != NULL)
                 {
+                    // Free each dynamically allocated field, if non-NULL
+                    if (current->url)
+                    {
+                        free(current->url);
+                        current->url = NULL;
+                    }
+                    if (current->name)
+                    {
+                        free(current->name);
+                        current->name = NULL;
+                    }
+                    // Description not used
+                    // if (current->description)
+                    // {
+                    //     free(current->description);
+                    //     current->description = NULL;
+                    // }
+                    if (current->tags)
+                    {
+                        free(current->tags);
+                        current->tags = NULL;
+                    }
+
+                    // Store the next node before freeing the current one
                     RomInfo *next = current->next;
-                    freeRomItem(current);
-                    free(current);
+
+                    // Free the current node and move to the next
+                    if (current != NULL) {
+                        free(current);
+                    }
                     current = next;
                 }
+
+                // Optional: Reset the head pointer if you’re done with the list
+                network_files = NULL;
             }
 
             // Clean memory space
@@ -799,6 +841,7 @@ int init_firmware()
             // char *url = find_entry(PARAM_ROMS_YAML_URL)->value;
             char *url = find_entry(PARAM_ROMS_CSV_URL)->value;
 
+            DPRINTF("URL: %s\n", url);
             // The the JSON file info
             err_t err = get_rom_catalog_file(&network_files, &filtered_num_network_files, url);
             if (err == ERR_OK)
@@ -903,7 +946,6 @@ int init_firmware()
             while (floppy_images_files != NULL)
             {
                 FloppyImageInfo *current = floppy_images_files;
-                floppy_images_files = floppy_images_files->next; // Move to the next item before freeing the current one
 
                 // Free each dynamically allocated string in the structure
                 free(current->name);
@@ -915,6 +957,9 @@ int init_firmware()
 
                 // Free the current structure
                 free(current);
+
+                // Move to the next item
+                floppy_images_files = floppy_images_files->next; // Move to the next item before freeing the current one
             }
             floppy_images_files = NULL;
 
@@ -1239,41 +1284,54 @@ int init_firmware()
         RomInfo *current = network_files;
         for (size_t i = 0; i < rom_network_selected - 1; i++)
         {
+            if (current == NULL)
+            {
+                // Handle error: selected index is out of bounds
+                break;
+            }
             current = current->next;
         }
-        const char *url = find_entry(PARAM_ROMS_CSV_URL)->value;
-        // Split the url in parts
-        UrlParts url_parts;
-        int url_parts_err = split_url(url, &url_parts);
-
-        char *full_url = NULL;
-        // Check if the current->url starts with "http"
-        if (strncmp(current->url, "http", 4) == 0)
+        if (current == NULL)
         {
-            full_url = strdup(current->url);
+            // Handle error: selected index is out of bounds
+            DPRINTF("Error: selected index is out of bounds\n");
         }
-        else
-        {
-            // Use sprintf to format and concatenate strings
-            full_url = malloc(strlen(url_parts.protocol) + strlen(url_parts.domain) + strlen(current->url) + 4); // Allocate space for the protocol, the host, the url, and the null terminator
-            sprintf(full_url, "%s://%s/%s", url_parts.protocol, url_parts.domain, current->url);
-        }
-        err_t res = download_rom(full_url, FLASH_ROM_LOAD_OFFSET);
-        DPRINTF("Download ROM result: %d\n", res);
+        else {
+            const char *url = find_entry(PARAM_ROMS_CSV_URL)->value;
+            // Split the url in parts
+            UrlParts url_parts;
+            int url_parts_err = split_url(url, &url_parts);
 
-        // No need to release the memory used. We are going to reset the board
+            char *full_url = NULL;
+            // Check if the current->url starts with "http"
+            if (strncmp(current->url, "http", 4) == 0)
+            {
+                full_url = strdup(current->url);
+            }
+            else
+            {
+                // Use sprintf to format and concatenate strings
+                full_url = malloc(strlen(url_parts.protocol) + strlen(url_parts.domain) + strlen(current->url) + 5);
+                sprintf(full_url, "%s://%s/%s", url_parts.protocol, url_parts.domain, current->url);
+            }
+            err_t res = download_rom(full_url, FLASH_ROM_LOAD_OFFSET);
+            DPRINTF("Download ROM result: %d\n", res);
 
-        if (res == ERR_OK)
-        {
-            put_string(PARAM_BOOT_FEATURE, "ROM_EMULATOR");
-            write_all_entries();
+            free(full_url);
 
-            *((volatile uint32_t *)(memory_area)) = random_token;
-        }
-        else
-        {
-            DPRINTF("Error downloading ROM: %d\n", res);
-            // Continue and graciously reset the board
+            // No need to release the memory used. We are going to reset the board
+            if (res == ERR_OK)
+            {
+                put_string(PARAM_BOOT_FEATURE, "ROM_EMULATOR");
+                write_all_entries();
+
+                *((volatile uint32_t *)(memory_area)) = random_token;
+            }
+            else
+            {
+                DPRINTF("Error downloading ROM: %d\n", res);
+                // Continue and graciously reset the board
+            }
         }
     }
 
