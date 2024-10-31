@@ -8,6 +8,14 @@ static ip_addr_t current_ip;
 static uint8_t cyw43_mac[6];
 static bool cyw43_initialized = false;
 
+static char latest_release_version[80] = "v0.0.0";
+
+// Get the latest release version string
+char *get_latest_release_str(void)
+{
+    return latest_release_version;
+}
+
 int time_passed(absolute_time_t *t, uint32_t ms)
 {
     if (t == NULL)
@@ -927,18 +935,19 @@ bool check_STEEM_extension(UrlParts parts)
     return steem_extension;
 }
 
-char *download_latest_release(const char *url)
+int download_latest_release(const char *url)
 {
     // Very small buffer to force the library to call the minimal number of times the body function
     char *buff = malloc(512);
     uint32_t buff_pos = 0;
-    volatile httpc_state_t *connection;
     volatile bool complete = false;
+    volatile err_t callback_error = ERR_OK; // If any error found in the callback and cannot be returned, store it here
     UrlParts parts;
 
     err_t headers(httpc_state_t * connection, void *arg,
                   struct pbuf *hdr, u16_t hdr_len, u32_t content_len)
     {
+        DPRINTF("version.txt headers\n");
         pbuf_copy_partial(hdr, buff, hdr->tot_len, 0);
         return ERR_OK;
     }
@@ -948,24 +957,51 @@ char *download_latest_release(const char *url)
 
     {
         complete = true;
+        DPRINTF("version.txt result\n");
         if (srv_res != 200)
         {
             DPRINTF("version.txt something went wrong. HTTP error: %d\n", srv_res);
+            snprintf(latest_release_version, sizeof(latest_release_version), "v0.0.0");
+            free(buff);
+            callback_error = srv_res == 0 ? ERR_TIMEOUT : srv_res;
         }
         else
         {
             DPRINTF("version.txt Transfer complete. %d transfered.\n", rx_content_len);
+            // Find newline character in buff, if any
+            char *newline_pos = strchr(buff, '\n');
+
+            // Copy up to the newline or the entire string if no newline is found
+            size_t copy_len = newline_pos ? (newline_pos - buff) : strlen(buff);
+
+            // Ensure we don't copy more than the buffer size of latest_release_version - 1
+            if (copy_len >= sizeof(latest_release_version)) {
+                copy_len = sizeof(latest_release_version) - 1;
+            }
+
+            strncpy(latest_release_version, buff, copy_len);
+            latest_release_version[copy_len] = '\0';  // Ensure null termination
+
+            free(buff);
+
+            // Print an error message if download fails and set a default version
+            if (strlen(latest_release_version) == 0) {
+                DPRINTF("Failed to download latest release. Returning fake release.\n");
+                snprintf(latest_release_version, sizeof(latest_release_version), "v0.0.0");
+            }
         }
     }
 
     err_t body(void *arg, struct altcp_pcb *conn,
                struct pbuf *p, err_t err)
     {
+        DPRINTF("version.txt body\n");
         pbuf_copy_partial(p, (buff + buff_pos), p->tot_len, 0);
         buff_pos += p->tot_len;
         tcp_recved(conn, p->tot_len);
         if (p != NULL)
         {
+            DPRINTF("pbuf ref count before free: %d\n", p->ref);
             pbuf_free(p);
         }
 
@@ -976,7 +1012,7 @@ char *download_latest_release(const char *url)
     if (split_url(url, &parts) != 0)
     {
         DPRINTF("Failed to split URL\n");
-        return NULL;
+        return ERR_ARG;
     }
 
     DPRINTF("Protocol %s\n", parts.protocol);
@@ -1002,8 +1038,7 @@ char *download_latest_release(const char *url)
     if (err != ERR_OK)
     {
         DPRINTF("HTTP GET failed: %d\n", err);
-        free_url_parts(&parts);
-        return NULL;
+        return ERR_USE;
     }
 
     uint64_t start_time = time_us_64();
@@ -1018,18 +1053,12 @@ char *download_latest_release(const char *url)
         {
             DPRINTF("Download timed out\n");
             free_url_parts(&parts);
-            free(buff);
-            return NULL; // Timeout. No data received
+            return ERR_TIMEOUT;
         }
     }
 
-    char *newline_pos = strchr(buff, '\n');
-    char *latest_release_version = strndup(buff, newline_pos ? newline_pos - buff : strlen(buff));
-
     free_url_parts(&parts);
-    free(buff);
-
-    return latest_release_version;
+    return callback_error;
 }
 
 // Function to compare version strings (vX.Y.Z format)
@@ -1055,37 +1084,24 @@ int compare_versions(const char *newer_version, const char *current_version)
 }
 
 
-char *get_latest_release(void)
+int get_latest_release(void)
 {
     ConfigEntry *entry = find_entry(PARAM_LASTEST_RELEASE_URL);
 
     if (entry == NULL)
     {
         DPRINTF("%s not found in config\n", PARAM_LASTEST_RELEASE_URL);
-        return NULL;
+        return ERR_ARG;
     }
     if (strlen(entry->value) == 0)
     {
         DPRINTF("%s is empty\n", PARAM_LASTEST_RELEASE_URL);
-        return NULL;
+        return ERR_ARG;
     }
 
-    char *latest_release = download_latest_release(entry->value);
+    int err = download_latest_release(entry->value);
 
-    if (latest_release == NULL)
-    {
-        DPRINTF("Failed to download latest release. Returning fake release.\n");
-        return "v0.0.0\0";
-    }
-
-    char *formatted_release = malloc(strlen(latest_release) + 2);
-
-    if (formatted_release)
-    {
-        sprintf(formatted_release, "%s", latest_release);
-        free(latest_release);
-    }
-    return formatted_release ? formatted_release : latest_release;
+    return err;
 }
 
 static char *next_token(char **line_ptr)
@@ -1164,7 +1180,7 @@ err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url)
         if (srv_res != 200)
         {
             DPRINTF("JSON something went wrong. HTTP error: %d\n", srv_res);
-            callback_error = srv_res;
+            callback_error = srv_res == 0 ? ERR_TIMEOUT : srv_res;
         }
         else
         {
@@ -1183,6 +1199,7 @@ err_t get_rom_catalog_file(RomInfo **items, int *itemCount, const char *url)
         tcp_recved(conn, p->tot_len);
         if (p != NULL)
         {
+            DPRINTF("pbuf ref count before free: %d\n", p->ref);
             pbuf_free(p);
         }
 
@@ -1381,7 +1398,7 @@ int download_rom(const char *url, uint32_t rom_load_offset)
         if (srv_res != 200)
         {
             DPRINTF("ROM image download something went wrong. HTTP error: %d\n", srv_res);
-            callback_error = srv_res;
+            callback_error = srv_res == 0 ? ERR_TIMEOUT : srv_res;
         }
         else
         {
@@ -1472,6 +1489,7 @@ int download_rom(const char *url, uint32_t rom_load_offset)
 
         if (p != NULL)
         {
+            DPRINTF("pbuf ref count before free: %d\n", p->ref);
             pbuf_free(p);
         }
         return ERR_OK;
@@ -1536,7 +1554,6 @@ int download_rom(const char *url, uint32_t rom_load_offset)
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
         if (time_us_64() - start_time > timeout)
         {
@@ -1577,7 +1594,7 @@ err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *u
         if (srv_res != 200)
         {
             DPRINTF("Floppy images db something went wrong. HTTP error: %d\n", srv_res);
-            callback_error = srv_res;
+            callback_error = srv_res == 0 ? ERR_TIMEOUT : srv_res;
         }
         else
         {
@@ -1596,6 +1613,7 @@ err_t get_floppy_db_files(FloppyImageInfo **items, int *itemCount, const char *u
         tcp_recved(conn, p->tot_len);
         if (p != NULL)
         {
+            DPRINTF("pbuf ref count before free: %d\n", p->ref);
             pbuf_free(p);
         }
 
@@ -1792,7 +1810,7 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
         if (srv_res != 200)
         {
             DPRINTF("Floppy image download something went wrong. HTTP error: %d\n", srv_res);
-            callback_error = srv_res;
+            callback_error = srv_res == 0 ? ERR_TIMEOUT : srv_res;
         }
         else
         {
@@ -1819,6 +1837,7 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
 
         if (p != NULL)
         {
+            DPRINTF("pbuf ref count before free: %d\n", p->ref);
             pbuf_free(p);
         }
         return ERR_OK;
@@ -1892,7 +1911,6 @@ int download_floppy(const char *url, const char *folder, const char *dest_filena
     {
 #if PICO_CYW43_ARCH_POLL
         network_safe_poll();
-        cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
         if (time_us_64() - start_time > timeout)
         {
