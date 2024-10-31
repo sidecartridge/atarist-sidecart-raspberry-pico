@@ -750,11 +750,7 @@ int init_firmware()
         if (microsd_status)
         {
             microsd_status = false;
-            if (sd_data.sd_size == 0)
-            {
-                update_sd_status(&fs, &sd_data);
-            }
-
+            update_sd_status(&fs, &sd_data);
             memcpy(memory_area + RANDOM_SEED_SIZE, &sd_data, sizeof(SdCardData));
             SdCardData *sd_data_mem = (SdCardData *)(memory_area + RANDOM_SEED_SIZE);
             sd_data_mem->roms_folder_count = (sd_data.roms_folder_count >> 16) | (sd_data.roms_folder_count << 16);
