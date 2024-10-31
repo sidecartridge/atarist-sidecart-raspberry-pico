@@ -20,18 +20,22 @@
 #define MEM_LIBC_MALLOC 0
 #endif
 
-#define MEM_ALIGNMENT 4
-#define MEM_SIZE 4000
+#define MEM_ALIGNMENT               4
+#define MEM_SIZE                    4096
+
+#define MEM_SANITY_CHECK            1
+#define MEM_OVERFLOW_CHECK          1
+
 #define MEMP_NUM_TCP_SEG 32
 #define MEMP_NUM_ARP_QUEUE 10
 #define PBUF_POOL_SIZE 24
 #define LWIP_ARP 1
 #define LWIP_ETHERNET 1
 #define LWIP_ICMP 1
-#define LWIP_RAW 1
-#define TCP_WND (8 * TCP_MSS)
-#define TCP_MSS 536
-#define TCP_SND_BUF (2 * TCP_MSS)
+#define LWIP_RAW 0
+#define TCP_MSS                     1460
+#define TCP_WND                     (12 * TCP_MSS)
+#define TCP_SND_BUF                 (8 * TCP_MSS)
 #define TCP_SND_QUEUELEN ((4 * (TCP_SND_BUF) + (TCP_MSS - 1)) / (TCP_MSS))
 #define LWIP_NETIF_STATUS_CALLBACK 1
 #define LWIP_NETIF_LINK_CALLBACK 1
@@ -48,8 +52,8 @@
 #define LWIP_TCP 1
 #define LWIP_UDP 1
 #define LWIP_DNS 1
-#define LWIP_TCP_KEEPALIVE 1
-#define LWIP_NETIF_TX_SINGLE_PBUF 1
+#define LWIP_TCP_KEEPALIVE 0
+#define LWIP_NETIF_TX_SINGLE_PBUF 0
 #define DHCP_DOES_ARP_CHECK 0
 #define LWIP_DHCP_DOES_ACD_CHECK 0
 #define LWIP_DHCP_GET_NTP_SRV 0
