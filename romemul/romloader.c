@@ -549,20 +549,26 @@ int init_firmware()
     bool wifi_init = true;
     network_init(false, NETWORK_CONNECTION_ASYNC, &wifi_password_file_content);
 
-    bool show_blink_code = true;
-    while (!clean_start)
-    {
-        // Wait until the clean start command is received
-        if (show_blink_code)
-        {
-            show_blink_code = false;
-            // The "C" character stands for "Configurator"
-            blink_morse('C');
-        }
-#if PICO_CYW43_ARCH_POLL
-        network_safe_poll();
-#endif
-    }
+    // The "C" character stands for "Configurator"
+    blink_morse('C');
+
+//     bool show_blink_code = true;
+//     while (!clean_start)
+//     {
+//         // Wait until the clean start command is received
+//         if (show_blink_code)
+//         {
+//             show_blink_code = false;
+//             // The "C" character stands for "Configurator"
+//             blink_morse('C');
+//         }
+// #if PICO_CYW43_ARCH_POLL
+//         network_safe_poll();
+// #endif
+//     }
+
+    // Only ask for version once
+    bool version_checked = false;
 
     absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(storage_poll_counter, 0);
     absolute_time_t ABSOLUTE_TIME_INITIALIZED_VAR(network_poll_counter, 0);
@@ -654,6 +660,38 @@ int init_firmware()
                             print_ipv4(get_netmask()),
                             print_mac(get_mac_address()));
 #endif
+                    ConfigEntry *dhcp_enabled_conf = find_entry(PARAM_WIFI_DHCP);
+                    bool dhcp_enabled = false;
+                    if (dhcp_enabled_conf != NULL)
+                    {
+                        dhcp_enabled = (dhcp_enabled_conf->value[0] == 't' || dhcp_enabled_conf->value[0] == 'T') ? true : false;
+                    }
+                    if (!version_checked && ((current_status == CONNECTED_WIFI_IP) || ((current_status == CONNECTED_WIFI_NO_IP) && !dhcp_enabled)))
+                    {
+                        version_checked = true;
+                        memset(memory_area - version_buff_size, 0, version_buff_size);
+                        int err = get_latest_release();
+                        if (err == ERR_OK)
+                        {
+                            char *latest_version = get_latest_release_str();
+                            DPRINTF("Current version: %s\n", RELEASE_VERSION);
+                            DPRINTF("Latest version: %s\n", latest_version);
+                            if (compare_versions(latest_version, RELEASE_VERSION) > 0)
+                            {
+                                DPRINTF("New version available: %s\n", latest_version);
+                                strcpy((char *)(memory_area - version_buff_size), latest_version);
+                                // Convert to motorla endian
+                                CHANGE_ENDIANESS_BLOCK16(memory_area - version_buff_size, strlen(latest_version));
+                            }
+                            else
+                            {
+                                DPRINTF("No new version available\n");
+                            }
+                        }
+                        else {
+                            DPRINTF("Error getting the latest version\n");
+                        }
+                    }
                     if ((current_status == GENERIC_ERROR) || (current_status == CONNECT_FAILED_ERROR) || (current_status == BADAUTH_ERROR))
                     {
                         if (wifi_init)
@@ -743,42 +781,6 @@ int init_firmware()
         if (latest_release)
         {
             latest_release = false;
-            memset(memory_area - version_buff_size, 0, version_buff_size);
-
-            // // Check if we are connected
-            // ConnectionStatus current_status = get_network_connection_status();
-            // bool is_connected =  ((current_status == CONNECTED_WIFI_IP) || (current_status == CONNECTED_WIFI_NO_IP));
-
-            // if (is_connected) {
-            //     char *latest_version = get_latest_release();
-            //     if (latest_version != NULL)
-            //     {
-            //         DPRINTF("Current version: %s\n", RELEASE_VERSION);
-            //         DPRINTF("Latest version: %s\n", latest_version);
-            //         if (compare_versions(latest_version, RELEASE_VERSION) > 0)
-            //         {
-            //             DPRINTF("New version available: %s\n", latest_version);
-            //             strcpy((char *)(memory_area - version_buff_size), latest_version);
-            //             // Convert to motorla endian
-            //             CHANGE_ENDIANESS_BLOCK16(memory_area - version_buff_size, strlen(latest_version));
-            //         }
-            //         else
-            //         {
-            //             DPRINTF("No new version available\n");
-            //         }
-            //     }
-            //     else {
-            //         DPRINTF("Error getting the latest version\n");
-            //     }
-            //     if (latest_version != NULL)
-            //     {
-            //         free(latest_version);
-            //     }
-            // }
-            // else {
-            //     DPRINTF("Not connected to the network. Cannot check for new releases.\n");
-            // }
-            // network_poll_counter = make_timeout_time_ms(0);
             *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
@@ -1023,15 +1025,14 @@ int init_firmware()
                 {
                     DPRINTF("No floppy images found for letter %c\n", query_floppy_letter);
                 }
+                // Only set the random token if the operation was successful. Otherwise, force a retry
+                DPRINTF("Random token: %x\n", random_token);
+                *((volatile uint32_t *)(memory_area)) = random_token;
             }
             else
             {
                 DPRINTF("Error getting floppy images from the Atari ST Database: %d\n", res);
             }
-
-            DPRINTF("Random token: %x\n", random_token);
-
-            *((volatile uint32_t *)(memory_area)) = random_token;
         }
 
         if (floppy_header.template > 0)
@@ -1326,6 +1327,7 @@ int init_firmware()
                 write_all_entries();
 
                 *((volatile uint32_t *)(memory_area)) = random_token;
+                sleep_ms(100);
             }
             else
             {
