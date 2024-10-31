@@ -622,7 +622,8 @@ int init_rtcemul(bool safe_config_reboot)
             {
 
 #if PICO_CYW43_ARCH_POLL
-                cyw43_arch_poll();
+                network_safe_poll();
+                cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
                 if ((get_net_time()->ntp_server_found) && dns_query_done)
                 {
