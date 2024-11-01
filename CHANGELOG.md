@@ -30,6 +30,10 @@ We're excited to announce the final release of Sidecartridge firmware v1.0.0! Th
 - Corrected hostname setting on WiFi module.
 - Smoothed out stuttering in the blinking exclamation mark indicator.
 
+### Known Issues
+
+- **Issue #142**: Misleading Information When Copying Files in TOS 2.06 with GEMDRIVE
+
 
 
 ## BETA 0.0.18b (2024-09-25) - SDSC Card Support Re-enabled
