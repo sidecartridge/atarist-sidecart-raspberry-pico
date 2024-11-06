@@ -1213,7 +1213,7 @@ void init_gemdrvemul(bool safe_config_reboot)
 
             DPRINTF("Dpath backslash string: %s\n", tmp_path);
 
-            COPY_AND_CHANGE_ENDIANESS_BLOCK16(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH, tmp_path, MAX_FOLDER_LENGTH);
+            COPY_AND_CHANGE_ENDIANESS_BLOCK16(tmp_path, memory_shared_address + GEMDRVEMUL_DEFAULT_PATH, MAX_FOLDER_LENGTH);
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
