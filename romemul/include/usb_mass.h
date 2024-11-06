@@ -32,6 +32,8 @@
 
 #define USBDRIVE_READ_ONLY false
 
+#define TUD_OPT_HIGH_SPEED true
+
 // Init USB Mass storage device
 void usb_mass_init(void);
 void usb_mass_start(void);

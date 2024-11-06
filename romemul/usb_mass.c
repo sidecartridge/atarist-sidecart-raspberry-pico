@@ -19,6 +19,8 @@ void usb_mass_init()
     if ((sd_card_mass_storage_enabled != NULL) && (sd_card_mass_storage_enabled->value[0] == 't' || sd_card_mass_storage_enabled->value[0] == 'T'))
     {
         DPRINTF("USB Mass storage flag set to enabled\n");
+        DPRINTF("TUD_OPT_HIGH_SPEED: %s\n", TUD_OPT_HIGH_SPEED ? "true" : "false");
+
         // Initialize SD card
         // Physical drive number
         BYTE const pdrv = 0;

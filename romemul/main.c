@@ -221,6 +221,12 @@ int main()
     //  Check if the USB is connected. If so, check if the SD card is inserted and initialize the USB Mass storage device
     if (cyw43_arch_gpio_get(CYW43_WL_GPIO_VBUS_PIN))
     {
+
+#if TUD_OPT_HIGH_SPEED
+        DPRINTF("USB High Speed enabled. Configure serial USB speed\n");
+        change_spi_speed();
+#endif
+
         DPRINTF("USB connected\n");
         usb_mass_init();
     }
