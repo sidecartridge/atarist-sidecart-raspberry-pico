@@ -59,7 +59,7 @@
 #define GEMDRVEMUL_TIMEOUT_SEC (GEMDRVEMUL_RANDOM_TOKEN_SEED + 4)       // random_token_seed + 4 bytes
 #define GEMDRVEMUL_PING_STATUS (GEMDRVEMUL_TIMEOUT_SEC + 4)             // timeout_sec + 4 bytes
 #define GEMDRVEMUL_RTC_STATUS (GEMDRVEMUL_PING_STATUS + 4)              // ping status + 4 bytes
-#define GEMDRVEMUL_NETWORK_STATUS (GEMDRVEMUL_RTC_STATUS + 4)           // rtc status + 4 bytes
+#define GEMDRVEMUL_NETWORK_STATUS (GEMDRVEMUL_RTC_STATUS + 8)           // rtc status + 8 bytes
 #define GEMDRVEMUL_NETWORK_ENABLED (GEMDRVEMUL_NETWORK_STATUS + 4)      // network status + 4 bytes
 #define GEMDRVEMUL_REENTRY_TRAP (GEMDRVEMUL_NETWORK_ENABLED + 8)        // network enabled + 4 bytes + 4 GAP
 #define GEMDRVEMUL_DEFAULT_PATH (GEMDRVEMUL_REENTRY_TRAP + 4)           // reentry_trap file + 4 bytes

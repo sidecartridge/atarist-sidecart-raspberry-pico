@@ -66,7 +66,8 @@
 #define GEMDRVEMUL_SAVE_VECTORS (APP_GEMDRVEMUL << 8 | 1)      // Save the vectors of the GEMDRIVE emulator
 #define GEMDRVEMUL_SHOW_VECTOR_CALL (APP_GEMDRVEMUL << 8 | 2)  // Show the vector call of the GEMDRIVE emulator
 #define GEMDRVEMUL_REENTRY_LOCK (APP_GEMDRVEMUL << 8 | 3)      // Lock the reentry of the GEMDRIVE emulator
-#define GEMDRVEMUL_REENTRY_UNLOCK (APP_GEMDRVEMUL << 8 | 5)    // Unlock the reentry of the GEMDRIVE emulator
+#define GEMDRVEMUL_REENTRY_UNLOCK (APP_GEMDRVEMUL << 8 | 4)    // Unlock the reentry of the GEMDRIVE emulator
+#define GEMDRVEMUL_CANCEL (APP_GEMDRVEMUL << 8 | 5)            // Cancel the current execution
 #define GEMDRVEMUL_RTC_START (APP_GEMDRVEMUL << 8 | 6)         // Start RTC emulator
 #define GEMDRVEMUL_RTC_STOP (APP_GEMDRVEMUL << 8 | 7)          // Stop RTC emulator
 #define GEMDRVEMUL_NETWORK_START (APP_GEMDRVEMUL << 8 | 8)     // Start the network emulator

@@ -804,6 +804,41 @@ void init_gemdrvemul(bool safe_config_reboot)
     WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_TIMEOUT_SEC, gemdrive_timeout_sec);
     DPRINTF("Timeout in seconds: %d\n", gemdrive_timeout_sec);
 
+    ConfigEntry *drive_letter_conf = find_entry(PARAM_GEMDRIVE_DRIVE);
+    char drive_letter = 'C';
+    if (drive_letter_conf != NULL)
+    {
+        drive_letter = drive_letter_conf->value[0];
+    }
+    uint32_t drive_letter_num = (uint8_t)toupper(drive_letter);
+    uint32_t drive_number = drive_letter_num - 65; // Convert the drive letter to a number. Add 1 because 0 is the current drive
+
+    ConfigEntry *buffer_type_conf = find_entry(PARAM_GEMDRIVE_BUFF_TYPE);
+    uint16_t buffer_type = 0; // 0: Diskbuffer, 1: Stack
+    if (buffer_type_conf != NULL)
+    {
+        buffer_type = atoi(buffer_type_conf->value);
+    }
+
+    ConfigEntry *virtual_fake_floppy_conf = find_entry(PARAM_GEMDRIVE_FAKEFLOPPY);
+    uint16_t virtual_fake_floppy = 0; // 0: No, 1: Yes
+    if (virtual_fake_floppy_conf != NULL)
+    {
+        virtual_fake_floppy = virtual_fake_floppy_conf->value[0] == 't' || virtual_fake_floppy_conf->value[0] == 'T';
+    }
+
+    set_shared_var(SHARED_VARIABLE_FIRST_FILE_DESCRIPTOR, FIRST_FILE_DESCRIPTOR, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_DRIVE_LETTER, drive_letter_num, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_DRIVE_NUMBER, drive_number, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_BUFFER_TYPE, buffer_type, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_FAKE_FLOPPY, virtual_fake_floppy, memory_shared_address);
+
+    for (int i = 0; i < SHARED_VARIABLES_SIZE; i++)
+    {
+        uint32_t value = *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_SHARED_VARIABLES + (i * 4)));
+        DPRINTF("Shared variable %d: %04x%04x\n", i, value & 0xFFFF, value >> 16);
+    }
+
     // Only try to get the datetime from the network if the wifi is configured
     if (gemdrive_rtc_enabled && strlen(find_entry(PARAM_WIFI_SSID)->value) > 0)
     {
@@ -845,6 +880,17 @@ void init_gemdrvemul(bool safe_config_reboot)
                 cyw43_arch_poll();
             }
 #endif
+
+            // Check the cancel command
+            if (active_command_id == GEMDRVEMUL_CANCEL)
+            {
+                DPRINTF("CANCEL command received!\n");
+                wifi_timeout_sec = 0;
+                write_random_token(memory_shared_address);
+                active_command_id = 0xFFFF;
+                break;
+            }
+
             // Only display when changes status to avoid flooding the console
             ConnectionStatus previous_status = get_previous_connection_status();
             ConnectionStatus current_status = get_network_connection_status();
@@ -929,31 +975,49 @@ void init_gemdrvemul(bool safe_config_reboot)
             bool dns_query_done = false;
 
             // Wait until the RTC is set by the NTP server
-            while (gemdrive_timeout_sec > 0)
+            while (get_rtc_time()->year == 0)
             {
 
 #if PICO_CYW43_ARCH_POLL
-                cyw43_arch_poll();
+                network_safe_poll();
 #endif
-                if (get_net_time()->ntp_server_found && dns_query_done)
+                // Check the cancel command
+                if (active_command_id == GEMDRVEMUL_CANCEL)
+                {
+                    DPRINTF("CANCEL command received!\n");
+                    wifi_timeout_sec = 0;
+                    write_random_token(memory_shared_address);
+                    active_command_id = 0xFFFF;
+                    break;
+                }
+                if ((get_net_time()->ntp_server_found) && dns_query_done)
                 {
                     DPRINTF("NTP server found. Connecting to NTP server...\n");
                     get_net_time()->ntp_server_found = false;
                     set_internal_rtc();
-                    break;
                 }
                 // Get the IP address from the DNS server if the wifi is connected and no IP address is found yet
-                if ((get_rtc_time()->year == 0) && !(dns_query_done))
+                if (!(dns_query_done))
                 {
                     // Let's connect to ntp server
                     DPRINTF("Querying the DNS...\n");
                     err_t dns_ret = dns_gethostbyname(ntp_server_host, &get_net_time()->ntp_ipaddr, host_found_callback, get_net_time());
+#if PICO_CYW43_ARCH_POLL
+                    network_safe_poll();
+#endif
                     if (dns_ret == ERR_ARG)
                     {
                         DPRINTF("Invalid DNS argument\n");
                     }
                     DPRINTF("DNS query done\n");
                     dns_query_done = true;
+                }
+                if (get_net_time()->ntp_error)
+                {
+                    DPRINTF("Error getting the NTP server IP address\n");
+                    dns_query_done = false;
+                    get_net_time()->ntp_error = false;
+                    get_net_time()->ntp_server_found = false;
                 }
                 // If SELECT button is pressed, launch the configurator
                 if (gpio_get(SELECT_GPIO) != 0)
@@ -963,11 +1027,20 @@ void init_gemdrvemul(bool safe_config_reboot)
                     write_config_only_once = false;
                 }
             }
-            if (gemdrive_timeout_sec > 0)
+            if (get_rtc_time()->year != 0)
             {
                 DPRINTF("RTC set by NTP server\n");
                 // Set the RTC time for the Atari ST to read
                 rtc_get_datetime(get_rtc_time());
+
+                DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
+                                get_rtc_time()->day, 
+                                get_rtc_time()->month, 
+                                get_rtc_time()->year, 
+                                get_rtc_time()->hour, 
+                                get_rtc_time()->min, 
+                                get_rtc_time()->sec);
+
                 uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS);
                 // Change order for the endianess
                 rtc_time_ptr[1] = 0x1b;
@@ -978,13 +1051,14 @@ void init_gemdrvemul(bool safe_config_reboot)
                 rtc_time_ptr[4] = to_bcd(get_rtc_time()->min);
                 rtc_time_ptr[7] = to_bcd(get_rtc_time()->sec);
                 rtc_time_ptr[6] = 0x0;
+
                 // If connected to the wifi then set the network status to 1, otherwise set it to 0
                 *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = 0xFFFFFFFF;
             }
             else
             {
                 DPRINTF("Timeout reached. RTC not set.\n");
-                cyw43_arch_deinit();
+                cyw43_arch_deinit(); 
                 DPRINTF("No wifi configured. Skipping network initialization.\n");
             }
         }
@@ -994,41 +1068,6 @@ void init_gemdrvemul(bool safe_config_reboot)
         // Just be sure to deinit the network stack
         cyw43_arch_deinit();
         DPRINTF("No wifi configured. Skipping network initialization.\n");
-    }
-
-    ConfigEntry *drive_letter_conf = find_entry(PARAM_GEMDRIVE_DRIVE);
-    char drive_letter = 'C';
-    if (drive_letter_conf != NULL)
-    {
-        drive_letter = drive_letter_conf->value[0];
-    }
-    uint32_t drive_letter_num = (uint8_t)toupper(drive_letter);
-    uint32_t drive_number = drive_letter_num - 65; // Convert the drive letter to a number. Add 1 because 0 is the current drive
-
-    ConfigEntry *buffer_type_conf = find_entry(PARAM_GEMDRIVE_BUFF_TYPE);
-    uint16_t buffer_type = 0; // 0: Diskbuffer, 1: Stack
-    if (buffer_type_conf != NULL)
-    {
-        buffer_type = atoi(buffer_type_conf->value);
-    }
-
-    ConfigEntry *virtual_fake_floppy_conf = find_entry(PARAM_GEMDRIVE_FAKEFLOPPY);
-    uint16_t virtual_fake_floppy = 0; // 0: No, 1: Yes
-    if (virtual_fake_floppy_conf != NULL)
-    {
-        virtual_fake_floppy = virtual_fake_floppy_conf->value[0] == 't' || virtual_fake_floppy_conf->value[0] == 'T';
-    }
-
-    set_shared_var(SHARED_VARIABLE_FIRST_FILE_DESCRIPTOR, FIRST_FILE_DESCRIPTOR, memory_shared_address);
-    set_shared_var(SHARED_VARIABLE_DRIVE_LETTER, drive_letter_num, memory_shared_address);
-    set_shared_var(SHARED_VARIABLE_DRIVE_NUMBER, drive_number, memory_shared_address);
-    set_shared_var(SHARED_VARIABLE_BUFFER_TYPE, buffer_type, memory_shared_address);
-    set_shared_var(SHARED_VARIABLE_FAKE_FLOPPY, virtual_fake_floppy, memory_shared_address);
-
-    for (int i = 0; i < SHARED_VARIABLES_SIZE; i++)
-    {
-        uint32_t value = *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_SHARED_VARIABLES + (i * 4)));
-        DPRINTF("Shared variable %d: %04x%04x\n", i, value & 0xFFFF, value >> 16);
     }
 
     while (true)
@@ -1059,6 +1098,13 @@ void init_gemdrvemul(bool safe_config_reboot)
             active_command_id = 0xFFFF;
             break;
         }
+        case GEMDRVEMUL_CANCEL:
+        {
+            DPRINTF("CANCEL command received\n");
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
         case GEMDRVEMUL_SAVE_VECTORS:
         {
             DPRINTF("Saving vectors\n");
@@ -1072,6 +1118,33 @@ void init_gemdrvemul(bool safe_config_reboot)
             // Self modifying code to create the old and venerable XBRA structure
             *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS)) = gemdos_trap_address_old & 0xFFFF;
             *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS + 2)) = gemdos_trap_address_old >> 16;
+
+
+            if (get_rtc_time()->year != 0)
+            {
+                // Update the RTC with the internal clock of the RTC
+                rtc_get_datetime(get_rtc_time());
+                DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
+                                get_rtc_time()->day, 
+                                get_rtc_time()->month, 
+                                get_rtc_time()->year, 
+                                get_rtc_time()->hour, 
+                                get_rtc_time()->min, 
+                                get_rtc_time()->sec);
+
+                DPRINTF("RTC set by NTP server\n");
+                uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS);
+                // Change order for the endianess
+                rtc_time_ptr[1] = 0x1b;
+                rtc_time_ptr[0] = add_bcd(to_bcd((get_rtc_time()->year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
+                rtc_time_ptr[3] = to_bcd(get_rtc_time()->month);
+                rtc_time_ptr[2] = to_bcd(get_rtc_time()->day);
+                rtc_time_ptr[5] = to_bcd(get_rtc_time()->hour);
+                rtc_time_ptr[4] = to_bcd(get_rtc_time()->min);
+                rtc_time_ptr[7] = to_bcd(get_rtc_time()->sec);
+                rtc_time_ptr[6] = 0x0;
+            }
+
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
@@ -1211,7 +1284,14 @@ void init_gemdrvemul(bool safe_config_reboot)
             memccpy(tmp_path, dpath_string, 0, MAX_FOLDER_LENGTH);
             forward_2_backslash(tmp_path);
 
+            // Remove the backslash at the end
             DPRINTF("Dpath backslash string: %s\n", tmp_path);
+            if (tmp_path[strlen(tmp_path) - 1] == '\\')
+            {
+                tmp_path[strlen(tmp_path) - 1] = '\0';
+            }
+
+            DPRINTF("Dpath backslash string (no last backslash: %s\n", tmp_path);
 
             COPY_AND_CHANGE_ENDIANESS_BLOCK16(tmp_path, memory_shared_address + GEMDRVEMUL_DEFAULT_PATH, MAX_FOLDER_LENGTH);
             write_random_token(memory_shared_address);
@@ -1258,6 +1338,7 @@ void init_gemdrvemul(bool safe_config_reboot)
 
             // Remove duplicated forward slashes
             remove_dup_slashes(tmp_path);
+            remove_dup_slashes(dpath_tmp);
 
             if (directory_exists(tmp_path))
             {
@@ -2199,6 +2280,9 @@ void init_gemdrvemul(bool safe_config_reboot)
                     // Only read DEFAULT_FOPEN_READ_BUFFER_SIZE bytes at a time
                     uint16_t buff_size = readbuff_pending_bytes_to_read > DEFAULT_FOPEN_READ_BUFFER_SIZE ? DEFAULT_FOPEN_READ_BUFFER_SIZE : readbuff_pending_bytes_to_read;
                     DPRINTF("Reading x%x bytes from the file at offset x%x\n", buff_size, readbuff_offset);
+                    if (buff_size < DEFAULT_FOPEN_READ_BUFFER_SIZE) {
+                        memset((void *)(memory_shared_address + GEMDRVEMUL_READ_BUFF), 0, DEFAULT_FOPEN_READ_BUFFER_SIZE);
+                    }
                     fr = f_read(&file->fobject, (void *)(memory_shared_address + GEMDRVEMUL_READ_BUFF), buff_size, &bytes_read);
                     if (fr != FR_OK)
                     {
@@ -2212,9 +2296,9 @@ void init_gemdrvemul(bool safe_config_reboot)
                         uint32_t current_offset = file->offset;
                         DPRINTF("New offset: x%x after reading x%x bytes\n", current_offset, bytes_read);
                         // Change the endianness of the bytes read
-                        CHANGE_ENDIANESS_BLOCK16(memory_shared_address + GEMDRVEMUL_READ_BUFF, ((buff_size + 1) * 2) / 2);
+                        CHANGE_ENDIANESS_BLOCK16(memory_shared_address + GEMDRVEMUL_READ_BUFF, buff_size + (buff_size % 2));
                         // Return the number of bytes read
-                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_READ_BYTES, bytes_read);
+                        WRITE_AND_SWAP_LONGWORD(memory_shared_address, GEMDRVEMUL_READ_BYTES, (uint32_t)bytes_read);
                     }
                 }
             }
@@ -2273,7 +2357,7 @@ void init_gemdrvemul(bool safe_config_reboot)
                         chk += pending_long_word & (0x00FF << (pending_bytes * 8));
                     }
                     // Change the endianness of the bytes read
-                    CHANGE_ENDIANESS_BLOCK16(target, ((buff_size + 1) * 2) / 2);
+                    CHANGE_ENDIANESS_BLOCK16(target, buff_size + (buff_size % 2));
                     // Write the bytes
                     DPRINTF("Write x%x bytes from the file at offset x%x\n", buff_size, writebuff_offset);
                     fr = f_write(&file->fobject, (void *)target, buff_size, &bytes_write);

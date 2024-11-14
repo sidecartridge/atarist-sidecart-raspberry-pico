@@ -98,6 +98,7 @@ void host_found_callback(const char *name, const ip_addr_t *ipaddr, void *arg)
     if (ntime == NULL)
     {
         DPRINTF("NTP_TIME argument is NULL\n");
+        ntime->ntp_error = true;
         return;
     }
 
@@ -111,6 +112,7 @@ void host_found_callback(const char *name, const ip_addr_t *ipaddr, void *arg)
     else if (ipaddr == NULL)
     {
         DPRINTF("IP address for NTP Host '%s' not found.\n", name);
+        ntime->ntp_error = true;
     }
 }
 
@@ -204,6 +206,7 @@ void ntp_init()
 
     // Initialization success, set flag.
     net_time.ntp_server_found = false;
+    net_time.ntp_error = false;
     DPRINTF("NTP UDP control block initialized and callback set.\n");
 }
 

@@ -67,6 +67,7 @@ typedef struct NTP_TIME_T
     ip_addr_t ntp_ipaddr;
     struct udp_pcb *ntp_pcb;
     bool ntp_server_found;
+    bool ntp_error;
 } NTP_TIME;
 
 // DAllas RTC. Info here: https://pdf1.alldatasheet.es/datasheet-pdf/view/58439/DALLAS/DS1216.html
