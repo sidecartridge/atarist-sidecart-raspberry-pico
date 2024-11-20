@@ -626,7 +626,6 @@ int init_rtcemul(bool safe_config_reboot)
 
 #if PICO_CYW43_ARCH_POLL
                 network_safe_poll();
-                cyw43_arch_wait_for_work_until(make_timeout_time_ms(100));
 #endif
                 if ((get_net_time()->ntp_server_found) && dns_query_done)
                 {
@@ -640,12 +639,22 @@ int init_rtcemul(bool safe_config_reboot)
                     // Let's connect to ntp server
                     DPRINTF("Querying the DNS...\n");
                     err_t dns_ret = dns_gethostbyname(ntp_server_host, &get_net_time()->ntp_ipaddr, host_found_callback, get_net_time());
+#if PICO_CYW43_ARCH_POLL
+                    network_safe_poll();
+#endif
                     if (dns_ret == ERR_ARG)
                     {
                         DPRINTF("Invalid DNS argument\n");
                     }
                     DPRINTF("DNS query done\n");
                     dns_query_done = true;
+                }
+                if (get_net_time()->ntp_error)
+                {
+                    DPRINTF("Error getting the NTP server IP address\n");
+                    dns_query_done = false;
+                    get_net_time()->ntp_error = false;
+                    get_net_time()->ntp_server_found = false;
                 }
                 // If SELECT button is pressed, launch the configurator
                 if (gpio_get(SELECT_GPIO) != 0)
@@ -655,13 +664,20 @@ int init_rtcemul(bool safe_config_reboot)
                     write_config_only_once = false;
                 }
             }
-            if (rtc_timeout_sec > 0)
+            if (get_rtc_time()->year != 0)
             {
                 DPRINTF("RTC set by NTP server\n");
-                DPRINTF("The RTC is set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
-                        rtc_time.day, rtc_time.month, rtc_time.year, rtc_time.hour, rtc_time.min, rtc_time.sec);
                 // Set the RTC time for the Atari ST to read
                 rtc_get_datetime(get_rtc_time());
+
+                DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
+                                get_rtc_time()->day, 
+                                get_rtc_time()->month, 
+                                get_rtc_time()->year, 
+                                get_rtc_time()->hour, 
+                                get_rtc_time()->min, 
+                                get_rtc_time()->sec);
+                                
                 // Change order for the endianess
                 rtc_time_ptr[1] = 0x1b;
                 rtc_time_ptr[0] = add_bcd(to_bcd((get_rtc_time()->year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
