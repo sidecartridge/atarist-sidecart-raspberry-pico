@@ -21,6 +21,10 @@ static bool read_time_received = false;
 static uint32_t XBIOS_trap_payload;
 static bool save_vectors = false;
 
+// XBIOS reentry lock variables
+static bool reentry_locked = false;
+static bool reentry_unlocked = false;
+
 // NTP and RTC variables
 static datetime_t rtc_time = {0};
 static NTP_TIME net_time;
@@ -273,6 +277,16 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         save_vectors = true;
         break;
+    case RTCEMUL_REENTRY_LOCK:
+        DPRINTF("Command REENTRY_LOCK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        reentry_locked = true;
+        break;
+    case RTCEMUL_REENTRY_UNLOCK:
+        DPRINTF("Command REENTRY_UNLOCK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+        random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+        reentry_unlocked = true;
+        break;
     default:
         DPRINTF("Unknown command: %d\n", protocol->command_id);
     }
@@ -438,6 +452,7 @@ void __not_in_flash_func(rtcemul_dma_irq_handler_lookup_callback)(void)
 int init_rtcemul(bool safe_config_reboot)
 {
     uint32_t memory_shared_address = ROM3_START_ADDRESS;
+    *((volatile uint16_t *)(memory_shared_address + RTCEMUL_REENTRY_TRAP)) = 0x0;
     uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + RTCEMUL_DATETIME);
     bool write_config_only_once = true;
 
@@ -751,6 +766,22 @@ int init_rtcemul(bool safe_config_reboot)
             rtc_time_ptr[7] = to_bcd(rtc_time.sec);
             rtc_time_ptr[6] = 0x0;
 
+            *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
+        }
+
+        if (reentry_locked)
+        {
+            reentry_locked = false;
+            *((volatile uint16_t *)(memory_shared_address + RTCEMUL_REENTRY_TRAP)) = 0xFFFF;
+            DPRINTF("Reentry locked\n");
+            *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
+        }
+
+        if (reentry_unlocked)
+        {
+            reentry_unlocked = false;
+            *((volatile uint16_t *)(memory_shared_address + RTCEMUL_REENTRY_TRAP)) = 0x0;
+            DPRINTF("Reentry unlocked\n");
             *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
         }
 

@@ -48,6 +48,8 @@
 #define RTCEMUL_NTP_SUCCESS (RTCEMUL_RANDOM_TOKEN_SEED + 4)  // random_token_seed + 4 bytes
 #define RTCEMUL_DATETIME (RTCEMUL_NTP_SUCCESS + 2)           // ntp_success + 2 bytes
 #define RTCEMUL_OLD_XBIOS_TRAP (RTCEMUL_DATETIME + 4)        // datetime + 4 bytes
+#define RTCEMUL_REENTRY_TRAP (RTCEMUL_OLD_XBIOS_TRAP + 4)    // old_bios trap + 4 bytes
+
 
 #define NTP_DEFAULT_PORT 123 // NTP UDP port
 #define NTP_DELTA 2208988800 // seconds between 1 Jan 1900 and 1 Jan 1970
