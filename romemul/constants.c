@@ -29,9 +29,10 @@ const uint32_t ROM4_START_ADDRESS = ROMS_START_ADDRESS;                         
 const uint32_t ROM3_START_ADDRESS = ROM_IN_RAM_ADDRESS + 0x10000;               // Second 64KB block of ROM in rp2040 RAM. Not survive a reset or poweroff.
 const uint32_t ROM4_END_ADDRESS = ROM4_START_ADDRESS + ROM_SIZE_BYTES;          // End address of the ROM4
 const uint32_t ROM3_END_ADDRESS = ROM3_START_ADDRESS + ROM_SIZE_BYTES;          // End address of the ROM3
-const uint32_t CONFIG_FLASH_SIZE = 4096;                                        // Size of your reserved flash memory 4Kbytes
+const uint32_t CONFIG_FLASH_SIZE = 8192;                                        // Size of your reserved flash memory 4Kbytes
 const uint32_t CONFIG_FLASH_OFFSET = FLASH_ROM_LOAD_OFFSET - CONFIG_FLASH_SIZE; // Offset FLASH where the config is stored. Survives a reset or poweroff.
-const uint32_t CONFIG_VERSION = 0x00000001;                                     // Version of the config. Used to check if the config is compatible with the current code.
+const uint32_t CONFIG_VERSION_4KB = 0x00000001;                                  // Version of the config with only 4Kbytes of config memory.
+const uint32_t CONFIG_VERSION = 0x00000002;                                     // Version of the config. Used to check if the config is compatible with the current code.
 const uint32_t CONFIG_MAGIC = 0x12340000;                                       // Magic number to check if the config exists in FLASH.
 
 // Atari ST constants.
