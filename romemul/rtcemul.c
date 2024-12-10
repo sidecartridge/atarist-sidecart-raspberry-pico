@@ -8,6 +8,9 @@
 
 #include "include/rtcemul.h"
 
+// MEmory base
+static uint32_t memory_shared_address;
+
 // RTC type to emulate
 static RTC_TYPE rtc_type = RTC_UNKNOWN;
 
@@ -41,6 +44,9 @@ static bool microsd_mounted = false;
 
 // Local wifi password in the local file
 static char *wifi_password_file_content = NULL;
+
+// Y2K patch
+static bool y2k_patch_enabled = false;
 
 datetime_t *get_rtc_time()
 {
@@ -252,6 +258,68 @@ void set_internal_rtc()
     DPRINTF("NTP request sent successfully.\n");
 }
 
+void set_ikb_datetime_msg(uint8_t *rtc_time_ptr, int16_t gemdos_version)
+{
+    DPRINTF("GEMDOS version: %x\n", gemdos_version);
+    rtc_get_datetime(&rtc_time);
+
+    DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
+                    rtc_time.day, 
+                    rtc_time.month, 
+                    rtc_time.year, 
+                    rtc_time.hour, 
+                    rtc_time.min, 
+                    rtc_time.sec);
+
+    // Now set the MSDOS time format after the BCD format
+    uint32_t msdos_datetime = 0;
+
+    // Convert the RTC time to MSDOS datetime format
+    uint16_t msdos_date = ((rtc_time.year - 1980) << 9) | (rtc_time.month << 5) | (rtc_time.day);
+    uint16_t msdos_time = (rtc_time.hour << 11) | (rtc_time.min << 5) | (rtc_time.sec / 2);
+
+    // Change order for the endianess
+    rtc_time_ptr[1] = 0x1b;
+
+    // If negative number, it is EmuTOS
+    if ((gemdos_version >= 0) && (y2k_patch_enabled)) {
+        DPRINTF("Applying Y2K fix in the date\n");
+        rtc_time_ptr[0] = add_bcd(to_bcd((rtc_time.year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
+    } else {
+        DPRINTF("Not applying Y2K fix in the date\n");
+        rtc_time_ptr[0] = to_bcd(rtc_time.year % 100); // EmuTOS already handles the Y2K issue 
+        // If the TOS is EmuTOS, then we disable the Y2K fix
+        *((volatile uint32_t *)(memory_shared_address + RTCEMUL_Y2K_PATCH)) = 0;
+    }
+    rtc_time_ptr[3] = to_bcd(rtc_time.month);
+    rtc_time_ptr[2] = to_bcd(rtc_time.day);
+    rtc_time_ptr[5] = to_bcd(rtc_time.hour);
+    rtc_time_ptr[4] = to_bcd(rtc_time.min);
+    rtc_time_ptr[7] = to_bcd(rtc_time.sec);
+    rtc_time_ptr[6] = 0x0;
+
+    // Store MSDOS datetime into shared memory
+    msdos_datetime = (msdos_date << 16) | msdos_time;
+    WRITE_AND_SWAP_LONGWORD(memory_shared_address, RTCEMUL_DATETIME_MSDOS, msdos_datetime);
+    DPRINTF("MSDOS datetime: 0x%08x\n", msdos_datetime);
+}
+
+
+static void set_shared_var(uint32_t p_shared_variable_index, uint32_t p_shared_variable_value, uint32_t memory_shared_address)
+{
+    DPRINTF("Setting shared variable %d to %x\n", p_shared_variable_index, p_shared_variable_value);
+    *((volatile uint16_t *)(memory_shared_address + RTCEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4) + 2)) = p_shared_variable_value & 0xFFFF;
+    *((volatile uint16_t *)(memory_shared_address + RTCEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4))) = p_shared_variable_value >> 16;
+}
+
+static void get_shared_var(uint32_t p_shared_variable_index, uint32_t *p_shared_variable_value, uint32_t memory_shared_address)
+{
+    *p_shared_variable_value = *((volatile uint16_t *)(memory_shared_address + RTCEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4))) << 16;
+    *p_shared_variable_value |= *((volatile uint16_t *)(memory_shared_address + RTCEMUL_SHARED_VARIABLES + (p_shared_variable_index * 4) + 2));
+    DPRINTF("Getting shared variable %d with value %x\n", p_shared_variable_index, *p_shared_variable_value);
+}
+
+
 static void __not_in_flash_func(handle_protocol_command)(const TransmissionProtocol *protocol)
 {
     ConfigEntry *entry = NULL;
@@ -260,16 +328,21 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
     switch (protocol->command_id)
     {
     case RTCEMUL_TEST_NTP:
+    {
         DPRINTF("Command TEST_NTP (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         test_ntp_received = true;
         break;
+    }
     case RTCEMUL_READ_TIME:
+    {
         DPRINTF("Command READ_TIME (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         read_time_received = true;
         break; // ... handle other commands
+    }
     case RTCEMUL_SAVE_VECTORS:
+    {
         // Save the vectors needed for the RTC emulation
         DPRINTF("Command SAVE_VECTORS (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         payloadPtr = (uint16_t *)protocol->payload + 2;
@@ -277,16 +350,34 @@ static void __not_in_flash_func(handle_protocol_command)(const TransmissionProto
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         save_vectors = true;
         break;
+    }
     case RTCEMUL_REENTRY_LOCK:
+    {
         DPRINTF("Command REENTRY_LOCK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         reentry_locked = true;
         break;
+    }
     case RTCEMUL_REENTRY_UNLOCK:
+    {
         DPRINTF("Command REENTRY_UNLOCK (%i) received: %d\n", protocol->command_id, protocol->payload_size);
         random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
         reentry_unlocked = true;
         break;
+    }
+    case RTCEMUL_SET_SHARED_VAR:
+        {
+            DPRINTF("Command SET_SHARED_VAR (%i) received: %d\n", protocol->command_id, protocol->payload_size);
+            payloadPtr = (uint16_t *)protocol->payload + 2;
+            // Shared variables
+            uint32_t shared_variable_index = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d3 register
+            payloadPtr += 2;                                                                  // Skip two words
+            uint32_t shared_variable_value = ((uint32_t)payloadPtr[1] << 16) | payloadPtr[0]; // d4 register
+            set_shared_var(shared_variable_index, shared_variable_value, memory_shared_address);
+            random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
+            *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
+            break;
+        }
     default:
         DPRINTF("Unknown command: %d\n", protocol->command_id);
     }
@@ -319,6 +410,27 @@ inline uint8_t add_bcd(uint8_t bcd1, uint8_t bcd2)
 
     return (high_nibble & 0xF0) | (low_nibble & 0x0F);
 }
+
+// Function to subtract two BCD values
+inline uint8_t sub_bcd(uint8_t bcd1, uint8_t bcd2)
+{
+    uint8_t low_nibble = (bcd1 & 0x0F) - (bcd2 & 0x0F);
+    uint8_t high_nibble = (bcd1 & 0xF0) - (bcd2 & 0xF0);
+
+    if (low_nibble > 9) // Handle borrow in the low nibble
+    {
+        low_nibble -= 6;
+        high_nibble -= 0x10; // Borrow from the high nibble
+    }
+
+    if (high_nibble > 0x90) // Handle borrow in the high nibble
+    {
+        high_nibble -= 0x60;
+    }
+
+    return (high_nibble & 0xF0) | (low_nibble & 0x0F);
+}
+
 
 // WARNING: CHANGE THIS OFFSET WITH CAUTION
 // The offset_sync is the time the RP2040 takes to read and process the time and date from the internal RTC
@@ -451,17 +563,34 @@ void __not_in_flash_func(rtcemul_dma_irq_handler_lookup_callback)(void)
 
 int init_rtcemul(bool safe_config_reboot)
 {
-    uint32_t memory_shared_address = ROM3_START_ADDRESS;
+    memory_shared_address = ROM3_START_ADDRESS;
     *((volatile uint16_t *)(memory_shared_address + RTCEMUL_REENTRY_TRAP)) = 0x0;
-    uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + RTCEMUL_DATETIME);
+    uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + RTCEMUL_DATETIME_BCD);
+    set_shared_var(SHARED_VARIABLE_HARDWARE_TYPE, 0, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_SVERSION, 0, memory_shared_address);
+    set_shared_var(SHARED_VARIABLE_BUFFER_TYPE, 0, memory_shared_address); // 0: Diskbuffer, 1: Stack. But useless in the RTC
+
     bool write_config_only_once = true;
 
     FRESULT fr;
     FATFS fs;
 
+    ConfigEntry *y2k_patch = find_entry(PARAM_RTC_Y2K_PATCH);
+    if (y2k_patch != NULL)
+    {
+        char *str = y2k_patch->value;
+        y2k_patch_enabled = ((y2k_patch!=NULL) && (strlen(y2k_patch->value)) && ((str[0] == 'T') || (str[0] == 't'))) ? true : false;
+    }
+    else {
+        y2k_patch_enabled = true;
+        DPRINTF("Y2K patch enabled by default\n");
+    }
+    DPRINTF("Y2K patch enabled: %s\n", y2k_patch_enabled ? "true" : "false");
+    *((volatile uint32_t *)(memory_shared_address + RTCEMUL_Y2K_PATCH)) = y2k_patch_enabled ? 0xFFFFFFFF : 0;
+
+
     srand(time(0));
     char *rtc_type_str = find_entry(PARAM_RTC_TYPE)->value;
-
     if (strcmp(rtc_type_str, "DALLAS") == 0)
     {
         DPRINTF("RTC type: DALLAS\n");
@@ -586,6 +715,21 @@ int init_rtcemul(bool safe_config_reboot)
                 second_t = make_timeout_time_ms(0);
             }
 
+            if (test_ntp_received)
+            {
+                test_ntp_received = false;
+                if (rtc_time.year != 0)
+                {
+                    *((volatile uint16_t *)(memory_shared_address + RTCEMUL_NTP_SUCCESS)) = 0xFFFF;
+                }
+                else
+                {
+                    *((volatile uint16_t *)(memory_shared_address + RTCEMUL_NTP_SUCCESS)) = 0x0;
+                }
+                DPRINTF("NTP test received. Answering with: %d\n", *((volatile uint16_t *)(memory_shared_address + RTCEMUL_NTP_SUCCESS)));
+                *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
+            }
+
             // If SELECT button is pressed, launch the configurator
             if (gpio_get(SELECT_GPIO) != 0)
             {
@@ -683,25 +827,10 @@ int init_rtcemul(bool safe_config_reboot)
             {
                 DPRINTF("RTC set by NTP server\n");
                 // Set the RTC time for the Atari ST to read
-                rtc_get_datetime(get_rtc_time());
-
-                DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
-                                get_rtc_time()->day, 
-                                get_rtc_time()->month, 
-                                get_rtc_time()->year, 
-                                get_rtc_time()->hour, 
-                                get_rtc_time()->min, 
-                                get_rtc_time()->sec);
-                                
-                // Change order for the endianess
-                rtc_time_ptr[1] = 0x1b;
-                rtc_time_ptr[0] = add_bcd(to_bcd((get_rtc_time()->year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
-                rtc_time_ptr[3] = to_bcd(get_rtc_time()->month);
-                rtc_time_ptr[2] = to_bcd(get_rtc_time()->day);
-                rtc_time_ptr[5] = to_bcd(get_rtc_time()->hour);
-                rtc_time_ptr[4] = to_bcd(get_rtc_time()->min);
-                rtc_time_ptr[7] = to_bcd(get_rtc_time()->sec);
-                rtc_time_ptr[6] = 0x0;
+                uint32_t gemdos_version = 0;
+                get_shared_var(SHARED_VARIABLE_SVERSION, &gemdos_version, memory_shared_address);
+                DPRINTF("Shared variable SVERSION: %x\n", gemdos_version);
+                set_ikb_datetime_msg(rtc_time_ptr, (int16_t)gemdos_version);
             }
             else
             {
@@ -754,17 +883,11 @@ int init_rtcemul(bool safe_config_reboot)
         {
             read_time_received = false;
 
-            rtc_get_datetime(&rtc_time);
-            uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + RTCEMUL_DATETIME);
-            // Change order for the endianess
-            rtc_time_ptr[1] = 0x1b;
-            rtc_time_ptr[0] = add_bcd(to_bcd((rtc_time.year % 100)), to_bcd((2000 - 1980) + (80 - 30)));
-            rtc_time_ptr[3] = to_bcd(rtc_time.month);
-            rtc_time_ptr[2] = to_bcd(rtc_time.day);
-            rtc_time_ptr[5] = to_bcd(rtc_time.hour);
-            rtc_time_ptr[4] = to_bcd(rtc_time.min);
-            rtc_time_ptr[7] = to_bcd(rtc_time.sec);
-            rtc_time_ptr[6] = 0x0;
+            uint32_t gemdos_version = 0;
+            get_shared_var(SHARED_VARIABLE_SVERSION, &gemdos_version, memory_shared_address);
+            DPRINTF("Shared variable SVERSION: %x\n", gemdos_version);
+            gemdos_version = gemdos_version & 0x0000FFFF;
+            set_ikb_datetime_msg(rtc_time_ptr, (int16_t)gemdos_version);
 
             *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
         }

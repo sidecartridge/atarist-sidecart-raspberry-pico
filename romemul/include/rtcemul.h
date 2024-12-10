@@ -46,10 +46,12 @@
 #define RTCEMUL_RANDOM_TOKEN 0x0                             // Offset from 0x0000 of the shared memory buffer
 #define RTCEMUL_RANDOM_TOKEN_SEED (RTCEMUL_RANDOM_TOKEN + 4) // random_token + 4 bytes
 #define RTCEMUL_NTP_SUCCESS (RTCEMUL_RANDOM_TOKEN_SEED + 4)  // random_token_seed + 4 bytes
-#define RTCEMUL_DATETIME (RTCEMUL_NTP_SUCCESS + 2)           // ntp_success + 2 bytes
-#define RTCEMUL_OLD_XBIOS_TRAP (RTCEMUL_DATETIME + 4)        // datetime + 4 bytes
+#define RTCEMUL_DATETIME_BCD   (RTCEMUL_NTP_SUCCESS + 4)     // ntp_success + 4 bytes
+#define RTCEMUL_DATETIME_MSDOS (RTCEMUL_DATETIME_BCD + 8)    // datetime_bcd + 8 bytes
+#define RTCEMUL_OLD_XBIOS_TRAP (RTCEMUL_DATETIME_MSDOS + 8)  // datetime_msdos + 8 bytes
 #define RTCEMUL_REENTRY_TRAP (RTCEMUL_OLD_XBIOS_TRAP + 4)    // old_bios trap + 4 bytes
-
+#define RTCEMUL_Y2K_PATCH       (RTCEMUL_REENTRY_TRAP + 4)   // reentry_trap + 4 byte
+#define RTCEMUL_SHARED_VARIABLES (RTCEMUL_Y2K_PATCH + 8)     // y2k_patch + 4 bytes
 
 #define NTP_DEFAULT_PORT 123 // NTP UDP port
 #define NTP_DELTA 2208988800 // seconds between 1 Jan 1900 and 1 Jan 1970
@@ -98,7 +100,6 @@ void __not_in_flash_func(rtcemul_dma_irq_handler_lookup_callback)(void);
 
 // Function Prototypes
 int init_rtcemul(bool safe_config_reboot);
-
 void host_found_callback(const char *name, const ip_addr_t *ipaddr, void *arg);
 void set_internal_rtc();
 void ntp_init();
@@ -108,5 +109,7 @@ long get_utc_offset_seconds();
 void set_utc_offset_seconds(long offset);
 uint8_t to_bcd(uint8_t val);
 uint8_t add_bcd(uint8_t bcd1, uint8_t bcd2);
+uint8_t sub_bcd(uint8_t bcd1, uint8_t bcd2);
+
 
 #endif // RTCEMUL_H

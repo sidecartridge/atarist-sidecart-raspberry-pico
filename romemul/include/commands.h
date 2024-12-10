@@ -62,7 +62,7 @@
 #define RTCEMUL_SAVE_VECTORS (APP_RTCEMUL << 8 | 2) // Save the vectors of the RTC emulator
 #define RTCEMUL_REENTRY_LOCK  (APP_RTCEMUL << 8 | 3) // Command code to lock the reentry to XBIOS in the Sidecart
 #define RTCEMUL_REENTRY_UNLOCK  (APP_RTCEMUL << 8 | 4) // Command code to unlock the reentry to XBIOS in the Sidecart
-
+#define RTCEMUL_SET_SHARED_VAR  (APP_RTCEMUL << 8 | 5) // Set a shared variable
 
 // APP_GEMDRVEMUL commands
 #define GEMDRVEMUL_PING (APP_GEMDRVEMUL << 8 | 0)              // Ping the GEMDRIVE emulator
