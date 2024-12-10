@@ -30,7 +30,7 @@
 // Warning. There will be an issue when reaching the maximum number of entries for 4Kbytes of flash memory
 // The maximum number of entries is 46
 // Change the memory size of the config structure to 8Kbytes when reaching the maximum number of entries
-#define MAX_ENTRIES 47
+#define MAX_ENTRIES 48
 #define MAX_KEY_LENGTH 20
 #define MAX_STRING_VALUE_LENGTH 64
 
@@ -65,6 +65,7 @@
 #define PARAM_RTC_NTP_SERVER_PORT "RTC_NTP_SERVER_PORT"
 #define PARAM_RTC_TYPE "RTC_TYPE"
 #define PARAM_RTC_UTC_OFFSET "RTC_UTC_OFFSET"
+#define PARAM_RTC_Y2K_PATCH "RTC_Y2K_PATCH"
 #define PARAM_SAFE_CONFIG_REBOOT "SAFE_CONFIG_REBOOT"
 #define PARAM_SD_MASS_STORAGE "SD_MASS_STORAGE"
 #define PARAM_SD_BAUD_RATE_KB "SD_BAUD_RATE_KB"

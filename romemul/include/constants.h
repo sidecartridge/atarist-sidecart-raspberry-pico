@@ -86,6 +86,7 @@ extern const uint32_t ROM_SIZE_WORDS;
 extern const uint32_t ROM_SIZE_LONGWORDS;
 extern const uint32_t CONFIG_FLASH_OFFSET;
 extern const uint32_t CONFIG_FLASH_SIZE;
+extern const uint32_t CONFIG_VERSION_4KB;
 extern const uint32_t CONFIG_VERSION;
 extern const uint32_t CONFIG_MAGIC;
 extern const uint32_t NETWORK_MAGIC;

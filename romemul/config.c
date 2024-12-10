@@ -34,6 +34,7 @@ static ConfigEntry defaultEntries[MAX_ENTRIES] = {
     {PARAM_RTC_NTP_SERVER_PORT, TYPE_INT, "123"},
     {PARAM_RTC_TYPE, TYPE_STRING, "SIDECART"},
     {PARAM_RTC_UTC_OFFSET, TYPE_STRING, "+1"},
+    {PARAM_RTC_Y2K_PATCH, TYPE_BOOL, "true"},
     {PARAM_SAFE_CONFIG_REBOOT, TYPE_BOOL, "true"},
     {PARAM_SD_MASS_STORAGE, TYPE_BOOL, "true"},
     {PARAM_SD_BAUD_RATE_KB, TYPE_INT, "12500"},
@@ -114,24 +115,37 @@ static void replace_bad_domain_entries()
 
 void load_all_entries()
 {
-    uint8_t *currentAddress = (uint8_t *)(CONFIG_FLASH_OFFSET + XIP_BASE);
 
     // First, load default entries
     load_default_entries();
 
     uint8_t count = 0;
+    uint16_t max_entries = MAX_ENTRIES;
+    uint8_t *currentAddress = NULL;
+    currentAddress = (uint8_t *)(CONFIG_FLASH_OFFSET + XIP_BASE);
 
-    const uint32_t magic = *(uint32_t *)currentAddress;
-    currentAddress += sizeof(uint32_t);
+    uint32_t magic = *(uint32_t *)currentAddress;
 
     if (magic != (CONFIG_MAGIC | CONFIG_VERSION))
     {
         // No config found in FLASH. Use default values
-        DPRINTF("No config found in FLASH. Using default values.\n");
-        return;
+        DPRINTF("No config found in FLASH. We have to find first a previous version of the config.\n");
+        currentAddress = (uint8_t *)(CONFIG_FLASH_OFFSET + XIP_BASE + 0x1000);
+        // Check if we have a previous version of the config
+        magic = *(uint32_t *)currentAddress;
+        if (magic != (CONFIG_MAGIC | CONFIG_VERSION_4KB))
+        {
+            DPRINTF("Address=%08X. MAGIC=%08X and Previous MAGIC=%08X\n",currentAddress, magic, CONFIG_MAGIC | CONFIG_VERSION_4KB);
+            DPRINTF("No previous version of the config found in FLASH. Using default values.\n");
+            return;
+        }
+        // We found a previous version of the config. Let's load it.
+        max_entries = 47; // Only 47 entries in the previous version
+        DPRINTF("Previous version of the config found in FLASH. Loading it.\n");
     }
 
-    while (count < MAX_ENTRIES)
+    currentAddress += sizeof(uint32_t);
+    while (count < max_entries)
     {
         //        ConfigEntry entry = read_entry(&currentAddress);
         ConfigEntry entry;
@@ -305,7 +319,7 @@ int reset_config_default()
 
     // Erase the content before writing the configuration
     // overwriting it's not enough
-    flash_range_erase(CONFIG_FLASH_OFFSET, CONFIG_FLASH_SIZE); // 4 Kbytes
+    flash_range_erase(CONFIG_FLASH_OFFSET, CONFIG_FLASH_SIZE);
 
     restore_interrupts(ints);
 
