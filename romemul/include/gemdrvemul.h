@@ -60,9 +60,15 @@
 #define GEMDRVEMUL_PING_STATUS (GEMDRVEMUL_TIMEOUT_SEC + 4)             // timeout_sec + 4 bytes
 #define GEMDRVEMUL_RTC_STATUS (GEMDRVEMUL_PING_STATUS + 4)              // ping status + 4 bytes
 #define GEMDRVEMUL_NETWORK_STATUS (GEMDRVEMUL_RTC_STATUS + 8)           // rtc status + 8 bytes
-#define GEMDRVEMUL_NETWORK_ENABLED (GEMDRVEMUL_NETWORK_STATUS + 4)      // network status + 4 bytes
-#define GEMDRVEMUL_REENTRY_TRAP (GEMDRVEMUL_NETWORK_ENABLED + 8)        // network enabled + 4 bytes + 4 GAP
-#define GEMDRVEMUL_DEFAULT_PATH (GEMDRVEMUL_REENTRY_TRAP + 4)           // reentry_trap file + 4 bytes
+#define GEMDRVEMUL_RTC_ENABLED (GEMDRVEMUL_NETWORK_STATUS + 4)          // network status + 4 bytes
+#define GEMDRVEMUL_REENTRY_TRAP (GEMDRVEMUL_RTC_ENABLED + 8)            // rtc enabled + 4 bytes + 4 GAP
+#define GEMDRVEMUL_OLD_XBIOS_TRAP (GEMDRVEMUL_REENTRY_TRAP + 4)         // reentry_trap + 4 bytes
+#define GEMDRVEMUL_RTC_XBIOS_REENTRY_TRAP (GEMDRVEMUL_OLD_XBIOS_TRAP+4) // old_xbios_trap + 4 bytes
+#define GEMDRVEMUL_RTC_DATETIME_BCD (GEMDRVEMUL_RTC_XBIOS_REENTRY_TRAP + 4) // reentry_trap + 4 bytes
+#define GEMDRVEMUL_RTC_DATETIME_MSDOS (GEMDRVEMUL_RTC_DATETIME_BCD + 8)     // rtc_datetime_bcd + 8 bytes
+#define GEMDRVEMUL_RTC_Y2K_PATCH (GEMDRVEMUL_RTC_DATETIME_MSDOS + 8)        // rtc_datetime_msdos + 8 bytes
+
+#define GEMDRVEMUL_DEFAULT_PATH (GEMDRVEMUL_RTC_Y2K_PATCH + 4)              // rtc_y2k_patch + 4 bytes
 #define GEMDRVEMUL_DTA_F_FOUND (GEMDRVEMUL_DEFAULT_PATH + 128)          // default path + 128 bytes
 #define GEMDRVEMUL_DTA_TRANSFER (GEMDRVEMUL_DTA_F_FOUND + 4)            // dta found + 4
 #define GEMDRVEMUL_DTA_EXIST (GEMDRVEMUL_DTA_TRANSFER + DTA_SIZE_ON_ST) // dta transfer + DTA_SIZE_ON_ST bytes

@@ -37,6 +37,13 @@ static FileDescriptors *fdescriptors = NULL; // Initialize the head of the list 
 static PD *pexec_pd = NULL;
 static ExecHeader *pexec_exec_header = NULL;
 
+// Y2K patch
+static bool y2k_patch_enabled = false;
+
+// XBIOS vector
+static uint32_t xbios_trap_address_old = 0;
+static bool xbios_reentry_locked = false;
+
 static inline void __not_in_flash_func(generate_random_token_seed)(const TransmissionProtocol *protocol)
 {
     random_token = ((*((uint32_t *)protocol->payload) & 0xFFFF0000) >> 16) | ((*((uint32_t *)protocol->payload) & 0x0000FFFF) << 16);
@@ -625,7 +632,7 @@ static void print_variables(uint32_t memory_shared_address)
     DPRINTF("GEMDRVEMUL_PING_STATUS(0x%04x): %x\n", GEMDRVEMUL_PING_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_PING_STATUS))));
     DPRINTF("GEMDRVEMUL_RTC_STATUS(0x%04x): %x\n", GEMDRVEMUL_RTC_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS))));
     DPRINTF("GEMDRVEMUL_NETWORK_STATUS(0x%04x): %x\n", GEMDRVEMUL_NETWORK_STATUS, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS))));
-    DPRINTF("GEMDRVEMUL_NETWORK_ENABLED(0x%04x): %x\n", GEMDRVEMUL_NETWORK_ENABLED, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_ENABLED))));
+    DPRINTF("GEMDRVEMUL_RTC_ENABLED(0x%04x): %x\n", GEMDRVEMUL_RTC_ENABLED, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_ENABLED))));
     DPRINTF("GEMDRVEMUL_REENTRY_TRAP(0x%04x): %x\n", GEMDRVEMUL_REENTRY_TRAP, SWAP_LONGWORD(*((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_REENTRY_TRAP))));
     // For strings, swapping is not applicable, so print as is.
     DPRINTF("GEMDRVEMUL_DEFAULT_PATH(0x%04x): %s\n", GEMDRVEMUL_DEFAULT_PATH, (char *)(memory_shared_address + GEMDRVEMUL_DEFAULT_PATH));
@@ -781,6 +788,8 @@ void init_gemdrvemul(bool safe_config_reboot)
 
     *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS)) = 0x0;
     *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = 0x0;
+    *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_RTC_XBIOS_REENTRY_TRAP)) = 0x0;
+
 
     ConfigEntry *gemdrive_rtc = find_entry(PARAM_GEMDRIVE_RTC);
     bool gemdrive_rtc_enabled = true;
@@ -792,7 +801,7 @@ void init_gemdrvemul(bool safe_config_reboot)
     //     DPRINTF("RTC DISABLED FOR DEBUGGING\n");
     //     gemdrive_rtc_enabled = false;
     // #endif
-    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_ENABLED)) = gemdrive_rtc_enabled;
+    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_ENABLED)) = gemdrive_rtc_enabled;
     DPRINTF("Network enabled? %s\n", gemdrive_rtc_enabled ? "Yes" : "No");
 
     ConfigEntry *gemdrive_timeout = find_entry(PARAM_GEMDRIVE_TIMEOUT_SEC);
@@ -826,6 +835,19 @@ void init_gemdrvemul(bool safe_config_reboot)
     {
         virtual_fake_floppy = virtual_fake_floppy_conf->value[0] == 't' || virtual_fake_floppy_conf->value[0] == 'T';
     }
+
+    ConfigEntry *y2k_patch = find_entry(PARAM_RTC_Y2K_PATCH);
+    if (y2k_patch != NULL)
+    {
+        char *str = y2k_patch->value;
+        y2k_patch_enabled = ((y2k_patch!=NULL) && (strlen(y2k_patch->value)) && ((str[0] == 'T') || (str[0] == 't'))) ? true : false;
+    }
+    else {
+        y2k_patch_enabled = true;
+        DPRINTF("Y2K patch enabled by default\n");
+    }
+    DPRINTF("Y2K patch enabled: %s\n", y2k_patch_enabled ? "true" : "false");
+    *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_Y2K_PATCH)) = y2k_patch_enabled ? 0xFFFFFFFF : 0;
 
     set_shared_var(SHARED_VARIABLE_FIRST_FILE_DESCRIPTOR, FIRST_FILE_DESCRIPTOR, memory_shared_address);
     set_shared_var(SHARED_VARIABLE_DRIVE_LETTER, drive_letter_num, memory_shared_address);
@@ -1029,30 +1051,19 @@ void init_gemdrvemul(bool safe_config_reboot)
             }
             if (get_rtc_time()->year != 0)
             {
-                DPRINTF("RTC set by NTP server\n");
-                // Set the RTC time for the Atari ST to read
-                rtc_get_datetime(get_rtc_time());
-
-                DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
-                                get_rtc_time()->day, 
-                                get_rtc_time()->month, 
-                                get_rtc_time()->year, 
-                                get_rtc_time()->hour, 
-                                get_rtc_time()->min, 
-                                get_rtc_time()->sec);
-
-                uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS);
-                // Change order for the endianess
-                rtc_time_ptr[1] = 0x1b;
-                rtc_time_ptr[0] = add_bcd(to_bcd((get_rtc_time()->year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
-                rtc_time_ptr[3] = to_bcd(get_rtc_time()->month);
-                rtc_time_ptr[2] = to_bcd(get_rtc_time()->day);
-                rtc_time_ptr[5] = to_bcd(get_rtc_time()->hour);
-                rtc_time_ptr[4] = to_bcd(get_rtc_time()->min);
-                rtc_time_ptr[7] = to_bcd(get_rtc_time()->sec);
-                rtc_time_ptr[6] = 0x0;
-
-                // If connected to the wifi then set the network status to 1, otherwise set it to 0
+                uint32_t gemdos_version = 0;
+                get_shared_var(SHARED_VARIABLE_SVERSION, &gemdos_version, memory_shared_address);
+                DPRINTF("Shared variable SVERSION: %x\n", gemdos_version);
+                gemdos_version = gemdos_version & 0x0000FFFF;
+                set_ikb_datetime_msg(memory_shared_address,
+                        GEMDRVEMUL_RTC_DATETIME_BCD,
+                        GEMDRVEMUL_RTC_Y2K_PATCH,
+                        GEMDRVEMUL_RTC_DATETIME_MSDOS,
+                        (int16_t)gemdos_version,
+                        y2k_patch_enabled);
+                        
+                // If set then set the RTC and network status to 1, otherwise set it to 0
+                *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS)) = 0xFFFFFFFF;
                 *((volatile uint32_t *)(memory_shared_address + GEMDRVEMUL_NETWORK_STATUS)) = 0xFFFFFFFF;
             }
             else
@@ -1069,6 +1080,8 @@ void init_gemdrvemul(bool safe_config_reboot)
         cyw43_arch_deinit();
         DPRINTF("No wifi configured. Skipping network initialization.\n");
     }
+
+    DPRINTF("Waiting for commands...\n");
 
     while (true)
     {
@@ -1119,32 +1132,47 @@ void init_gemdrvemul(bool safe_config_reboot)
             *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS)) = gemdos_trap_address_old & 0xFFFF;
             *((volatile uint16_t *)(memory_firmware_code + gemdos_trap_address_xbra - ATARI_ROM4_START_ADDRESS + 2)) = gemdos_trap_address_old >> 16;
 
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_SAVE_XBIOS_VECTOR:
+        {
+            DPRINTF("Saving XBIOS vectors\n");
+            xbios_trap_address_old = ((uint32_t)payloadPtr[0] << 16) | payloadPtr[1];
+            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_OLD_XBIOS_TRAP)) = xbios_trap_address_old & 0xFFFF;
+            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_OLD_XBIOS_TRAP + 2)) = xbios_trap_address_old >> 16;
+            DPRINTF("xbios_trap_address_old: %x\n", xbios_trap_address_old);
 
-            if (get_rtc_time()->year != 0)
-            {
-                // Update the RTC with the internal clock of the RTC
-                rtc_get_datetime(get_rtc_time());
-                DPRINTF("RP2040 RTC set to: %02d/%02d/%04d %02d:%02d:%02d UTC+0\n",
-                                get_rtc_time()->day, 
-                                get_rtc_time()->month, 
-                                get_rtc_time()->year, 
-                                get_rtc_time()->hour, 
-                                get_rtc_time()->min, 
-                                get_rtc_time()->sec);
+            uint32_t gemdos_version = 0;
+            get_shared_var(SHARED_VARIABLE_SVERSION, &gemdos_version, memory_shared_address);
+            DPRINTF("Shared variable SVERSION: %x\n", gemdos_version);
+            gemdos_version = gemdos_version & 0x0000FFFF;
+            set_ikb_datetime_msg(memory_shared_address,
+                        GEMDRVEMUL_RTC_DATETIME_BCD,
+                        GEMDRVEMUL_RTC_Y2K_PATCH,
+                        GEMDRVEMUL_RTC_DATETIME_MSDOS,
+                        (int16_t)gemdos_version,
+                        y2k_patch_enabled);
 
-                DPRINTF("RTC set by NTP server\n");
-                uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + GEMDRVEMUL_RTC_STATUS);
-                // Change order for the endianess
-                rtc_time_ptr[1] = 0x1b;
-                rtc_time_ptr[0] = add_bcd(to_bcd((get_rtc_time()->year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
-                rtc_time_ptr[3] = to_bcd(get_rtc_time()->month);
-                rtc_time_ptr[2] = to_bcd(get_rtc_time()->day);
-                rtc_time_ptr[5] = to_bcd(get_rtc_time()->hour);
-                rtc_time_ptr[4] = to_bcd(get_rtc_time()->min);
-                rtc_time_ptr[7] = to_bcd(get_rtc_time()->sec);
-                rtc_time_ptr[6] = 0x0;
-            }
-
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_REENTRY_XBIOS_LOCK:
+        {
+            xbios_reentry_locked = true;
+            DPRINTF("XBIOS Reentry locked\n");
+            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_RTC_XBIOS_REENTRY_TRAP)) = 0xFFFF;
+            write_random_token(memory_shared_address);
+            active_command_id = 0xFFFF;
+            break;
+        }
+        case GEMDRVEMUL_REENTRY_XBIOS_UNLOCK:
+        {
+            xbios_reentry_locked = false;
+            DPRINTF("XBIOS Reentry unlocked\n");
+            *((volatile uint16_t *)(memory_shared_address + GEMDRVEMUL_RTC_XBIOS_REENTRY_TRAP)) = 0;
             write_random_token(memory_shared_address);
             active_command_id = 0xFFFF;
             break;
