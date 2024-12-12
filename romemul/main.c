@@ -42,6 +42,8 @@ int main()
     DPRINTF("Voltage: %s\n", current_voltage);
 #endif
 
+    bool force_configurator = (gpio_get(SELECT_GPIO) != 0);
+
     // Init the CYW43 WiFi module
     if (cyw43_arch_init())
     {
@@ -62,7 +64,7 @@ int main()
 
 // Check the different modes
     DPRINTF("Testing the different modes\n");
-    if (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0)
+    if ((!force_configurator) && (strcmp(default_config_entry->value, "ROM_EMULATOR") == 0))
     {
         DPRINTF("No SELECT button pressed. ROM_EMULATOR entry found in config. Launching.\n");
 
@@ -119,7 +121,7 @@ int main()
         }
     }
 
-    if (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0)
+    if ((!force_configurator) && (strcmp(default_config_entry->value, "FLOPPY_EMULATOR") == 0))
     {
         DPRINTF("FLOPPY_EMULATOR entry found in config. Launching.\n");
 
@@ -145,7 +147,7 @@ int main()
         // You should never reach this line...
     }
 
-    if (strcmp(default_config_entry->value, "RTC_EMULATOR") == 0)
+    if ((!force_configurator) && (strcmp(default_config_entry->value, "RTC_EMULATOR") == 0))
     {
         DPRINTF("RTC_EMULATOR entry found in config. Launching.\n");
 
@@ -179,7 +181,7 @@ int main()
         // You should never reach this line...
     }
 
-    if (strcmp(default_config_entry->value, "GEMDRIVE_EMULATOR") == 0)
+    if ((!force_configurator) && (strcmp(default_config_entry->value, "GEMDRIVE_EMULATOR") == 0))
     {
         DPRINTF("GEMDRIVE_EMULATOR entry found in config. Launching.\n");
 
