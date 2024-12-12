@@ -75,6 +75,11 @@
 #define GEMDRVEMUL_RTC_STOP (APP_GEMDRVEMUL << 8 | 7)          // Stop RTC emulator
 #define GEMDRVEMUL_NETWORK_START (APP_GEMDRVEMUL << 8 | 8)     // Start the network emulator
 #define GEMDRVEMUL_NETWORK_STOP (APP_GEMDRVEMUL << 8 | 9)      // Stop the network emulator
+
+#define GEMDRVEMUL_SAVE_XBIOS_VECTOR   (APP_GEMDRVEMUL << 8 | 10)     // Save the XBIOS vector in the Sidecart
+#define GEMDRVEMUL_REENTRY_XBIOS_LOCK  (APP_GEMDRVEMUL << 8 | 11)     // Enable reentry XBIOS calls
+#define GEMDRVEMUL_REENTRY_XBIOS_UNLOCK (APP_GEMDRVEMUL << 8 | 12)    // Disable reentry XBIOS calls
+
 #define GEMDRVEMUL_DGETDRV_CALL (APP_GEMDRVEMUL << 8 | 0x19)   // Show the Dgetdrv call
 #define GEMDRVEMUL_FSETDTA_CALL (APP_GEMDRVEMUL << 8 | 0x1A)   // Show the Fsetdta call
 #define GEMDRVEMUL_DFREE_CALL (APP_GEMDRVEMUL << 8 | 0x36)     // Show the Dfree call
