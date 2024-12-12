@@ -110,6 +110,11 @@ void set_utc_offset_seconds(long offset);
 uint8_t to_bcd(uint8_t val);
 uint8_t add_bcd(uint8_t bcd1, uint8_t bcd2);
 uint8_t sub_bcd(uint8_t bcd1, uint8_t bcd2);
-
+void set_ikb_datetime_msg(uint32_t mem_shared_addr, 
+                        uint16_t rtcemul_datetime_bcd_idx, 
+                        uint16_t rtcemul_y2k_patch_idx, 
+                        uint16_t rtcemul_datetime_msdos_idx, 
+                        uint16_t gemdos_version,
+                        bool y2k_patch);
 
 #endif // RTCEMUL_H

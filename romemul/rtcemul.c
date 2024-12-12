@@ -258,8 +258,14 @@ void set_internal_rtc()
     DPRINTF("NTP request sent successfully.\n");
 }
 
-void set_ikb_datetime_msg(uint8_t *rtc_time_ptr, int16_t gemdos_version)
+void set_ikb_datetime_msg(uint32_t mem_shared_addr, 
+                        uint16_t rtcemul_datetime_bcd_idx, 
+                        uint16_t rtcemul_y2k_patch_idx, 
+                        uint16_t rtcemul_datetime_msdos_idx, 
+                        uint16_t gemdos_version,
+                        bool y2k_patch)
 {
+    uint8_t *rtc_time_ptr = (uint8_t *)(mem_shared_addr + rtcemul_datetime_bcd_idx);
     DPRINTF("GEMDOS version: %x\n", gemdos_version);
     rtc_get_datetime(&rtc_time);
 
@@ -282,14 +288,14 @@ void set_ikb_datetime_msg(uint8_t *rtc_time_ptr, int16_t gemdos_version)
     rtc_time_ptr[1] = 0x1b;
 
     // If negative number, it is EmuTOS
-    if ((gemdos_version >= 0) && (y2k_patch_enabled)) {
+    if ((gemdos_version >= 0) && (y2k_patch)) {
         DPRINTF("Applying Y2K fix in the date\n");
         rtc_time_ptr[0] = add_bcd(to_bcd((rtc_time.year % 100)), to_bcd((2000 - 1980) + (80 - 30))); // Fix Y2K issue
     } else {
         DPRINTF("Not applying Y2K fix in the date\n");
         rtc_time_ptr[0] = to_bcd(rtc_time.year % 100); // EmuTOS already handles the Y2K issue 
         // If the TOS is EmuTOS, then we disable the Y2K fix
-        *((volatile uint32_t *)(memory_shared_address + RTCEMUL_Y2K_PATCH)) = 0;
+        *((volatile uint32_t *)(mem_shared_addr + rtcemul_y2k_patch_idx)) = 0;
     }
     rtc_time_ptr[3] = to_bcd(rtc_time.month);
     rtc_time_ptr[2] = to_bcd(rtc_time.day);
@@ -300,7 +306,7 @@ void set_ikb_datetime_msg(uint8_t *rtc_time_ptr, int16_t gemdos_version)
 
     // Store MSDOS datetime into shared memory
     msdos_datetime = (msdos_date << 16) | msdos_time;
-    WRITE_AND_SWAP_LONGWORD(memory_shared_address, RTCEMUL_DATETIME_MSDOS, msdos_datetime);
+    WRITE_AND_SWAP_LONGWORD(mem_shared_addr, rtcemul_datetime_msdos_idx, msdos_datetime);
     DPRINTF("MSDOS datetime: 0x%08x\n", msdos_datetime);
 }
 
@@ -565,7 +571,6 @@ int init_rtcemul(bool safe_config_reboot)
 {
     memory_shared_address = ROM3_START_ADDRESS;
     *((volatile uint16_t *)(memory_shared_address + RTCEMUL_REENTRY_TRAP)) = 0x0;
-    uint8_t *rtc_time_ptr = (uint8_t *)(memory_shared_address + RTCEMUL_DATETIME_BCD);
     set_shared_var(SHARED_VARIABLE_HARDWARE_TYPE, 0, memory_shared_address);
     set_shared_var(SHARED_VARIABLE_SVERSION, 0, memory_shared_address);
     set_shared_var(SHARED_VARIABLE_BUFFER_TYPE, 0, memory_shared_address); // 0: Diskbuffer, 1: Stack. But useless in the RTC
@@ -830,7 +835,12 @@ int init_rtcemul(bool safe_config_reboot)
                 uint32_t gemdos_version = 0;
                 get_shared_var(SHARED_VARIABLE_SVERSION, &gemdos_version, memory_shared_address);
                 DPRINTF("Shared variable SVERSION: %x\n", gemdos_version);
-                set_ikb_datetime_msg(rtc_time_ptr, (int16_t)gemdos_version);
+                set_ikb_datetime_msg(memory_shared_address,
+                        RTCEMUL_DATETIME_BCD,
+                        RTCEMUL_Y2K_PATCH,
+                        RTCEMUL_DATETIME_MSDOS, 
+                        (int16_t)gemdos_version,
+                        y2k_patch_enabled);
             }
             else
             {
@@ -887,7 +897,12 @@ int init_rtcemul(bool safe_config_reboot)
             get_shared_var(SHARED_VARIABLE_SVERSION, &gemdos_version, memory_shared_address);
             DPRINTF("Shared variable SVERSION: %x\n", gemdos_version);
             gemdos_version = gemdos_version & 0x0000FFFF;
-            set_ikb_datetime_msg(rtc_time_ptr, (int16_t)gemdos_version);
+            set_ikb_datetime_msg(memory_shared_address,
+                        RTCEMUL_DATETIME_BCD,
+                        RTCEMUL_Y2K_PATCH,
+                        RTCEMUL_DATETIME_MSDOS, 
+                        (int16_t)gemdos_version,
+                        y2k_patch_enabled);
 
             *((volatile uint32_t *)(memory_shared_address + RTCEMUL_RANDOM_TOKEN)) = random_token;
         }
