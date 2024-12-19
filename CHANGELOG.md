@@ -1,5 +1,25 @@
 # Changelog
 
+## Release 1.0.1 (2024-12-19) - Maintenance Release
+
+This maintenance release for the Sidecartridge firmware v1.0.1 includes bug fixes and improvements to enhance the overall stability and performance of the firmware.
+
+### Changes
+- **Config Flash parameters expanded to 8KB**: The Config Flash parameters have been expanded to 8KB to accommodate additional features and configurations in future releases. This change is transparent to users.
+
+### New features
+- **"What's new" screen now displays the latest added Floppy images in the Public Floppy Database:** In the Configurator, in the "Download from the Floppy Images database" section you can see the latest added floppy images. Press the "_" (underscore) key to see the latest added images. It's the default behavior when you enter the Floppy Images database.
+- **Y2K patches for the RTC module:** The user now can select if the RTC module will be Y2K compliant or not. This is a new option in the Configurator menus under the RTC and GEMDRIVE section. The default value is Y2K compliant. This option is ignored when a EmuTOS TOS is used, as EmuTOS is Y2K compliant by default.
+
+### Fixes
+- **Issue #142:** Fixed misleading information when copying files in TOS 2.06 with GEMDRIVE.
+- **Issue #144:** RTC module now correctly works for all TOS versions, including EmuTOS.
+- Other minor bug fixes and improvements to enhance the overall stability and performance of the firmware.
+
+### Known issues
+- **Issue #143#**: STOS error when loading .bas files when GEMDRIVE is active.
+
+
 ## Release 1.0.0 (2024-10-31) - Final Release
 
 We're excited to announce the final release of Sidecartridge firmware v1.0.0! This release consolidates all features and improvements developed throughout the beta phase, ensuring stability across all Atari ST models. The firmware is now feature-complete and ready for general use.
