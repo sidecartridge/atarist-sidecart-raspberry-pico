@@ -2,6 +2,8 @@
 
 A cartridge emulator for the Atari ST, STE, and Mega series on Raspberry Pi Pico steroids.
 
+> 🛒 **Get the hardware:** [SidecarTridge Multi-device](https://sidecartridge.com/products/sidecartridge-multidevice-atari-st/)
+
 ## What is SidecarT?
 
 SidecarT is a state-of-the-art cartridge ROM emulator crafted for the Atari ST, STE, and Mega series. It leverages the robust capabilities of the RP2040 microcontroller found in the Raspberry Pi Pico, enabling it to:
