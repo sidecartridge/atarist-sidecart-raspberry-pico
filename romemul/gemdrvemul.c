@@ -475,9 +475,9 @@ static void __not_in_flash_func(delete_file_by_fdesc)(FileDescriptors **head, ui
 }
 
 // Comparator function for qsort
-static uint16_t __not_in_flash_func(compare_fd)(const void *a, const void *b)
+static int __not_in_flash_func(compare_fd)(const void *a, const void *b)
 {
-    return (*(uint16_t *)a - *(uint16_t *)b);
+    return (int)(*(uint16_t *)a - *(uint16_t *)b);
 }
 
 static uint16_t __not_in_flash_func(get_first_available_fd)(FileDescriptors *head)
